@@ -1039,3 +1039,124 @@ Feature: US-20 Kinerja dan audit operasional
     When hasil uji dan log diperiksa
     Then kegagalan target dilaporkan jujur dan data rahasia tidak muncul pada log
 ```
+
+## 15. END-TO-END USER FLOW
+
+```mermaid
+flowchart TD
+    A[Maintainer menjalankan Docker] --> B{Instansi sudah diinisialisasi?}
+    B -->|Belum| C[Setup SUPERADMIN pertama]
+    B -->|Sudah| D[Login kreator]
+    C --> D
+    D --> E[Buat atau impor kuis]
+    D --> F[Lihat kuis PUBLIC]
+    F --> G[Duplikasi untuk diedit]
+    G --> E
+    E --> H[Studio: slide, tipe soal, media, konfigurasi]
+    H --> I{Kuis valid?}
+    I -->|Tidak| H
+    I -->|Ya| J[Host membuat room]
+    F --> J
+    J --> K[Lobi: PIN, QR, audio, lock, kick]
+    P[Player membuka PIN atau URL QR] --> Q{PIN dan room dapat diakses?}
+    Q -->|Tidak| R[Pesan error dan coba lagi]
+    R --> P
+    Q -->|Ya| S[Nickname dan DiceBear]
+    S --> T{Identitas dan kapasitas valid?}
+    T -->|Tidak| S
+    T -->|Ya| K
+    K --> U[Host start: countdown 3 detik]
+    U --> V[Preview soal 4 detik]
+    V --> W[Answering: server menerima jawaban satu kali]
+    W --> X{Penyebab penutupan?}
+    X -->|Timer habis| Y[Input UI terkunci; grace 1500ms]
+    X -->|Semua menjawab atau skip| Z[Tutup penerimaan]
+    Y --> Z
+    Z --> AA[Reveal: grafik, explanation, skor dan streak]
+    AA --> AB{Host next: masih ada soal?}
+    AB -->|Ya| AC[Leaderboard Top 5]
+    AC -->|Host next| V
+    AB -->|Tidak| AD[Podium dan finalisasi laporan]
+    AD --> AE[Finished; host melihat analitik dan CSV]
+    W --> AF[Koneksi pemain terputus]
+    AF --> AG{Token dan room masih valid?}
+    AG -->|Ya| AH[Pulihkan slot dan sync state terkini]
+    AH --> AI[Kembali ke fase aktif room]
+    AG -->|Tidak| R
+    K --> AJ[Host mengakhiri sesi]
+    W --> AJ
+    AJ --> AK[Simpan laporan sesi yang diakhiri]
+    C --> AL[Settings, kebijakan registrasi, health, cleanup]
+```
+
+## 16. BUSINESS RULES, VALIDATION & EDGE CASES
+
+### 16.1. Baseline pelengkap
+
+D-01–D-03 adalah keputusan eksplisit pengguna. Aturan pelengkap berikut adalah baseline normalisasi agar implementasi dapat diuji; bukan tambahan fitur di luar sumber. Jika tahap desain/SA menemukan konflik, ubah artefak secara terlacak sebelum coding.
+
+| ID | Aturan |
+| --- | --- |
+| BR-01 | PIN merupakan string tepat enam digit agar nol di awal tidak hilang. Alokasi PIN aktif harus unik dan atomik. Room default maksimal 200 pemain sesuai setting. |
+| BR-02 | Nickname wajib terisi setelah trim, maksimal 15 karakter, unik dalam room setelah normalisasi case, dan lolos profanity filter. Friendly nickname dihasilkan dari daftar aman di server; input bebas tidak boleh melewati mode ini. |
+| BR-03 | Avatar hanya menerima enam gaya §8.2 dan seed tervalidasi; update hanya saat LOBBY. Tidak menerima unggahan SVG avatar arbitrer. |
+| BR-04 | Judul kuis maksimal 150, prompt 500, opsi 250, explanation 1000 karakter. Waktu hanya 5/10/20/30/60/90/120/240 detik; multiplier hanya 0/1/2. Validasi semantik dilakukan selain batas panjang. |
+| BR-05 | SINGLE_CHOICE memiliki 2–4 opsi dengan satu kunci; TRUE_FALSE dua opsi dengan satu kunci; MULTIPLE_SELECT 2–4 opsi dengan set kunci tidak kosong; ORDER_PUZZLE tepat empat item dengan urutan unik; TYPE_ANSWER setidaknya satu teks kunci; POLL 2–4 opsi dan tidak memerlukan kunci benar. |
+| BR-06 | Draft boleh belum lengkap, tetapi host:create_room wajib menolak kuis tanpa soal valid. Warning “belum ada jawaban benar” tidak berlaku bagi POLL; ORDER_PUZZLE memvalidasi urutan. Sesi memakai snapshot kuis sehingga edit studio tidak mengubah pertandingan aktif. |
+| BR-07 | Jawaban bertipe number memakai indeks opsi 0-based dari snapshot; number[] memakai indeks unik untuk multiple/puzzle; TYPE_ANSWER memakai string. Tolak indeks di luar rentang, duplikasi, tipe salah, room/soal salah, dan submit berulang. ID opsi pada reveal dipetakan server dari snapshot. |
+| BR-08 | Grace hanya berlaku untuk timer alami. Server menerima hingga elapsed <= limit+1500ms selama belum difinalisasi; setelah batas tersebut atau penutupan karena skip/semua menjawab, tidak ada perubahan jawaban/skor. Finalisasi dan penerimaan harus memiliki urutan atomik. Server tidak dapat membuktikan kapan paket dibuat di klien; seluruh skor memakai waktu terima server. |
+| BR-09 | MULTIPLE_SELECT parsial C>0 tanpa opsi salah dihitung sebagai berhasil untuk streak/feedback; laporan mempertahankan submitted_payload untuk melihat kelengkapannya. Gunakan round(basePoints*C/K) + bonus, tanpa mengalikan bonus. Salah, pilihan kosong, atau unanswered: nol dan reset streak. POLL mempertahankan streak; non-POLL multiplier 0 reset dan tidak memberi bonus. |
+| BR-10 | TYPE_ANSWER memakai trim/lowercase sebelum exact match; toleransi Levenshtein <=1 hanya jika kata kunci benar memiliki panjang >=6. ORDER_PUZZLE hanya benar jika seluruh urutan tepat. |
+| BR-11 | Tie-break baseline: total skor turun, jumlah jawaban berhasil turun, rata-rata waktu jawaban diterima naik, lalu urutan join naik. Tidak menjawab bukan respons 0ms; nilai rata-rata yang tidak tersedia ditempatkan terakhir. POLL dan soal tanpa poin tidak meningkatkan correct_count untuk tie-break. |
+| BR-12 | Pemain baru masuk hanya saat LOBBY; recovery token valid tetap diizinkan setelah lock atau game berjalan selama slot belum dicabut. Satu identitas memiliki satu koneksi aktif; reconnect tidak menghapus status jawaban. Host hanya dapat start jika ada minimal satu pemain dan satu soal valid. |
+| BR-13 | Set pemain yang wajib menjawab ditentukan pada pembukaan soal dari peserta terhubung; disconnect tidak otomatis dianggap menjawab atau memicu reveal, sehingga server menunggu timer bila perlu. Recovery slot tetap dapat menjawab sebelum penerimaan ditutup. Kick mencabut slot dan akses jawabnya. |
+| BR-14 | PUBLIC mengizinkan kreator lain melihat/duplicate/host; PRIVATE hanya pemilik. Pemilik kuis tidak otomatis dapat membaca laporan sesi yang di-host kreator lain. Mutasi kuis milik orang lain selalu ditolak. |
+| BR-15 | Penghapusan media eksplisit maupun cleanup harus memeriksa referensi cover, questions, salinan kuis dan snapshot sesi aktif. Simpan informasi driver asal; pergantian STORAGE_DRIVER tidak memindahkan aset lama secara otomatis. Driver lama yang tidak dapat diakses menghasilkan error aman, bukan penghapusan record palsu. |
+| BR-16 | Default batas gambar 5MB dan video 25MB dari sumber. Tambahan baseline batas audio 10MB, dapat diubah SUPERADMIN melalui max_audio_size_mb; skema/DTO perlu diperluas oleh SA. Semua batas diuji terhadap file asli sebelum pemrosesan. |
+| BR-17 | Setup hanya dapat berhasil sekali secara atomik. PUBLIC membuat CREATOR; SINGLE_ADMIN menutup registrasi; INVITE_ONLY memerlukan undangan satu kali yang dikelola SUPERADMIN. Tidak ada pengiriman email otomatis yang diasumsikan. |
+| BR-18 | Finalisasi histori memakai satu transaksi dan identitas sesi stabil; retry tidak menduplikasi laporan. reportId hanya dinyatakan siap ketika penyimpanan berhasil. Failure memberi status retry, bukan laporan sukses kosong. |
+| BR-19 | State memory bersifat ephemeral dan hilang ketika proses restart. Driver switching memerlukan bootstrap ulang; migrasi data lintas-driver bukan implikasi perubahan env. TTL aktual room harus ditetapkan di SA; sweep 15 menit adalah interval pembersihan, bukan nilai TTL. |
+| BR-20 | Export CSV melakukan escaping spreadsheet formula dan delimiter. Import divalidasi seluruhnya sebelum commit; referensi media tidak memicu fetch server terhadap URL arbitrer. Kontrak format berversi harus dirinci SA. |
+
+### 16.2. Detail yang wajib dituntaskan di tahap SA
+
+Ini adalah rincian teknis turunan, bukan izin mengubah keputusan bisnis:
+
+- Pilihan ORM, runtime/package versions, representasi timestamp dan migrasi per dialek; penanganan singleton `system_settings.id='global'` sebagai pengecualian UUID.
+- Kontrak undangan, pengelolaan pengguna, host:end_game, room:lock_changed, player:kicked, pemulihan host, media upload failure dan finalisasi laporan; sumber belum merinci semua endpoint/event tersebut.
+- Payload per tipe soal: khusus TYPE_ANSWER jangan kirim daftar teks kunci pada options; ORDER_PUZZLE jangan kirim sort_order benar. Laporan juga harus menyimpan snapshot yang memadai untuk bertahan setelah kuis diubah/dihapus.
+- Refresh token rotation/revocation, cookie flags, kebijakan password, CORS, proxy/IP rate limiting dan validasi URL YouTube/video start-end.
+- Atomic room allocation, dedup jawaban, timer ownership antar-instance, TTL, retry dan kompatibilitas Redis Cluster; mengaktifkan adapter saja belum membuktikan correctness multi-instance.
+- Skema import JSON/CSV termasuk header, versi, error per baris, limit file dan penanganan media; pemilihan/pengacakan urutan puzzle tidak boleh membocorkan kunci.
+- Healthcheck tidak membocorkan credential; environment default aman, pembuatan secret otomatis persisten bila tidak disediakan, pemilihan driver pada scale profile dan paths volume Compose.
+
+## 17. NON-FUNCTIONAL REQUIREMENTS & RELEASE EVIDENCE
+
+| ID | Kebutuhan dan cara penerimaan |
+| --- | --- |
+| NFR-01 Latency | Target sumber: p95 broadcast transisi soal <50ms untuk 200 koneksi satu room. QA harus mencatat hardware, jumlah instance, driver, jaringan, durasi, sampel, serta waktu enqueue server dan penerimaan klien. Klaim skala ribuan membutuhkan uji tambahan, bukan ekstrapolasi hasil 200 pemain. |
+| NFR-02 Player load | Halaman player dioptimalkan untuk 3G/4G; komponen studio/admin tidak ikut dimuat. QA mencatat ukuran JS terkompresi dan pengukuran loading pada profil jaringan yang dinyatakan. Sumber belum menetapkan budget byte/waktu absolut; budget ditetapkan design/SA sebelum QA, bukan diklaim sudah lolos. |
+| NFR-03 Security | Zod di semua boundary, SQL berparameter, password hash, role/ownership guards untuk REST dan WS, validasi file signature, batas upload, dan pembatasan check_pin/join 10 request/60 detik/IP. Tidak ada secret, sessionToken, password_hash atau answer key dalam respons/log yang tidak berhak. |
+| NFR-04 Accessibility | Baseline target WCAG 2.2 AA untuk UI yang relevan: keyboard, fokus terlihat, label semantik, status yang diumumkan, warna+bentuk, reduced motion, kontrol audio dan alternatif drag-and-drop. Design memverifikasi kontras token warna dengan warna teks; nilai warna sumber tidak otomatis membuktikan aksesibilitas. |
+| NFR-05 Audit logging | Log setup, login failure, perubahan role/registrasi/settings, host moderation, import/export, finalisasi dan cleanup dengan waktu UTC, actor ID atau guest pseudonymous ID, resource ID, action, outcome, correlation ID. Redaksi secret dan minimalkan data pribadi; retention dan sink ditentukan SA. |
+| NFR-06 Reliability | Duplicate/retry/reconnect tidak menggandakan pemain, jawaban atau histori. Gangguan storage/DB/Redis terlihat pada status; tidak ada silent fallback yang menghapus kontinuitas data. Uji restart membedakan data persisten dari ephemeral. |
+| NFR-07 Portability | Uji contract adapter berjalan pada ketiga database, kedua state driver, local serta S3-compatible; validasi MinIO path-style dan public URL. Dukungan provider lainnya harus diuji dengan konfigurasi masing-masing sebelum dinyatakan tervalidasi. |
+| NFR-08 Maintainability | Shared schema/event menjadi kontrak type-safe; tidak ada any baru; lint/typecheck/build dan unit/integration/E2E wajib lolos pada task yang relevan. Detail perintah berada di 00-project-context.md dan belum runnable sebelum bootstrap. |
+
+## 18. TRACEABILITY & HANDOFF
+
+| Area sumber | User stories utama |
+| --- | --- |
+| §1 Visi, persona, lisensi | US-01, US-02, US-19 |
+| §2 Stack/monorepo dan §3 adapters | US-06, US-16, US-17 |
+| §4 Schema dan histori | US-03–06, US-14–16 |
+| §5 Engine dan skor | US-09–13 |
+| §6 REST | US-01–06, US-14–16 |
+| §7 Socket.io | US-07–13 |
+| §8 UI/UX | US-04, US-07–09, US-13, US-18 |
+| §9 skenario asli | US-06, US-10–12, US-15, US-19 |
+| §10 Security/NFR | US-08, US-10, US-18, US-20 |
+| §11 Deployment | US-16–17 |
+| §12 Roadmap | Seluruh US; urutan milestone dipertahankan |
+
+Status: **Stage 1 selesai untuk kebutuhan produk; desain, arsitektur rinci, implementasi dan bukti QA belum dibuat.** Review dokumen ini, lalu clear context (`/clear`) dan jalankan `$vibe-design` untuk pengalaman frontend, dilanjutkan `$vibe-sa`. Keduanya menjadi input `$vibe-tasks` sebelum `$vibe-code` mengerjakan satu TASK-XXX.
