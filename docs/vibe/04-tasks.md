@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.0**. Status: **Stage 5 berjalan; 3 task selesai, 178 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.0**. Status: **Stage 5 berjalan; 4 task selesai, 177 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -101,7 +101,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm install --frozen-lockfile`; `pnpm exec tsc --showConfig -p packages/tsconfig/base.json` dapat dibaca (gunakan assertion config bila belum ada input).
 
-### - [ ] TASK-004: Pisahkan konfigurasi compiler web dan API
+### - [x] TASK-004: Pisahkan konfigurasi compiler web dan API
 - **Traceability**: `US-16`, `US-20`, [SA §1.1](03-system-analysis.md#11-stack-dan-versi-baseline)
 - **Depends On**: `TASK-003`
 - **Target Files**:
