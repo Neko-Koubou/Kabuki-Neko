@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.0**. Status: **Stage 5 berjalan; 11 task selesai, 172 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.0**. Status: **Stage 5 berjalan; 12 task selesai, 171 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -205,7 +205,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api build` dan `pnpm --filter @kabuki-neko/api typecheck`; boot smoke tidak crash, unknown route404.
 
-### - [ ] TASK-010: Buat shell Next yang dapat dibangun
+### - [x] TASK-010: Buat shell Next yang dapat dibangun
 - **Traceability**: `US-18`, `US-21`, [SA §1.2](03-system-analysis.md#12-pemetaan-modul-dan-file)
 - **Depends On**: `TASK-008`
 - **Target Files**:
