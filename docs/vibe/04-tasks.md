@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.0**. Status: **Stage 5 berjalan; 12 task selesai, 171 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.0**. Status: **Stage 5 berjalan; 13 task selesai, 170 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -219,7 +219,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web build` dan `pnpm --filter @kabuki-neko/web typecheck` berhasil.
 
-### - [ ] TASK-011: Sediakan harness integration, contracts dan browser
+### - [x] TASK-011: Sediakan harness integration, contracts dan browser
 - **Traceability**: `US-16`, `US-20`, [SA §11.2](03-system-analysis.md#112-implementationqa-coverage-required)
 - **Depends On**: `TASK-009`, `TASK-010`
 - **Target Files**:
@@ -228,7 +228,7 @@ flowchart LR
   - `CREATE` `playwright.config.ts`
   - `CREATE` `tests/helpers/runtime.ts`
 - **Implementation Specs**:
-  - Provision lifecycle isolated temporary SQLite, real Postgres16/MySQL8/Redis7/MinIO melalui container harness; teardown scoped pada run ini, tanpa memakai data instalasi pengguna. Test harness membangun bundle katalog sintetis dari message-contracts ke direktori sementara untuk boot API sebelum katalog produk tersedia; tidak menandainya sebagai terjemahan rilis.
+  - Provision lifecycle isolated temporary SQLite, real Postgres16/MySQL8/Redis7/MinIO melalui container harness (MinIO dibangun dari source commit resmi karena image publik upstream sudah ditarik); teardown scoped pada run ini, tanpa memakai data instalasi pengguna. Test harness membangun bundle katalog sintetis dari message-contracts ke direktori sementara untuk boot API sebelum katalog produk tersedia; tidak menandainya sebagai terjemahan rilis.
   - Playwright start API/web pada port test, gunakan factory fixture dan secret test terisolasi. Script root meneruskan argumen path, test suite kosong bukan acceptance success.
 - **Definition of Done (Verification)**:
   - `pnpm test:integration --listTests`, `pnpm test:contracts --listTests`, `pnpm test:e2e --list` mengenali konfigurasi; assertion helper selalu cleanup resource milik run.
