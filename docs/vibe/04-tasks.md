@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.0**. Status: **Stage 5 berjalan; 10 task selesai, 173 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.0**. Status: **Stage 5 berjalan; 11 task selesai, 172 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -192,7 +192,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm install --frozen-lockfile` dan `pnpm --filter @kabuki-neko/web exec tsc --showConfig` berhasil; entry application/build yang belum dibuat ditandai belum runnable, bukan lolos.
 
-### - [ ] TASK-009: Buat entrypoint dan root module API
+### - [x] TASK-009: Buat entrypoint dan root module API
 - **Traceability**: `US-16`, `US-17`, [SA §1.2](03-system-analysis.md#12-pemetaan-modul-dan-file)
 - **Depends On**: `TASK-007`
 - **Target Files**:
