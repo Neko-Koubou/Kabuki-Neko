@@ -1,0 +1,11 @@
+{
+  "name": "@kabuki-neko/tsconfig",
+  "version": "0.0.0",
+  "private": true,
+  "files": [
+    "*.json"
+  ],
+  "engines": {
+    "node": "24.22.1"
+  }
+}
