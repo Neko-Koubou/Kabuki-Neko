@@ -1,12 +1,12 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.0**. Status: **Stage 5 berjalan; 7 task selesai, 175 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.0**. Status: **Stage 5 berjalan; 8 task selesai, 175 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
 ## 1. Execution summary
 
-Saat planning, workspace belum memiliki aplikasi, manifest, lockfile atau runner. Plan berisi **182 task** (termasuk TASK-007A koreksi kompatibilitas), masing-masing **1–4 file konkret**. TASK-001 kini menyediakan manifest, lockfile dan dependency tooling; konfigurasi runner dan aplikasi menunggu task berikutnya. Perubahan upstream yang telah ada dipertahankan. Status handoff lama pada upstream merupakan catatan tahap sebelumnya, bukan instruksi mengulang SA.
+Saat planning, workspace belum memiliki aplikasi, manifest, lockfile atau runner. Plan berisi **183 task** (termasuk TASK-007A/B koreksi dependency), masing-masing **1–4 file konkret**. TASK-001 kini menyediakan manifest, lockfile dan dependency tooling; konfigurasi runner dan aplikasi menunggu task berikutnya. Perubahan upstream yang telah ada dipertahankan. Status handoff lama pada upstream merupakan catatan tahap sebelumnya, bukan instruksi mengulang SA.
 
 Pada pemeriksaan akhir ditemukan dua kandidat BGM lokal di `audio-assets/bgm/lobby/`: `Cat_life.mp3` dan `猫のソナタ_-_8bit.mp3`; `audio-assets/credit.txt` masih kosong. Task audio mempertimbangkan sumber tersebut dan memverifikasi provenance sebelum distribusi. Folder sumber dan perubahan `.DS_Store` yang muncul selama sesi tidak diubah oleh tahap planning.
 
@@ -153,9 +153,20 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Frozen install baseline berhasil; assertion override exact dan strictPeerDependencies aktif. TASK-007 wajib membuktikan install API tanpa konflik peer.
 
+### - [x] TASK-007B: Pin perbaikan keamanan Multer transitif
+- **Traceability**: `US-06`, `US-20`, SA §10.1; GHSA-q7qp-rjg7-q26m ditemukan pada bootstrap API.
+- **Depends On**: `TASK-007A`
+- **Target Files**:
+  - `MODIFY` `pnpm-workspace.yaml`
+  - `MODIFY` `pnpm-lock.yaml`
+- **Implementation Specs**:
+  - Override `@nestjs/platform-express@11.2.8>multer` dari 2.4.0 ke fixed release 2.5.0; tidak menonaktifkan audit.
+- **Definition of Done (Verification)**:
+  - Frozen install baseline berhasil; TASK-007 memverifikasi audit produksi setelah dependency API diaktifkan.
+
 ### - [ ] TASK-007: Bootstrap paket @kabuki-neko/api
 - **Traceability**: `US-16`, `US-20`, [SA §1.1](03-system-analysis.md#11-stack-dan-versi-baseline)
-- **Depends On**: `TASK-004`, `TASK-006`, `TASK-007A`
+- **Depends On**: `TASK-004`, `TASK-006`, `TASK-007A`, `TASK-007B`
 - **Target Files**:
   - `CREATE` `apps/api/package.json`
   - `CREATE` `apps/api/tsconfig.json`
@@ -165,7 +176,7 @@ flowchart LR
   - Deklarasikan seluruh dependency api yang dipetakan SA §1.1 untuk fitur yang direncanakan, exact version; workspace:* untuk paket internal. Update lockfile dalam task ini agar task fitur tidak perlu mengubah manifest. Sertakan Argon2, JWT/passport, multipart/cookie parsing, Jest+ts-jest+Supertest dan dependency testing yang dibutuhkan SA.
   - Sediakan script lint/typecheck/build/test yang nyata; shared/web Vitest, API Jest, database build + contract root. Shared/database memakai exports subpath yang stabil; index awal valid tanpa mengekspor file yang belum ada. Untuk web gunakan standalone output; API memakai Nest CLI.
 - **Definition of Done (Verification)**:
-  - `pnpm install --frozen-lockfile` dan `pnpm --filter @kabuki-neko/api exec tsc --showConfig` berhasil; entry application/build yang belum dibuat ditandai belum runnable, bukan lolos.
+  - `pnpm install --frozen-lockfile` dan konfigurasi compiler efektif valid; karena `src` baru dibuat TASK-009, diagnostic no-input 18003 diverifikasi melalui compiler API, lalu `tsc --showConfig`/typecheck aktual dijalankan TASK-009; entry application/build yang belum dibuat ditandai belum runnable, bukan lolos.
 
 ### - [ ] TASK-008: Bootstrap paket @kabuki-neko/web
 - **Traceability**: `US-16`, `US-20`, [SA §1.1](03-system-analysis.md#11-stack-dan-versi-baseline)

@@ -47,3 +47,8 @@
 
 - Files: `pnpm-workspace.yaml`, `pnpm-lock.yaml`.
 - Implementasi/verifikasi: Override webpack Nest CLI 5.112.2 memenuhi peer schema-utils tanpa melonggarkan strictPeerDependencies. PASS: baseline frozen install; exact override diperiksa. Install/build API diuji pada TASK-007/TASK-009.
+
+## TASK-007B — 2026-10-30 20:46:12 WIB
+
+- Files: `pnpm-workspace.yaml`, `pnpm-lock.yaml`.
+- Implementasi/verifikasi: Pin perbaikan GHSA-q7qp-rjg7-q26m: nested Multer 2.4.0 menjadi 2.5.0. Frozen install baseline PASS. Audit produksi API menjadi gerbang wajib sebelum TASK-007 selesai; advisory tidak diabaikan.
