@@ -1,0 +1,72 @@
+# Dependencies and package-manager caches
+node_modules/
+.pnpm-store/
+
+# Build output and caches
+dist/
+build/
+.next/
+out/
+.turbo/
+.cache/
+*.tsbuildinfo
+
+# Test output
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+blob-report/
+
+# Local environment and secrets; keep configuration examples
+.env
+.env.*
+!.env.example
+!.env.*.example
+runtime-secrets.json
+*.pem
+*.key
+*.p12
+*.pfx
+/secrets/
+/docker/secrets/
+
+# Persistent runtime data and uploaded media
+/data/
+/uploads/
+/runtime/
+/docker/data/
+/docker/uploads/
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite-journal
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.sqlite3-journal
+
+# Generated locale bundles, templates, and legal copies
+/locales-built/
+/apps/web/public/locales/
+/apps/web/public/legal/
+
+# Temporary files and logs
+/tmp/
+/temp/
+*.log
+*.pid
+*.pid.lock
+
+# OS and editor metadata
+.DS_Store
+._*
+Thumbs.db
+.idea/
+*.swp
+*.swo
+*~
