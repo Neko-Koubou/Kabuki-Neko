@@ -1,0 +1,42 @@
+{
+  "name": "@kabuki-neko/database",
+  "version": "0.0.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src --max-warnings 0",
+    "test": "pnpm --workspace-root test:contracts --runInBand --testPathPatterns=database"
+  },
+  "dependencies": {
+    "@kabuki-neko/shared": "workspace:*",
+    "typeorm": "0.3.31",
+    "reflect-metadata": "0.2.2",
+    "better-sqlite3": "12.11.1",
+    "pg": "8.23.1",
+    "mysql2": "3.24.6"
+  },
+  "devDependencies": {
+    "@kabuki-neko/tsconfig": "workspace:*",
+    "@types/node": "24.19.2",
+    "@types/better-sqlite3": "9.6.0",
+    "@types/pg": "8.23.1",
+    "typescript": "5.9.3"
+  }
+}
