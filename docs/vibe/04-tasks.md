@@ -1,12 +1,12 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.0**. Status: **Stage 5 berjalan; 6 task selesai, 175 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.0**. Status: **Stage 5 berjalan; 7 task selesai, 175 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
 ## 1. Execution summary
 
-Saat planning, workspace belum memiliki aplikasi, manifest, lockfile atau runner. Plan berisi **181 task**, masing-masing **1–4 file konkret**. TASK-001 kini menyediakan manifest, lockfile dan dependency tooling; konfigurasi runner dan aplikasi menunggu task berikutnya. Perubahan upstream yang telah ada dipertahankan. Status handoff lama pada upstream merupakan catatan tahap sebelumnya, bukan instruksi mengulang SA.
+Saat planning, workspace belum memiliki aplikasi, manifest, lockfile atau runner. Plan berisi **182 task** (termasuk TASK-007A koreksi kompatibilitas), masing-masing **1–4 file konkret**. TASK-001 kini menyediakan manifest, lockfile dan dependency tooling; konfigurasi runner dan aplikasi menunggu task berikutnya. Perubahan upstream yang telah ada dipertahankan. Status handoff lama pada upstream merupakan catatan tahap sebelumnya, bukan instruksi mengulang SA.
 
 Pada pemeriksaan akhir ditemukan dua kandidat BGM lokal di `audio-assets/bgm/lobby/`: `Cat_life.mp3` dan `猫のソナタ_-_8bit.mp3`; `audio-assets/credit.txt` masih kosong. Task audio mempertimbangkan sumber tersebut dan memverifikasi provenance sebelum distribusi. Folder sumber dan perubahan `.DS_Store` yang muncul selama sesi tidak diubah oleh tahap planning.
 
@@ -141,9 +141,21 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm install --frozen-lockfile` dan `pnpm --filter @kabuki-neko/database exec tsc --showConfig` berhasil; entry application/build yang belum dibuat ditandai belum runnable, bukan lolos.
 
+### - [x] TASK-007A: Selaraskan webpack transitif Nest CLI
+- **Traceability**: `US-16`, `US-20`, SA §1.1; koreksi kompatibilitas ditemukan pada bootstrap TASK-007.
+- **Depends On**: `TASK-006`
+- **Target Files**:
+  - `MODIFY` `pnpm-workspace.yaml`
+  - `MODIFY` `pnpm-lock.yaml`
+- **Implementation Specs**:
+  - Override terarah `@nestjs/cli@11.0.24>webpack` ke 5.112.2 karena pin bawaan 5.106.2 tidak memenuhi peer schema-utils 4.8.1 (`webpack ^5.112.0`). Pertahankan strictPeerDependencies.
+  - Terapkan override sebelum bootstrap API dilanjutkan; resolusi dan build Nest diverifikasi kembali pada TASK-007/TASK-009.
+- **Definition of Done (Verification)**:
+  - Frozen install baseline berhasil; assertion override exact dan strictPeerDependencies aktif. TASK-007 wajib membuktikan install API tanpa konflik peer.
+
 ### - [ ] TASK-007: Bootstrap paket @kabuki-neko/api
 - **Traceability**: `US-16`, `US-20`, [SA §1.1](03-system-analysis.md#11-stack-dan-versi-baseline)
-- **Depends On**: `TASK-004`, `TASK-006`
+- **Depends On**: `TASK-004`, `TASK-006`, `TASK-007A`
 - **Target Files**:
   - `CREATE` `apps/api/package.json`
   - `CREATE` `apps/api/tsconfig.json`
