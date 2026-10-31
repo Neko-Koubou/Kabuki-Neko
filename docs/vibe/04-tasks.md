@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.0**. Status: **Stage 5 berjalan; 13 task selesai, 170 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.0**. Status: **Stage 5 berjalan; 14 task selesai, 169 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -233,7 +233,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:integration --listTests`, `pnpm test:contracts --listTests`, `pnpm test:e2e --list` mengenali konfigurasi; assertion helper selalu cleanup resource milik run.
 
-### - [ ] TASK-012: Konfigurasi test React dan browser mocks
+### - [x] TASK-012: Konfigurasi test React dan browser mocks
 - **Traceability**: `US-18`, `US-20`, `US-21`, [SA §1.1](03-system-analysis.md#11-stack-dan-versi-baseline)
 - **Depends On**: `TASK-011`
 - **Target Files**:
