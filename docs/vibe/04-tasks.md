@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 27 task selesai, 165 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 28 task selesai, 164 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -408,7 +408,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/shared test -- src/schemas/report.schema.spec.ts` memeriksa denominator0→null, partial, early-end dan status invalid.
 
-### - [ ] TASK-022: Definisikan seluruh kontrak Socket.io dan ACK
+### - [x] TASK-022: Definisikan seluruh kontrak Socket.io dan ACK
 - **Traceability**: `US-07`, `US-08`, `US-09`, `US-10`, `US-12`, `US-13`, `US-14`, [SA §5.2](03-system-analysis.md#52-semua-client-to-server-methods)
 - **Depends On**: `TASK-021`
 - **Target Files**:

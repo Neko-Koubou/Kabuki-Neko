@@ -147,3 +147,8 @@
 
 - Files: `packages/shared/src/schemas/report.schema.ts`, `packages/shared/src/schemas/report.schema.spec.ts`.
 - Implementasi/verifikasi: Added report/session/player/question/answer/page schemas and shared finalization re-export. Enforced weighted fractional accuracy with denominator0→null, mutually distinct NOT_PLAYED/NOT_ELIGIBLE/UNANSWERED, partial475=375+100, no POLL/no-points weighted opportunities, early-end snapshots, ready report gate and locale-neutral snapshotVersion1/UTC contract. Shared lint/typecheck PASS;85 tests PASS.
+
+## TASK-022 — 2026-10-31 14:52:51 WIB
+
+- Files: `packages/shared/src/socket-events.ts`, `packages/shared/src/socket-events.spec.ts`, `packages/shared/src/index.ts`.
+- Implementasi/verifikasi: Defined all16 client requests/typed event callbacks with event-specific ACKs and20 server payload schemas/envelopes, plus role-specific projection maps. Enforced handshake/event byte caps, strict requestId/member/phase fields, join/recovery token shape and authoritative timing; player maps exclude host report/count payloads. Exported ready shared contracts from index. Shared lint/typecheck/build PASS;93 tests PASS; consumer web/API typecheck PASS after rebuilt shared exports.
