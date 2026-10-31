@@ -142,3 +142,8 @@
 
 - Files: `packages/shared/src/schemas/game.schema.ts`, `packages/shared/src/schemas/game.schema.spec.ts`.
 - Implementasi/verifikasi: Implemented strict phase-discriminated HostRoomSync/PlayerRoomSync, public questions/media/roster, timing, accepted answers, reveal/leaderboard and personal result contracts. Rejects pre-reveal keys/private fields/player report access, enforces score sum and role/timing boundaries including8s PODIUM. Added host-only bgmTrack from immutable snapshot for audio recovery and shared FinalizeStatus to avoid report/game cycles. Shared lint/typecheck PASS;79 tests PASS including all8 phases, six-type reveal privacy and reportId ready gate.
+
+## TASK-021 — 2026-10-31 14:51:10 WIB
+
+- Files: `packages/shared/src/schemas/report.schema.ts`, `packages/shared/src/schemas/report.schema.spec.ts`.
+- Implementasi/verifikasi: Added report/session/player/question/answer/page schemas and shared finalization re-export. Enforced weighted fractional accuracy with denominator0→null, mutually distinct NOT_PLAYED/NOT_ELIGIBLE/UNANSWERED, partial475=375+100, no POLL/no-points weighted opportunities, early-end snapshots, ready report gate and locale-neutral snapshotVersion1/UTC contract. Shared lint/typecheck PASS;85 tests PASS.
