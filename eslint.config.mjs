@@ -4,6 +4,8 @@ import prettier from "eslint-config-prettier";
 import tseslint from "typescript-eslint";
 import { builtinModules } from "node:module";
 
+const builtinImportPattern = builtinModules.map((name) => name.replaceAll("/", "\\/")).join("|");
+
 const serverImports = [
   "@kabuki-neko/api",
   "@kabuki-neko/api/**",
@@ -67,9 +69,10 @@ export default defineConfig(
       "no-restricted-imports": [
         "error",
         {
+          paths: builtinModules,
           patterns: [
             {
-              group: [...serverImports, "node:*", ...builtinModules],
+              group: [...serverImports, "node:*"],
               message:
                 "Browser/shared code must not depend on server implementations or Node builtins.",
             },
@@ -83,8 +86,7 @@ export default defineConfig(
           message: "Use literal dynamic import paths so module boundaries can be checked.",
         },
         {
-          selector:
-            "ImportExpression[source.value=/^(node:|@kabuki-neko\\/(api|database)|@nestjs\\/|@aws-sdk\\/|typeorm|better-sqlite3|pg$|mysql2|ioredis|sharp)/]",
+          selector: `ImportExpression[source.value=/^(node:|@kabuki-neko\\/(api|database)|@nestjs\\/|@aws-sdk\\/|typeorm|better-sqlite3|pg$|mysql2|ioredis|sharp|(?:${builtinImportPattern})$)/]`,
           message: "Server modules cannot be dynamically imported into browser/shared code.",
         },
       ],
@@ -96,12 +98,12 @@ export default defineConfig(
       "no-restricted-imports": [
         "error",
         {
+          paths: builtinModules,
           patterns: [
             {
               group: [
                 ...serverImports,
                 "node:*",
-                ...builtinModules,
                 "@kabuki-neko/web",
                 "@kabuki-neko/web/**",
                 "**/apps/web/**",

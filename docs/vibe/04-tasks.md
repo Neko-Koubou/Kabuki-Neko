@@ -1,12 +1,12 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.0**. Status: **Stage 5 berjalan; 16 task selesai, 167 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.0**. Status: **Stage 5 berjalan; 17 task selesai, 167 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
 ## 1. Execution summary
 
-Saat planning, workspace belum memiliki aplikasi, manifest, lockfile atau runner. Plan berisi **183 task** (termasuk TASK-007A/B koreksi dependency), masing-masing **1–4 file konkret**. TASK-001 kini menyediakan manifest, lockfile dan dependency tooling; konfigurasi runner dan aplikasi menunggu task berikutnya. Perubahan upstream yang telah ada dipertahankan. Status handoff lama pada upstream merupakan catatan tahap sebelumnya, bukan instruksi mengulang SA.
+Saat planning, workspace belum memiliki aplikasi, manifest, lockfile atau runner. Plan berisi **184 task** (termasuk TASK-007A/B koreksi dependency dan TASK-014A koreksi lint), masing-masing **1–4 file konkret**. TASK-001 kini menyediakan manifest, lockfile dan dependency tooling; konfigurasi runner dan aplikasi menunggu task berikutnya. Perubahan upstream yang telah ada dipertahankan. Status handoff lama pada upstream merupakan catatan tahap sebelumnya, bukan instruksi mengulang SA.
 
 Pada pemeriksaan akhir ditemukan dua kandidat BGM lokal di `audio-assets/bgm/lobby/`: `Cat_life.mp3` dan `猫のソナタ_-_8bit.mp3`; `audio-assets/credit.txt` masih kosong. Task audio mempertimbangkan sumber tersebut dan memverifikasi provenance sebelum distribusi. Folder sumber dan perubahan `.DS_Store` yang muncul selama sesi tidak diubah oleh tahap planning.
 
@@ -271,9 +271,19 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/shared typecheck`; assertion enum/warna/URL identik tabel sumber.
 
+### - [x] TASK-014A: Perbaiki batas import builtin pada lint
+- **Traceability**: `US-20`, SA §1.2; false positive ditemukan saat TASK-015 mengimpor constants lokal.
+- **Depends On**: `TASK-014`
+- **Target Files**:
+  - `MODIFY` `eslint.config.mjs`
+- **Implementation Specs**:
+  - Larang nama modul builtin dengan pencocokan exact, bukan gitignore pattern yang ikut memblokir direktori constants lokal. Pertahankan larangan node: dan modul server termasuk dynamic imports.
+- **Definition of Done (Verification)**:
+  - ESLint API probes menerima import constants lokal dan menolak builtin bare/node:, modul server, serta dynamic imports server pada shared/web.
+
 ### - [ ] TASK-015: Satukan normalisasi Unicode dan registry error
 - **Traceability**: `US-01`, `US-04`, `US-08`, `US-11`, `US-21`, [SA §3.1](03-system-analysis.md#31-primitif-dan-batas)
-- **Depends On**: `TASK-014`
+- **Depends On**: `TASK-014`, `TASK-014A`
 - **Target Files**:
   - `CREATE` `packages/shared/src/unicode.ts`
   - `CREATE` `packages/shared/src/errors.ts`
