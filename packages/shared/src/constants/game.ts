@@ -40,7 +40,7 @@ export const GAME_TIMING = {
   countdownMs: 3_000,
   previewMs: 4_000,
   graceMs: 1_500,
-  podiumMs: 3_000,
+  podiumMs: 8_000,
 } as const;
 export const SCORING = {
   basePoints: 1_000,

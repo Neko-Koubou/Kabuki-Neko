@@ -117,3 +117,8 @@
 
 - Files: `packages/shared/src/constants/audio.ts`, `packages/shared/src/schemas/audio.schema.ts`, `packages/shared/src/schemas/audio.schema.spec.ts`, `packages/shared/src/schemas/system.schema.ts`.
 - Implementasi/verifikasi: Replaced four legacy audio URLs with dynamic lobby/dual-source manifest contracts, safe track IDs/default random, exact required6 phase BGM+10SFX descriptors, preference/cue defaults and same-origin WebM→MP3 pair validation. Public config now exposes real lobby descriptors. Shared lint/typecheck PASS; all30 tests PASS including3/4/5 lobby fixtures, unknown safe IDs, missing cues, path injection, duplicate IDs, invalid volume and no-loop SFX.
+
+## TASK-016C — 2026-10-31 14:39:20 WIB
+
+- Files: `packages/shared/src/constants/game.ts`, `packages/shared/src/constants/game.spec.ts`.
+- Implementasi/verifikasi: Changed authoritative PODIUM duration to8000ms to accommodate winner cues at1200/3500/6500ms. No added phase or changes to countdown/preview/grace/scoring. Shared lint/typecheck PASS;31 tests PASS, including explicit cue-before-FINISHED invariant. Actual scheduler/UI consumers follow this constant in their pending tasks; no playback implementation claimed.
