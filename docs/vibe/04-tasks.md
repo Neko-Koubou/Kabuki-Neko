@@ -1,14 +1,14 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.0**. Status: **Stage 5 berjalan; 19 task selesai, 165 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 20 task selesai, 172 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
 ## 1. Execution summary
 
-Saat planning, workspace belum memiliki aplikasi, manifest, lockfile atau runner. Plan berisi **184 task** (termasuk TASK-007A/B koreksi dependency dan TASK-014A koreksi lint), masing-masing **1–4 file konkret**. TASK-001 kini menyediakan manifest, lockfile dan dependency tooling; konfigurasi runner dan aplikasi menunggu task berikutnya. Perubahan upstream yang telah ada dipertahankan. Status handoff lama pada upstream merupakan catatan tahap sebelumnya, bukan instruksi mengulang SA.
+Saat planning, workspace belum memiliki aplikasi, manifest, lockfile atau runner. Plan berisi **192 task** (termasuk task koreksi dan perluasan audio 2026-10-31), masing-masing **1–4 file konkret**. TASK-001 kini menyediakan manifest, lockfile dan dependency tooling; konfigurasi runner dan aplikasi menunggu task berikutnya. Perubahan upstream yang telah ada dipertahankan. Status handoff lama pada upstream merupakan catatan tahap sebelumnya, bukan instruksi mengulang SA.
 
-Pada pemeriksaan akhir ditemukan dua kandidat BGM lokal di `audio-assets/bgm/lobby/`: `Cat_life.mp3` dan `猫のソナタ_-_8bit.mp3`; `audio-assets/credit.txt` masih kosong. Task audio mempertimbangkan sumber tersebut dan memverifikasi provenance sebelum distribusi. Folder sumber dan perubahan `.DS_Store` yang muncul selama sesi tidak diubah oleh tahap planning.
+Revisi audio pengguna 2026-10-31: sumber aktif `audio-assets/kabuki-neko-audio/` berisi **20 MP3 + CREDITS.md**, termasuk empat lobby dan sepuluh SFX. [Audio engine revision](audio-engine-revision.md) adalah addendum normatif yang menggantikan baseline audio lama: Opus/WebM + MP3, manifest dinamis, default random, role-specific Howler choreography dan PODIUM8s. Inventaris/hash dan gap atribusi tersedia di addendum; file input dipertahankan. Task selesai sebelumnya tetap catatan historis, koreksi dilakukan dalam task baru.
 
 Status Legend: `- [ ]` Pending | `- [~]` In Progress | `- [x]` Completed | `- [!]` Blocked
 
@@ -22,6 +22,8 @@ Status Legend: `- [ ]` Pending | `- [~]` In Progress | `- [x]` Completed | `- [!
 | 6. Hardening, Edge Cases & Polish | TASK-164–TASK-181 | 18 | M7 + release evidence |
 
 **Urutan:** ambil task Pending bernomor terkecil yang semua Depends On-nya Completed. Dependensi per-task adalah DAG operasional; phase merangkum milestone, bukan izin mengerjakan seluruh phase dalam satu `/vibe-code`. API/DB/adapter selesai sebelum integrasi UI; catalog tools/contracts lebih awal dan enam katalog lengkap tersedia sebelum provider UI. Tidak ada delegasi atau eksekusi agen paralel yang diperlukan oleh plan ini.
+
+Task berakhiran huruf adalah koreksi/perluasan atomik; jumlah pada tabel fase di atas menunjukkan181 task baseline, sedangkan total192 mencakup11 task tambahan. Detail dependensi di setiap task tetap normatif.
 
 ### Dependency graph
 
@@ -308,9 +310,44 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/shared test -- src/schemas/auth.schema.spec.ts` mencakup role injection, password whitespace, bounds settings dan singleton bukan UUID.
 
+### - [x] TASK-016A: Revisi rencana audio berdasarkan inventaris aktual
+- **Traceability**: `US-07`, `US-13`, `US-18`, `US-19`, `US-21`, [Audio revision](audio-engine-revision.md); instruksi pengguna 2026-10-31.
+- **Depends On**: `TASK-016`
+- **Target Files**:
+  - `CREATE` `docs/vibe/audio-engine-revision.md`
+- **Implementation Specs**:
+  - Dokumentasikan20 input/hash, dual-format, selection/role matrix,8s podium, lifecycle/credits dan pecah task1–4 file; selaraskan dependensi downstream tanpa menandai implementasi audio selesai.
+- **Definition of Done (Verification)**:
+  - Assertion seluruh20 input ditemukan, task IDs/dependency DAG valid, setiap task baru/revisi1–4 file, tidak ada rujukan aktif direktori audio lama.
+
+### - [ ] TASK-016B: Ganti kontrak audio baseline dengan manifest dual-source
+- **Traceability**: `US-07`, `US-13`, `US-18`, `US-19`, `US-21`, [Audio revision](audio-engine-revision.md); instruksi pengguna 2026-10-31.
+- **Depends On**: `TASK-016A`
+- **Target Files**:
+  - `MODIFY` `packages/shared/src/constants/audio.ts`
+  - `CREATE` `packages/shared/src/schemas/audio.schema.ts`
+  - `CREATE` `packages/shared/src/schemas/audio.schema.spec.ts`
+  - `MODIFY` `packages/shared/src/schemas/system.schema.ts`
+- **Implementation Specs**:
+  - Descriptor strict lobby dinamis, thinking/leaderboard/podium dan10 SFX; dual-source safe same-origin URL WebM laluMP3. Export default random, nilai cue/volume/timing sesuai addendum; tidak hardcode daftar lobby yang belum ada.
+  - Public config audioTracks berisi lobby descriptor array; bgmTrack menerima random atau safe ID, unknown legacy ID fallback random pada playback.
+- **Definition of Done (Verification)**:
+  - Shared lint/typecheck/test; fixture3/4/5 lobby, URL injection/duplicate/missing cue/invalid volumes gagal; public config tidak memakai empat URL lama.
+
+### - [ ] TASK-016C: Selaraskan durasi PODIUM dengan koreografi audio
+- **Traceability**: `US-07`, `US-13`, `US-18`, `US-19`, `US-21`, [Audio revision](audio-engine-revision.md); instruksi pengguna 2026-10-31.
+- **Depends On**: `TASK-016B`
+- **Target Files**:
+  - `MODIFY` `packages/shared/src/constants/game.ts`
+  - `CREATE` `packages/shared/src/constants/game.spec.ts`
+- **Implementation Specs**:
+  - PODIUM8000ms menggantikan3000ms; winner cues1200/3500/6500 dari shared audio timing. Scoring dan grace tetap sesuai SA; report freeze tidak menunggu animasi.
+- **Definition of Done (Verification)**:
+  - Test urutan cue final6500 < podium8000 dan enum8fase tetap; lint/typecheck PASS.
+
 ### - [ ] TASK-017: Definisikan media dan alternatif aksesibilitas
 - **Traceability**: `US-06`, `US-18`, [SA §3.1](03-system-analysis.md#31-primitif-dan-batas)
-- **Depends On**: `TASK-015`
+- **Depends On**: `TASK-015`, `TASK-016C`
 - **Target Files**:
   - `CREATE` `packages/shared/src/schemas/media.schema.ts`
   - `CREATE` `packages/shared/src/schemas/media.schema.spec.ts`
@@ -334,12 +371,13 @@ flowchart LR
 
 ### - [ ] TASK-019: Definisikan DTO kuis dan pertukaran materi
 - **Traceability**: `US-03`, `US-04`, `US-05`, [SA §3.2](03-system-analysis.md#32-dto-lengkap-json-structural-notation)
-- **Depends On**: `TASK-018`, `TASK-016`
+- **Depends On**: `TASK-018`, `TASK-016`, `TASK-016B`
 - **Target Files**:
   - `CREATE` `packages/shared/src/schemas/quiz.schema.ts`
   - `CREATE` `packages/shared/src/schemas/import.schema.ts`
   - `CREATE` `packages/shared/src/schemas/quiz.schema.spec.ts`
 - **Implementation Specs**:
+  - Revisi audio: QuizCreate bgmTrack default random; gunakan safe track-ID schema (termasuk legacy/unknown yang nanti fallback random), export/import mempertahankan ID. Tidak enum kabuki-matsuri tunggal.
   - Definisikan QuizWrite/Create/Summary/Detail/Capabilities dan Page; max 200 questions/5MiB, metadata-only create. Tidak menerima creatorId/capabilities pada write.
   - Definisikan QuizExportV1 dan CSV header §7.2, mediaMap<=201, issue lokasi dengan jumlah total; field export semuanya hadir.
 - **Definition of Done (Verification)**:
@@ -391,6 +429,7 @@ flowchart LR
   - `CREATE` `packages/shared/src/schemas/locale.schema.spec.ts`
   - `MODIFY` `packages/shared/src/index.ts`
 - **Implementation Specs**:
+  - Inventaris copy/aria baru: mute/unmute, master/BGM/SFX volume, Enable Audio/retry, Random/Next BGM/Preview/Stop preview, streamer opt-in, credits loading/empty/error. Gunakan audio revision sebagai trace; nama asli track/komposer bukan terjemahan otomatis.
   - Buat manifest BCP47/SemVer/catalogVersion1, namespace 12, LocaleEntry dan diagnostics. Inventaris semua copy S/M/B/F, ErrorCode, aria labels dan judul dalam message-contracts dengan placeholder bertipe.
   - Inventaris mencakup semua lima state dan seluruh fitur sebelum katalog diterjemahkan; tidak memasukkan konten creator/lisensi resmi sebagai pesan UI.
 - **Definition of Done (Verification)**:
@@ -455,12 +494,13 @@ flowchart LR
 
 ### - [ ] TASK-028: Model kuis dan aset media
 - **Traceability**: `US-16`, `US-01`, `US-03`, `US-14`, [SA §2.4](03-system-analysis.md#24-konten-dan-media)
-- **Depends On**: `TASK-026`, `TASK-027`
+- **Depends On**: `TASK-026`, `TASK-027`, `TASK-016B`
 - **Target Files**:
   - `CREATE` `packages/database/src/schema/quizzes.schema.ts`
   - `CREATE` `packages/database/src/schema/media.schema.ts`
   - `MODIFY` `packages/database/src/index.ts`
 - **Implementation Specs**:
+  - Override SA lama: quizzes.bgm_track default random, safe ID string; tidak DB enum empat track. Ketiga migrasi berikut wajib memakai default yang sama.
   - Seluruh quizzes/questions/question_options/media_assets, accessibility defaults, revision, unique question order, media RESTRICT dan FK creator. Text grapheme memakai T bukan VARCHAR sempit.
   - Daftarkan EntitySchema factory dalam registry exports sehingga data source menerima semua model tersedia; semua FK indexed dan ON UPDATE NO ACTION.
 - **Definition of Done (Verification)**:
@@ -498,6 +538,7 @@ flowchart LR
   - `CREATE` `packages/database/src/migrations/sqlite/0001-initial.ts`
   - `CREATE` `tests/contracts/migration-sqlite.spec.ts`
 - **Implementation Specs**:
+  - Assertion migrasi audio revision: quizzes.bgm_track default random; unknown legacy safe IDs tetap tersimpan, tidak mengganti data menjadi track fiktif.
   - Buat seluruh 17 tabel domain SA §§2.3–2.5 beserta FK/index/CHECK dan settings singleton; gunakan tipe dialek, tidak SQL UUID()/NOW() generik.
   - Sediakan checksum/version metadata runner dan preflight resumable (terutama DDL MySQL); urutan table creation mengikuti FK, tidak menghapus data saat restart.
 - **Definition of Done (Verification)**:
@@ -510,6 +551,7 @@ flowchart LR
   - `CREATE` `packages/database/src/migrations/postgres/0001-initial.ts`
   - `CREATE` `tests/contracts/migration-postgres.spec.ts`
 - **Implementation Specs**:
+  - Assertion migrasi audio revision: quizzes.bgm_track default random; unknown legacy safe IDs tetap tersimpan, tidak mengganti data menjadi track fiktif.
   - Buat seluruh 17 tabel domain SA §§2.3–2.5 beserta FK/index/CHECK dan settings singleton; gunakan tipe dialek, tidak SQL UUID()/NOW() generik.
   - Sediakan checksum/version metadata runner dan preflight resumable (terutama DDL MySQL); urutan table creation mengikuti FK, tidak menghapus data saat restart.
 - **Definition of Done (Verification)**:
@@ -522,6 +564,7 @@ flowchart LR
   - `CREATE` `packages/database/src/migrations/mysql/0001-initial.ts`
   - `CREATE` `tests/contracts/migration-mysql.spec.ts`
 - **Implementation Specs**:
+  - Assertion migrasi audio revision: quizzes.bgm_track default random; unknown legacy safe IDs tetap tersimpan, tidak mengganti data menjadi track fiktif.
   - Buat seluruh 17 tabel domain SA §§2.3–2.5 beserta FK/index/CHECK dan settings singleton; gunakan tipe dialek, tidak SQL UUID()/NOW() generik.
   - Sediakan checksum/version metadata runner dan preflight resumable (terutama DDL MySQL); urutan table creation mengikuti FK, tidak menghapus data saat restart.
 - **Definition of Done (Verification)**:
@@ -1045,12 +1088,13 @@ flowchart LR
 
 ### - [ ] TASK-073: Implementasikan registry locale, audio dan About
 - **Traceability**: `US-07`, `US-19`, `US-21`, [SA §4.4](03-system-analysis.md#44-media-system-et-locales)
-- **Depends On**: `TASK-072`, `TASK-013`
+- **Depends On**: `TASK-072`, `TASK-013`, `TASK-016B`
 - **Target Files**:
   - `CREATE` `apps/api/src/modules/system/locale-registry.service.ts`
   - `CREATE` `apps/api/src/modules/system/audio-catalog.service.ts`
   - `CREATE` `apps/api/src/modules/system/registries.spec.ts`
 - **Implementation Specs**:
+  - Audio registry memakai schema manifest baru dan mengeluarkan lobby descriptors dari generated manifest; source manifest bukan wrapper phases lama. Uji fixture aktual20cue, missing/collision/path injection; file packaging final diverifikasi TASK-114/174.
   - Load validated immutable registry/version/buildId dan audio catalogue, ensure installed defaultLocale; startup rejects mismatched paired artifact.
   - About metadata dari build+legal URLs; no fabricated version/legal wording. Audio descriptors menunjuk file yang diverifikasi packaging nanti.
 - **Definition of Done (Verification)**:
@@ -1152,7 +1196,7 @@ flowchart LR
   - `CREATE` `apps/api/src/modules/game-engine/room-scheduler.ts`
   - `CREATE` `apps/api/src/modules/game-engine/room-scheduler.spec.ts`
 - **Implementation Specs**:
-  - Scan1s repair+exact local deadlines, lease 3000ms renew 1000ms owner/epoch, CAS phase always. Countdown3s/preview4s/acceptance inclusive1500ms/podium3s.
+  - Scan1s repair+exact local deadlines, lease 3000ms renew 1000ms owner/epoch, CAS phase always. Countdown3s/preview4s/acceptance inclusive1500ms/PODIUM8000ms sesuai audio revision; finalization mulai saat masuk podium, tidak menunggu cue6500ms.
   - Hard8h/lobby idle2h/heartbeat30s/finished1h, memory sweep15m; pending frozen payload no eviction before durable enqueue, LOST startup and conditional PIN/media release.
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/modules/game-engine/room-scheduler.spec.ts` fake clock exact boundaries, two owners, host disconnect no pause, stale cleanup and pending retention.
@@ -1584,30 +1628,43 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Assertion visual di browser: ketiga SVG decode pada16/32/128/320px, tidak ada external/script nodes, logo terbaca light/dark; notices cocok aset.
 
-### - [ ] TASK-114: Sediakan empat aset audio baseline
-- **Traceability**: `US-07`, `US-18`, `US-19`, [SA §4.4](03-system-analysis.md#44-media-system-et-locales)
-- **Depends On**: `TASK-113`
+### - [ ] TASK-114: Bangun pipeline FFmpeg dual-format dan manifest audio
+- **Traceability**: `US-07`, `US-13`, `US-18`, `US-19`, `US-21`, [Audio revision](audio-engine-revision.md); instruksi pengguna 2026-10-31.
+- **Depends On**: `TASK-113`, `TASK-016B`
 - **Target Files**:
-  - `CREATE` `apps/web/public/audio/lobby.mp3`
-  - `CREATE` `apps/web/public/audio/tick.mp3`
-  - `CREATE` `apps/web/public/audio/reveal.mp3`
-  - `CREATE` `apps/web/public/audio/podium.mp3`
+  - `CREATE` `scripts/optimize-audio.mjs`
+  - `CREATE` `scripts/optimize-audio.spec.mjs`
+  - `MODIFY` `package.json`
+  - `MODIFY` `.gitignore`
 - **Implementation Specs**:
-  - Inspeksi kandidat lokal audio-assets/bgm/lobby/Cat_life.mp3 dan audio-assets/bgm/lobby/猫のソナタ_-_8bit.mp3; credit.txt saat planning masih kosong. Pilih/gunakan kandidat hanya setelah provenance dan izin distribusi terverifikasi; lengkapi lobby/tick/reveal/podium yang belum tersedia, jangan menganggap kedua lobby tracks memenuhi empat cue.
-  - Pertahankan source audio-assets asli; final empat MP3 mengikuti katalog kabuki-matsuri dan bukan placeholder. Catat sumber/lisensi/checksum pada implementation log untuk notices task berikut; tidak menambah track katalog tanpa task eksplisit.
+  - Tambahkan audio:optimize; scan20 input dalam lima folder aktual (lobby dinamis), encode Opus96k VBR + MP3128k, loudnorm BGM kedua format, SFX tanpa normalisasi panjang. FFmpeg/ffprobe no-shell fixed args, safe filenames/symlink guards; jangan ubah raw audio.
+  - Staged publish output apps/web/public/audio berisi40audio untuk inventory sekarang, CREDITS byte-identical dan generated audio-manifest.json tanpa phases wrapper. Ignore generated output, tidak memasukkan raw pack/credential ke commit. Script/provisioning jelas untuk CI; ukur real savings, bukan klaim50–65%.
 - **Definition of Done (Verification)**:
-  - Assertion: `ffprobe` mendekode keempat MP3, playback manual tanpa clipping; durasi/loop dan provenance tersedia pada log.
+  - pnpm audio:optimize berhasil; ffprobe semua40 output codec/duration/decode; node --test scripts/optimize-audio.spec.mjs untuk3/4/N lobby, missing cue, corrupt source, conversion failure/stale cleanup dan safe publication. Lint script dan manifest shared validation PASS.
+
+### - [ ] TASK-114A: Rapikan kredit audio untuk repo dan distribusi
+- **Traceability**: `US-07`, `US-13`, `US-18`, `US-19`, `US-21`, [Audio revision](audio-engine-revision.md); instruksi pengguna 2026-10-31.
+- **Depends On**: `TASK-114`
+- **Target Files**:
+  - `MODIFY` `audio-assets/kabuki-neko-audio/CREDITS.md`
+  - `MODIFY` `THIRD-PARTY-NOTICES.md`
+  - `CREATE` `docs/audio-provenance.json`
+- **Implementation Specs**:
+  - Perbaiki dua typo URL; inventaris tiap20 file/hash/komposer/sumber/ketentuan aktual, gap10SFX dicatat sampai sumber spesifik ditemukan; jangan menebak attribution. Pisahkan code license dengan asset license dan jangan menjanjikan blanket noncommercial coverage Commons Clause.
+  - Notices repo memuat link/source kredit. Jalankan ulang optimizer agar copy CREDITS identik sumber setelah perapian; raw audio bukan otomatis raw-pack redistribution.
+- **Definition of Done (Verification)**:
+  - Assertion20 input punya entry provenance, credits links valid syntax dan file output copy identical; verifikasi izin distribusi tertulis atau tandai release-unverified spesifik, tidak klaim selesai hak legal tanpa bukti.
 
 ### - [ ] TASK-115: Sediakan font lokal dan atribusi aset lengkap
 - **Traceability**: `US-18`, `US-19`, `US-21`, [SA §8.3](03-system-analysis.md#83-budget-qr-font-dan-accessible-media)
-- **Depends On**: `TASK-114`
+- **Depends On**: `TASK-114`, `TASK-114A`
 - **Target Files**:
   - `CREATE` `apps/web/public/fonts/noto-sans-latin.woff2`
   - `MODIFY` `THIRD-PARTY-NOTICES.md`
   - `CREATE` `scripts/package-assets.ts`
 - **Implementation Specs**:
   - Sediakan licensed Noto Sans Latin subset dengan bobot400/600/700/800 yang dibutuhkan (variable bila sesuai); CJK system fallback dan font-display swap.
-  - Lengkapi notices font/OFL, keempat audio, DiceBear collections/dependency sesuai versi; jangan menambahkan aset yang provenance-nya tidak jelas.
+  - Lengkapi notices font/OFL,20 input audio/40generated variants beserta CREDITS/provenance, DiceBear collections/dependency sesuai versi; jangan menambahkan aset yang provenance-nya tidak jelas.
   - Buat packaging script awal untuk copy LICENSE/notices ke public/legal dan verifikasi file aset. Jalankan sekarang agar footer/About punya target nyata; build hook dan negative release tests ditambahkan task packaging akhir.
 - **Definition of Done (Verification)**:
   - Assertion font decode dan glyph Latin/diacritics; notices cocok semua sumber/checksum aset dan ketentuan redistribusi; CJK fallback tidak tofu. `pnpm exec tsx scripts/package-assets.ts` menghasilkan kedua legal text files dengan isi sumber identik.
@@ -1798,22 +1855,60 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/hooks/use-game-clock.spec.tsx` clock jumps/rebase/zero grace and reconnect latest phase; server acceptance untouched.
 
-### - [ ] TASK-130: Bangun audio engine dan kontrol lokal
-- **Traceability**: `US-07`, `US-18`, [SA §4.4](03-system-analysis.md#44-media-system-et-locales), [Design §7.2](02-design-spec.md#72-waktu-media-dan-alternatif-yang-perlu-disediakan)
+### - [ ] TASK-130: Bangun singleton audio manager dan preference store
+- **Traceability**: `US-07`, `US-13`, `US-18`, `US-19`, `US-21`, [Audio revision](audio-engine-revision.md); instruksi pengguna 2026-10-31.
 - **Depends On**: `TASK-129`, `TASK-114`, `TASK-074`
 - **Target Files**:
-  - `CREATE` `apps/web/src/hooks/use-audio-engine.ts`
-  - `CREATE` `apps/web/src/components/host/audio-controls.tsx`
-  - `CREATE` `apps/web/src/hooks/use-audio-engine.spec.tsx`
+  - `CREATE` `apps/web/src/stores/useAudioStore.ts`
+  - `CREATE` `apps/web/src/stores/useAudioStore.spec.ts`
+  - `CREATE` `apps/web/src/lib/audio-manager.ts`
+  - `CREATE` `apps/web/src/lib/audio-manager.spec.ts`
 - **Implementation Specs**:
-  - Howler lazy enabled by gesture, mute/volume0..1 browser preferences, catalog-based track selector; stop on exit/media change.
-  - F18 phaseVersion dedup reconnect, blocked autoplay explicit Enable Audio, decode failure retry visual game continues; no global room mute.
+  - Zustand persist kabuki-neko-audio-prefs: mutedfalse/master.8/bgm.7/sfx.9/currentLobbyTrackIdnull; clamp/schema/hydration/storage denied; actions sesuai revision. Howler sudah terpasang, lazy browser only.
+  - Singleton owns Howls, monotonic throttle150ms, gain master*channel*cue; rate reset, dual-format fallback, generation-safe cleanup, preview exclusivity. Satu steady BGM; bounded500ms crossfade satu-satunya overlap disengaja.
 - **Definition of Done (Verification)**:
-  - `pnpm --filter @kabuki-neko/web test -- src/hooks/use-audio-engine.spec.tsx` phase retry no overlapping playback, autoplay deny, exit cleanup and preference storage denied.
+  - Web unit tests fake Howler/clock: volume/mute persistence, autoplay/decode error, burst joins, interrupted fade, no orphan loop, stop/unload, route/StrictMode ownership. Lint/typecheck PASS.
+
+### - [ ] TASK-130A: Orkestrasi seluruh audio Host/Player dari state
+- **Traceability**: `US-07`, `US-13`, `US-18`, `US-19`, `US-21`, [Audio revision](audio-engine-revision.md); instruksi pengguna 2026-10-31.
+- **Depends On**: `TASK-130`
+- **Target Files**:
+  - `CREATE` `apps/web/src/hooks/useAudioEngine.ts`
+  - `CREATE` `apps/web/src/hooks/useAudioEngine.spec.tsx`
+- **Implementation Specs**:
+  - Implementasi seluruh role matrix10SFX, lobby once-per-session random/specific+cycleNextLobbyTrack, thinking precedence, last5 rate1.22/ticks only duration>=10 dan stop di input0. STREAMER BGM explicit opt-in; PROJECTOR/player lobby silent.
+  - Dedup event/session/question/phaseVersion/second, authority clock; reveal450/streak350/podium1200/3500/6500, volume victory override.95, sparse winners/POLL/NOT_ELIGIBLE; FINISHED retain results music without replay. Cancel stale timers/unlock listener on exit; reconnect no missed cue replay.
+- **Definition of Done (Verification)**:
+  - Fake timer/Howler tests all phases/10SFX both roles,5s vs10s sprint, puzzle priority, hidden-tab skip, recovery and8000ms FINISHED, rate reset, vibration absent API, autoplay blocked/retry and no duplicate audio.
+
+### - [ ] TASK-130B: Bangun kontrol audio Host dan opt-in Streamer
+- **Traceability**: `US-07`, `US-13`, `US-18`, `US-19`, `US-21`, [Audio revision](audio-engine-revision.md); instruksi pengguna 2026-10-31.
+- **Depends On**: `TASK-130A`, `TASK-119`
+- **Target Files**:
+  - `CREATE` `apps/web/src/components/host/AudioController.tsx`
+  - `CREATE` `apps/web/src/components/host/AudioController.spec.tsx`
+  - `CREATE` `apps/web/src/components/player/streamer-audio-toggle.tsx`
+- **Implementation Specs**:
+  - Top-right mute M (ignore editable/modifier keys), accessible BGM/SFX slider popover; LOBBY-only title/Next BGM dengan500ms fade. Player toggle local opt-in hanya STREAMER.
+  - Semua label/aria locale; five states termasuk missing manifest/decode failure; controls tidak mengubah room settings/timer.
+- **Definition of Done (Verification)**:
+  - Web component tests keyboard/focus/M-in-input, volume clamp, lobby-only shuffle, projector exclusion, opt-in persistence policy dan exit cleanup.
+
+### - [ ] TASK-130C: Sediakan modal kredit audio aman
+- **Traceability**: `US-07`, `US-13`, `US-18`, `US-19`, `US-21`, [Audio revision](audio-engine-revision.md); instruksi pengguna 2026-10-31.
+- **Depends On**: `TASK-130B`, `TASK-114A`, `TASK-119`
+- **Target Files**:
+  - `CREATE` `apps/web/src/components/common/CreditsModal.tsx`
+  - `CREATE` `apps/web/src/components/common/CreditsModal.spec.tsx`
+- **Implementation Specs**:
+  - Load packaged CREDITS.md, render safe markdown/text tanpa raw HTML; metadata asli komposer/link visible, license kode/aset terpisah. Expose trigger untuk footer/admin; existing official LICENSE exact, policy gap tidak disembunyikan.
+  - Accessible focus trap/return/Escape, translated chrome, five states dan download source credits/notices.
+- **Definition of Done (Verification)**:
+  - Component tests script/link injection, keyboard/mobile, loading/empty/ideal/partial/error serta credit source links.
 
 ### - [ ] TASK-131: Bangun QR generator dan scanner aman
 - **Traceability**: `US-07`, `US-08`, `US-18`, [SA §8.3](03-system-analysis.md#83-budget-qr-font-dan-accessible-media), [Design §4.9](02-design-spec.md#49-dialog--m01m12)
-- **Depends On**: `TASK-130`, `TASK-119`
+- **Depends On**: `TASK-130`, `TASK-119`, `TASK-130C`
 - **Target Files**:
   - `CREATE` `apps/web/src/lib/qr.ts`
   - `CREATE` `apps/web/src/components/player/qr-scanner.tsx`
@@ -1829,13 +1924,14 @@ flowchart LR
 
 ### - [ ] TASK-132: Bangun public dan dashboard navigation shells
 - **Traceability**: `US-01`, `US-03`, `US-15`, `US-18`, `US-21`, [SA §1.2](03-system-analysis.md#12-pemetaan-modul-dan-file), [Design §1.1](02-design-spec.md#11-pola-navigasi-dan-izin)
-- **Depends On**: `TASK-131`, `TASK-126`
+- **Depends On**: `TASK-131`, `TASK-126`, `TASK-130C`
 - **Target Files**:
   - `CREATE` `apps/web/src/components/ui/public-shell.tsx`
   - `CREATE` `apps/web/src/app/(dashboard)/dashboard/layout.tsx`
   - `CREATE` `apps/web/src/app/(dashboard)/dashboard/page.tsx`
   - `CREATE` `apps/web/src/components/ui/shells.spec.tsx`
 - **Implementation Specs**:
+  - Integrasikan CreditsModal dari footer publik dan sidebar admin About & Audio Credits; gunakan packaged CREDITS. Uji trigger/focus-return tanpa merender raw HTML.
   - Public locale/theme/login/join/legal footer; dashboard creator links dan superadmin settings/users only, responsive sidebar/menu+skip link.
   - Protected layout waits auth; /dashboard redirect /dashboard/quizzes, no unauthorized flash. Gunakan provider existing agar locale tidak remount live routes.
 - **Definition of Done (Verification)**:
@@ -1896,12 +1992,13 @@ flowchart LR
 
 ### - [ ] TASK-137: Bangun metadata kuis dan persiapan host
 - **Traceability**: `US-03`, `US-04`, `US-07`, [SA §4.3](03-system-analysis.md#43-kuis-dan-importexport), [Design §4.9](02-design-spec.md#49-dialog--m01m12)
-- **Depends On**: `TASK-136`, `TASK-128`, `TASK-074`
+- **Depends On**: `TASK-136`, `TASK-128`, `TASK-074`, `TASK-130B`
 - **Target Files**:
-  - `CREATE` `apps/web/src/components/studio/quiz-metadata-dialog.tsx`
+  - `CREATE` `apps/web/src/components/studio/QuizSettingsModal.tsx`
   - `CREATE` `apps/web/src/components/host/host-config-dialog.tsx`
   - `CREATE` `apps/web/src/components/host/host-config-dialog.spec.tsx`
 - **Implementation Specs**:
+  - QuizSettingsModal Lobby BGM dropdown default Random + actual manifest lobby entries; safe retained legacy ID fallback; per-track Preview memakai singleton, stop on dialog close/live route. Uji no-overlap/unknown ID dan save draft ID.
   - M03 title/description/cover/visibility/bgm: create remote vs apply studio draft; cover selection callback ready for media picker integration.
   - M06 default PROJECTOR/friendly off, reject invalid/dirty unsaved quiz, wait create ACK; timeout reconcile room.create via requestId before retry.
 - **Definition of Done (Verification)**:
@@ -1965,7 +2062,7 @@ flowchart LR
 - **Target Files**:
   - `CREATE` `apps/web/src/components/studio/media-picker.tsx`
   - `CREATE` `apps/web/src/components/studio/media-picker.spec.tsx`
-  - `MODIFY` `apps/web/src/components/studio/quiz-metadata-dialog.tsx`
+  - `MODIFY` `apps/web/src/components/studio/QuizSettingsModal.tsx`
 - **Implementation Specs**:
   - M05 library/upload/YouTube tabs; cover image-only/no YouTube, question attachment exclusive, clip validation/canonical URL and missing alternative warnings.
   - Copy library accessibility into question draft context, keep IDs unauthorized immutable; connect cover selection metadata dialog. Closing pending upload preserves parent reconciliation.
@@ -2056,6 +2153,7 @@ flowchart LR
   - `CREATE` `apps/web/src/app/(public)/help/languages/page.tsx`
   - `CREATE` `apps/web/src/app/(dashboard)/dashboard/about/page.tsx`
 - **Implementation Specs**:
+  - About publik/admin menyertakan kredit audio dari source/CREDITS packaged dengan repo notice link; reuse CreditsModal/document viewer. Jangan ulang label legal lebih luas dari teks resmi sebagai fakta.
   - S13/F20 shared readable document for both About routes, real /system/about version and official legal URLs; translated summary labelled, official original lang preserved.
   - Guide source docs/localization steps and real template ZIP, validation/install/build/restart/rollback; missing version/source error not fabricated replacement.
 - **Definition of Done (Verification)**:
@@ -2068,6 +2166,7 @@ flowchart LR
   - `CREATE` `apps/web/src/components/player/avatar-customizer.tsx`
   - `CREATE` `apps/web/src/components/player/avatar-customizer.spec.tsx`
 - **Implementation Specs**:
+  - Avatar randomize/dadu memberi nekoPop melalui manager, throttle150ms, gesture unlock; tidak membuat Howl baru per rerender.
   - M01/F12 six-style selection/local reroll,15grapheme nickname or server friendly ticket, error duplicate/profanity/full/locked retains fields.
   - New join complete identity, lost ACK same requestID; lobby edit avatar-only ACK reverts failed preview, outside lobby unavailable.
 - **Definition of Done (Verification)**:
@@ -2132,6 +2231,7 @@ flowchart LR
   - `CREATE` `apps/web/src/components/host/explanation-dialog.tsx`
   - `CREATE` `apps/web/src/components/host/result-chart.spec.tsx`
 - **Implementation Specs**:
+  - Sinkronisasi revealBar450ms dengan chart; hasil pemain menggerakkan correct/wrong/streak350ms menurut hook; POLL/NOT_ELIGIBLE tidak memutar incorrect. Hindari trigger ganda dari komponen dan hook.
   - F16 chart choice/multiple/poll with numeric table, multiple counts not assumed100%; text accepted list and puzzle order only in reveal, M08 full explanation.
   - Personal CORRECT/PARTIAL/INCORRECT/UNANSWERED/POLL/NOT_ELIGIBLE and m0, base/bonus/total no double addition; no points/streak guessed client.
 - **Definition of Done (Verification)**:
@@ -2146,18 +2246,19 @@ flowchart LR
   - `CREATE` `apps/web/src/components/host/podium.spec.tsx`
 - **Implementation Specs**:
   - Render server top5/climber/rankChange, never resort score; up-to3 actual winners, zero valid and long nickname wrapping.
-  - Framer Motion reveal3→2→1 <=3s/confetti<=2s lazy, reduced motion immediate, missed reconnect phases do not replay animations; report CTA supplied host-only.
+  - Framer Motion rank3@1200ms/rank2@3500ms/rank1@6500ms dari authoritative PODIUM start, final FINISHED@8000ms; spotlight/buildup→victory/confetti via audio engine satu sumber timing. Confetti<=2s lazy; reduced motion immediate tanpa confetti, missed reconnect cues tidak replay; zero/sparse winners skip absent ranks dan report CTA host-only.
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/host/podium.spec.tsx` zero/1/2/3 winners, ties preserve order, reduced motion and unchanged phaseVersion no repeat.
 
 ### - [ ] TASK-157: Integrasikan semua fase layar player
 - **Traceability**: `US-08`, `US-09`, `US-10`, `US-11`, `US-12`, `US-13`, `US-18`, `US-21`, [SA §5.3](03-system-analysis.md#53-public-and-private-snapshots), [Design §6.1](02-design-spec.md#61-semua-layar)
-- **Depends On**: `TASK-156`, `TASK-127`
+- **Depends On**: `TASK-156`, `TASK-127`, `TASK-130B`
 - **Target Files**:
   - `CREATE` `apps/web/src/components/player/player-stage-answer-pad.tsx`
   - `CREATE` `apps/web/src/app/(player)/play/[pin]/page.tsx`
   - `CREATE` `tests/e2e/player.spec.ts`
 - **Implementation Specs**:
+  - Integrasikan useAudioEngine role/session ownership dan controller/toggle sesuai audio revision; no local BGM player PROJECTOR, no background loop setelah leave; reconnect/FINISHED tidak replay podium. Mutation feedback hanya dari authoritative result/accepted submit.
   - S15/F14 compose all 8 phases with avatar/score/streak, timer/answer controls/media, result/leaderboard/podium/final; PROJECTOR local text alternative and STREAMER full.
   - State snapshot drives render, draft keyed stable question, accepted/grace/offline exact; locale/theme changes preserve socket, draft and input focus.
 - **Definition of Done (Verification)**:
@@ -2165,11 +2266,12 @@ flowchart LR
 
 ### - [ ] TASK-158: Bangun lobi host dan moderasi
 - **Traceability**: `US-07`, `US-08`, `US-18`, `US-21`, [SA §5.2](03-system-analysis.md#52-semua-client-to-server-methods), [Design §4.7](02-design-spec.md#47-panggung-host--s16)
-- **Depends On**: `TASK-157`, `TASK-130`, `TASK-131`
+- **Depends On**: `TASK-157`, `TASK-130`, `TASK-131`, `TASK-130B`
 - **Target Files**:
   - `CREATE` `apps/web/src/components/host/host-stage-lobby.tsx`
   - `CREATE` `apps/web/src/components/host/host-stage-lobby.spec.tsx`
 - **Implementation Specs**:
+  - Integrasikan useAudioEngine role/session ownership dan controller/toggle sesuai audio revision; no local BGM player PROJECTOR, no background loop setelah leave; reconnect/FINISHED tidak replay podium. Mutation feedback hanya dari authoritative result/accepted submit.
   - F13 PIN/URL/copy/QR enlargement, effective capacity and200-player stable-key grid, connected badge vs kicked removal, audio controls.
   - Lock/start/kick/end capabilities+ACK pending, M09 keyboard/touch visible moderation; start disabled zero connected, lost host connection locks.
 - **Definition of Done (Verification)**:
@@ -2190,17 +2292,30 @@ flowchart LR
 
 ### - [ ] TASK-160: Integrasikan host recovery, podium dan status laporan
 - **Traceability**: `US-07`, `US-10`, `US-12`, `US-13`, `US-14`, `US-21`, [SA §6.3](03-system-analysis.md#63-finalization-and-durability), [Design §6.1](02-design-spec.md#61-semua-layar)
-- **Depends On**: `TASK-159`, `TASK-086`
+- **Depends On**: `TASK-159`, `TASK-086`, `TASK-130B`
 - **Target Files**:
   - `CREATE` `apps/web/src/app/(host)/host/[sessionId]/page.tsx`
   - `CREATE` `apps/web/src/components/host/host-stage.tsx`
   - `CREATE` `apps/web/src/components/host/report-finalization-notice.tsx`
   - `CREATE` `tests/e2e/host.spec.ts`
 - **Implementation Specs**:
+  - Integrasikan useAudioEngine role/session ownership dan controller/toggle sesuai audio revision; no local BGM player PROJECTOR, no background loop setelah leave; reconnect/FINISHED tidak replay podium. Mutation feedback hanya dari authoritative result/accepted submit.
   - S16 all 8 phases+host:recover_room authenticated, compose stage/lobby/reveal/explanation/leaderboard/podium, End from active phases.
   - Report pending/failed/lost/ready independent FINISHED cosmetic phase; retry endpoint/host-only status push, report link only ready real reportId.
 - **Definition of Done (Verification)**:
   - `pnpm test:e2e -- tests/e2e/host.spec.ts` start→skip→next→podium, reconnect, early end empty lobby, finalization DB failure/retry; five states/no skipped question on duplicate next.
+
+### - [ ] TASK-160A: Verifikasi choreography dan fallback audio di browser
+- **Traceability**: `US-07`, `US-13`, `US-18`, `US-19`, `US-21`, [Audio revision](audio-engine-revision.md); instruksi pengguna 2026-10-31.
+- **Depends On**: `TASK-160`, `TASK-130C`
+- **Target Files**:
+  - `CREATE` `tests/e2e/audio.spec.ts`
+  - `CREATE` `tests/helpers/audio-observer.ts`
+- **Implementation Specs**:
+  - Instrument real browser Howler/media without substituting fake success; gesture, mute/storage, random/specific/shuffle, all phase transitions, burst joins, rate1.22/ticks and podium timing. Assert no overlapping steady loops, bounded intentional crossfade.
+  - Chromium/Firefox/WebKit plus forced WebM-unavailable→MP3 fallback; decoded files/404 checks, teardown/dashboard silence; manual iOS/autoplay/gapless observations explicit not-run until available.
+- **Definition of Done (Verification)**:
+  - Playwright targeted audio suite passes, all10SFX role matrix covered, no phantom rank/POLL feedback, no stale timers after disconnect or navigation; record actual supported browser evidence.
 
 ### - [ ] TASK-161: Bangun daftar laporan host
 - **Traceability**: `US-14`, `US-21`, [SA §4.5](03-system-analysis.md#45-reports), [Design §4.4](02-design-spec.md#44-media-dan-laporan--s08s10)
@@ -2381,6 +2496,7 @@ flowchart LR
   - `MODIFY` `package.json`
   - `MODIFY` `pnpm-lock.yaml`
 - **Implementation Specs**:
+  - Run audio:optimize with provisioned input assets; package complete generated manifest/40variants/CREDITS into web and matching metadata into API. Fail missing fallback/invalid codec/stale manifest or attribution artifact; do not silently ship old four URLs.
   - Prebuild stage copies LICENSE/notices to exact public/legal/*.txt, shared locale bundle/template/audio/font/brand assets into deploy outputs; generated outputs reproducible, not handwritten task files.
   - Fail build missing/malformed/unattributed assets or unmatched web/API catalog buildId; include root LICENSE/notices in both artifacts. Declare build hook and lock update if required.
 - **Definition of Done (Verification)**:
@@ -2467,7 +2583,7 @@ flowchart LR
 
 ### - [ ] TASK-181: Integrasikan CI dan release evidence gate
 - **Traceability**: `US-01`, `US-02`, `US-03`, `US-04`, `US-05`, `US-06`, `US-07`, `US-08`, `US-09`, `US-10`, `US-11`, `US-12`, `US-13`, `US-14`, `US-15`, `US-16`, `US-17`, `US-18`, `US-19`, `US-20`, `US-21`, [SA §11.2](03-system-analysis.md#112-implementationqa-coverage-required)
-- **Depends On**: `TASK-180`
+- **Depends On**: `TASK-180`, `TASK-160A`
 - **Target Files**:
   - `CREATE` `.github/workflows/ci.yml`
   - `CREATE` `scripts/verify-release.ts`

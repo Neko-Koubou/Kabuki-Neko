@@ -107,3 +107,8 @@
 
 - Files: `packages/shared/src/schemas/auth.schema.ts`, `packages/shared/src/schemas/users.schema.ts`, `packages/shared/src/schemas/system.schema.ts`, `packages/shared/src/schemas/auth.schema.spec.ts`.
 - Implementasi/verifikasi: Added strict auth/user/invitation/settings/health/public-config contracts, canonical v4 UUID vs global singleton, IDNA/lowercase email, unchanged passwords, safe query coercion, nonempty editable patches and extensible locale syntax (installed registry enforced later in service). Shared lint/typecheck PASS; Vitest 24 tests across Unicode/auth PASS including injection, nullable/absent fields, limits and credentials omitted from public responses.
+
+## TASK-016A — 2026-10-31 14:37:43 WIB
+
+- Files: `docs/vibe/audio-engine-revision.md`.
+- Implementasi/verifikasi: Revised audio plan from actual20 MP3 files and supplied CREDITS, with per-file SHA256 inventory. Added dual-format conversion, dynamic lobby/default random contracts,8s PODIUM timing, role-specific10SFX choreography, singleton/store/hooks/UI/credits/browser tests and downstream DB/locales/API/packaging dependencies. Validated192 unique task IDs, acyclic dependencies and1–4 target files for every task; no obsolete active raw-audio paths. Existing credits URL/SFX provenance and broader legal wording gaps recorded honestly; audio implementation not yet claimed complete.
