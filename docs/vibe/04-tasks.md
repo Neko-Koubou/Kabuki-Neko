@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 20 task selesai, 172 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 21 task selesai, 171 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -320,7 +320,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Assertion seluruh20 input ditemukan, task IDs/dependency DAG valid, setiap task baru/revisi1–4 file, tidak ada rujukan aktif direktori audio lama.
 
-### - [ ] TASK-016B: Ganti kontrak audio baseline dengan manifest dual-source
+### - [x] TASK-016B: Ganti kontrak audio baseline dengan manifest dual-source
 - **Traceability**: `US-07`, `US-13`, `US-18`, `US-19`, `US-21`, [Audio revision](audio-engine-revision.md); instruksi pengguna 2026-10-31.
 - **Depends On**: `TASK-016A`
 - **Target Files**:

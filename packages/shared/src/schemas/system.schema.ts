@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AUDIO_TRACKS } from "../constants/audio";
+import { lobbyTracksSchema } from "./audio.schema";
 import { REGISTRATION_MODES } from "../constants/game";
 import { LOCALE_LIMITS, SETTINGS_LIMITS, TEXT_LIMITS } from "../constants/limits";
 import { errorCodeSchema } from "../errors";
@@ -87,22 +87,13 @@ export const healthSchema = z.strictObject({
   state: healthPartSchema,
 });
 export type Health = z.infer<typeof healthSchema>;
-const track = AUDIO_TRACKS[0];
-export const audioTrackSchema = z.strictObject({
-  id: z.literal(track.id),
-  labelKey: z.literal(track.labelKey),
-  lobbyUrl: z.literal(track.lobbyUrl),
-  tickUrl: z.literal(track.tickUrl),
-  revealUrl: z.literal(track.revealUrl),
-  podiumUrl: z.literal(track.podiumUrl),
-});
 export const publicConfigSchema = z.strictObject({
   instanceName: instanceNameSchema,
   defaultLocale: localeTagSchema,
   registrationMode: registrationModeSchema,
   limits: z.strictObject({ imageMb, audioMb, videoMb }),
   catalogVersion: z.literal("1"),
-  audioTracks: z.array(audioTrackSchema).length(1),
+  audioTracks: lobbyTracksSchema,
 });
 export const aboutSchema = z.strictObject({
   name: z.literal("Kabuki Neko"),
