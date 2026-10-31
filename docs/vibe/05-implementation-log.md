@@ -162,3 +162,8 @@
 
 - Files: `packages/shared/src/schemas/locale.schema.ts`, `packages/shared/locales/message-contracts.json`, `packages/shared/src/schemas/locale.schema.spec.ts`, `packages/shared/src/index.ts`.
 - Implementasi/verifikasi: Implemented strict extensible BCP47/SemVer manifests,12 namespaces, typed message contracts, diagnostics and hash-bound registry with complete English fallback; production rejects pseudo locales/path/markup/credential injection. Added1102 message contracts tracing61 S/M/B/F surfaces across5 states,95 ErrorCodes, controls/aria/date-number placeholders and revised audio/credits controls. Shared lint/typecheck/build PASS;11 source suites/99 tests PASS. Actual JSON inventory assertion PASS; synthetic catalog generated from all1102 contracts validates against registry schema and owned temp runtime cleaned. ICU AST/duplicate-key compiler checks and actual six-language translations remain their dedicated downstream tasks.
+
+## TASK-023A — 2026-10-31 19:42:56 WIB
+
+- Files: `packages/tsconfig/nestjs.json`.
+- Implementasi/verifikasi: Enabled isolatedModules for the existing NodeNext Nest compiler configuration as required by ts-jest. API/database typecheck PASS; API Nest build PASS;19 config tests PASS with no TS151002 warnings. Strict, decorator metadata and skipLibCheck=false retained; no diagnostic suppression. TASK-024 feature files remain unstaged until their own completion.
