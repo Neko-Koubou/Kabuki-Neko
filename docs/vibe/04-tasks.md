@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.0**. Status: **Stage 5 berjalan; 17 task selesai, 167 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.0**. Status: **Stage 5 berjalan; 18 task selesai, 166 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -281,7 +281,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - ESLint API probes menerima import constants lokal dan menolak builtin bare/node:, modul server, serta dynamic imports server pada shared/web.
 
-### - [ ] TASK-015: Satukan normalisasi Unicode dan registry error
+### - [x] TASK-015: Satukan normalisasi Unicode dan registry error
 - **Traceability**: `US-01`, `US-04`, `US-08`, `US-11`, `US-21`, [SA §3.1](03-system-analysis.md#31-primitif-dan-batas)
 - **Depends On**: `TASK-014`, `TASK-014A`
 - **Target Files**:
