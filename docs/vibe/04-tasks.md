@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 25 task selesai, 167 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 26 task selesai, 166 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -383,13 +383,14 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/shared test -- src/schemas/quiz.schema.spec.ts` roundtrip semua tipe, draft export dan malicious ownership field; batas bytes diverifikasi.
 
-### - [ ] TASK-020: Definisikan snapshot game publik dan hasil pribadi
+### - [x] TASK-020: Definisikan snapshot game publik dan hasil pribadi
 - **Traceability**: `US-07`, `US-08`, `US-09`, `US-10`, `US-11`, `US-12`, `US-13`, [SA §5.3](03-system-analysis.md#53-public-and-private-snapshots)
 - **Depends On**: `TASK-019`
 - **Target Files**:
   - `CREATE` `packages/shared/src/schemas/game.schema.ts`
   - `CREATE` `packages/shared/src/schemas/game.schema.spec.ts`
 - **Implementation Specs**:
+  - Audio revision: HostRoomSync menambahkan bgmTrack safe ID dari immutable quiz snapshot untuk lobby/recovery; player tidak memerlukan field ini. FinalizeStatus didefinisikan bersama host projection untuk menghindari circular dependency; TASK-021 re-export kontrak yang sama.
   - Model PublicQuestion/Player, Timing, AcceptedAnswer, Reveal, Leaderboard, PersonalResult dan HostRoomSync/PlayerRoomSync sebagai discriminated schemas.
   - Tidak menaruh token/hash/private answer keys pada base room; TYPE_ANSWER public options kosong, host finalization terpisah player. Snapshot private internal disusun nanti di server.
 - **Definition of Done (Verification)**:

@@ -137,3 +137,8 @@
 
 - Files: `packages/shared/src/schemas/quiz.schema.ts`, `packages/shared/src/schemas/import.schema.ts`, `packages/shared/src/schemas/quiz.schema.spec.ts`.
 - Implementasi/verifikasi: Added strict QuizCreate/Write/Summary/Detail/capabilities/pages and versioned JSON/CSV interchange contracts. Create defaults PRIVATE/random; safe legacy bgm IDs preserved. Enforced global question/option ID uniqueness, order,200-question/5MiB limits, media reference declarations and201-map cap, bounded JSON nodes/depth and localized issue locations with uncapped actual count. Shared lint/typecheck PASS;72 tests PASS including six-type draft roundtrip, malformed ownership, nullable fields and oversized serialized payload.
+
+## TASK-020 — 2026-10-31 14:49:13 WIB
+
+- Files: `packages/shared/src/schemas/game.schema.ts`, `packages/shared/src/schemas/game.schema.spec.ts`.
+- Implementasi/verifikasi: Implemented strict phase-discriminated HostRoomSync/PlayerRoomSync, public questions/media/roster, timing, accepted answers, reveal/leaderboard and personal result contracts. Rejects pre-reveal keys/private fields/player report access, enforces score sum and role/timing boundaries including8s PODIUM. Added host-only bgmTrack from immutable snapshot for audio recovery and shared FinalizeStatus to avoid report/game cycles. Shared lint/typecheck PASS;79 tests PASS including all8 phases, six-type reveal privacy and reportId ready gate.
