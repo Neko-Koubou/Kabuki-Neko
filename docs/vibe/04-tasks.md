@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 22 task selesai, 170 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 23 task selesai, 169 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -345,7 +345,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Test urutan cue final6500 < podium8000 dan enum8fase tetap; lint/typecheck PASS.
 
-### - [ ] TASK-017: Definisikan media dan alternatif aksesibilitas
+### - [x] TASK-017: Definisikan media dan alternatif aksesibilitas
 - **Traceability**: `US-06`, `US-18`, [SA §3.1](03-system-analysis.md#31-primitif-dan-batas)
 - **Depends On**: `TASK-015`, `TASK-016C`
 - **Target Files**:
