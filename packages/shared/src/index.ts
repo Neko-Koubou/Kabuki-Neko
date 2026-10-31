@@ -15,3 +15,4 @@ export * from "./schemas/import.schema";
 export * from "./schemas/game.schema";
 export * from "./schemas/report.schema";
 export * from "./socket-events";
+export * from "./schemas/locale.schema";

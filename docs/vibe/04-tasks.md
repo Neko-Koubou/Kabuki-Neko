@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 29 task selesai, 164 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 30 task selesai, 163 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -431,7 +431,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Build shared lalu pnpm --filter @kabuki-neko/shared test; source suites seluruhnya dijalankan, tidak ada suite dist/*.spec.js. Config lint PASS.
 
-### - [ ] TASK-023: Definisikan manifest dan kontrak pesan locale
+### - [x] TASK-023: Definisikan manifest dan kontrak pesan locale
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-022`, `TASK-022A`
 - **Target Files**:
