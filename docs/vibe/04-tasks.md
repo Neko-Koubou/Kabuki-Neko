@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 23 task selesai, 169 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 24 task selesai, 168 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -357,7 +357,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/shared test -- src/schemas/media.schema.spec.ts` menolak URL credentials/ports/host palsu, cue overlap dan oversize; menerima canonical variants.
 
-### - [ ] TASK-018: Pisahkan struktur draft dari playability enam tipe
+### - [x] TASK-018: Pisahkan struktur draft dari playability enam tipe
 - **Traceability**: `US-04`, `US-09`, `US-10`, `US-11`, [SA §3.1](03-system-analysis.md#31-primitif-dan-batas)
 - **Depends On**: `TASK-014`, `TASK-017`
 - **Target Files**:

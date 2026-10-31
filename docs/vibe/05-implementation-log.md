@@ -127,3 +127,8 @@
 
 - Files: `packages/shared/src/schemas/media.schema.ts`, `packages/shared/src/schemas/media.schema.spec.ts`.
 - Implementasi/verifikasi: Implemented complete Media/Accessibility/Caption contracts, explicit optional-input null/[] defaults,256KiB serialized cap, ordered nonoverlapping cues, attachment exclusivity/range and authorized-media context validator. YouTube canonicalizer accepts only exact HTTPS hosts/routes/11-char IDs, rejects explicit default ports, credentials, fragments, duplicate IDs and path normalization tricks without network fetch. Shared lint/typecheck PASS;54 tests PASS including23 media/accessibility/URL cases.
+
+## TASK-018 — 2026-10-31 14:43:12 WIB
+
+- Files: `packages/shared/src/schemas/question.schema.ts`, `packages/shared/src/schemas/question.schema.spec.ts`.
+- Implementasi/verifikasi: Added strict discriminated six-type draft questions/options, structural UUID/index/range/attachment checks, separate draft completeness issues vs host playability, authorized READY-image reveal-effect context checks and type-bound wire answers. Multiple-select canonicalizes ascending indices while puzzle order is preserved; client score/time objects are rejected. Shared lint/typecheck PASS;65 tests PASS including valid/incomplete fixtures for all6 types and exact key/cardinality/puzzle/POLL/20-text-key boundaries.
