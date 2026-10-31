@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 24 task selesai, 168 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 25 task selesai, 167 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -369,7 +369,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/shared test -- src/schemas/question.schema.spec.ts` menerima draft kosong namun menolak host; malformed bounds/indices gagal struktur; semua enam tipe punya valid/invalid fixture.
 
-### - [ ] TASK-019: Definisikan DTO kuis dan pertukaran materi
+### - [x] TASK-019: Definisikan DTO kuis dan pertukaran materi
 - **Traceability**: `US-03`, `US-04`, `US-05`, [SA §3.2](03-system-analysis.md#32-dto-lengkap-json-structural-notation)
 - **Depends On**: `TASK-018`, `TASK-016`, `TASK-016B`
 - **Target Files**:
