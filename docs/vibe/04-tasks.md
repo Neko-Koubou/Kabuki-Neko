@@ -1,12 +1,12 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 28 task selesai, 164 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 29 task selesai, 164 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
 ## 1. Execution summary
 
-Saat planning, workspace belum memiliki aplikasi, manifest, lockfile atau runner. Plan berisi **192 task** (termasuk task koreksi dan perluasan audio 2026-10-31), masing-masing **1–4 file konkret**. TASK-001 kini menyediakan manifest, lockfile dan dependency tooling; konfigurasi runner dan aplikasi menunggu task berikutnya. Perubahan upstream yang telah ada dipertahankan. Status handoff lama pada upstream merupakan catatan tahap sebelumnya, bukan instruksi mengulang SA.
+Saat planning, workspace belum memiliki aplikasi, manifest, lockfile atau runner. Plan berisi **193 task** (termasuk task koreksi dan perluasan audio 2026-10-31), masing-masing **1–4 file konkret**. TASK-001 kini menyediakan manifest, lockfile dan dependency tooling; konfigurasi runner dan aplikasi menunggu task berikutnya. Perubahan upstream yang telah ada dipertahankan. Status handoff lama pada upstream merupakan catatan tahap sebelumnya, bukan instruksi mengulang SA.
 
 Revisi audio pengguna 2026-10-31: sumber aktif `audio-assets/kabuki-neko-audio/` berisi **20 MP3 + CREDITS.md**, termasuk empat lobby dan sepuluh SFX. [Audio engine revision](audio-engine-revision.md) adalah addendum normatif yang menggantikan baseline audio lama: Opus/WebM + MP3, manifest dinamis, default random, role-specific Howler choreography dan PODIUM8s. Inventaris/hash dan gap atribusi tersedia di addendum; file input dipertahankan. Task selesai sebelumnya tetap catatan historis, koreksi dilakukan dalam task baru.
 
@@ -23,7 +23,7 @@ Status Legend: `- [ ]` Pending | `- [~]` In Progress | `- [x]` Completed | `- [!
 
 **Urutan:** ambil task Pending bernomor terkecil yang semua Depends On-nya Completed. Dependensi per-task adalah DAG operasional; phase merangkum milestone, bukan izin mengerjakan seluruh phase dalam satu `/vibe-code`. API/DB/adapter selesai sebelum integrasi UI; catalog tools/contracts lebih awal dan enam katalog lengkap tersedia sebelum provider UI. Tidak ada delegasi atau eksekusi agen paralel yang diperlukan oleh plan ini.
 
-Task berakhiran huruf adalah koreksi/perluasan atomik; jumlah pada tabel fase di atas menunjukkan181 task baseline, sedangkan total192 mencakup11 task tambahan. Detail dependensi di setiap task tetap normatif.
+Task berakhiran huruf adalah koreksi/perluasan atomik; jumlah pada tabel fase di atas menunjukkan181 task baseline, sedangkan total193 mencakup12 task tambahan. Detail dependensi di setiap task tetap normatif.
 
 ### Dependency graph
 
@@ -421,9 +421,19 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/shared test -- src/socket-events.spec.ts` menolak timestamp/score palsu pada submit, unknown event fields dan invalid envelopes; typecheck web/API/shared tetap lolos.
 
+### - [x] TASK-022A: Batasi Vitest shared pada source tests
+- **Traceability**: `US-20`, SA §1.1; kegagalan discovery ditemukan setelah build TASK-022 menghasilkan dist/*.spec.js CommonJS.
+- **Depends On**: `TASK-022`
+- **Target Files**:
+  - `CREATE` `packages/shared/vitest.config.ts`
+- **Implementation Specs**:
+  - Include hanya src/**/*.spec.ts, environment node, exclude generated dist tanpa menonaktifkan test source. Pertahankan strict compile dan isolasi browser/server.
+- **Definition of Done (Verification)**:
+  - Build shared lalu pnpm --filter @kabuki-neko/shared test; source suites seluruhnya dijalankan, tidak ada suite dist/*.spec.js. Config lint PASS.
+
 ### - [ ] TASK-023: Definisikan manifest dan kontrak pesan locale
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
-- **Depends On**: `TASK-022`
+- **Depends On**: `TASK-022`, `TASK-022A`
 - **Target Files**:
   - `CREATE` `packages/shared/src/schemas/locale.schema.ts`
   - `CREATE` `packages/shared/locales/message-contracts.json`

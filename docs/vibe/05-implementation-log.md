@@ -152,3 +152,8 @@
 
 - Files: `packages/shared/src/socket-events.ts`, `packages/shared/src/socket-events.spec.ts`, `packages/shared/src/index.ts`.
 - Implementasi/verifikasi: Defined all16 client requests/typed event callbacks with event-specific ACKs and20 server payload schemas/envelopes, plus role-specific projection maps. Enforced handshake/event byte caps, strict requestId/member/phase fields, join/recovery token shape and authoritative timing; player maps exclude host report/count payloads. Exported ready shared contracts from index. Shared lint/typecheck/build PASS;93 tests PASS; consumer web/API typecheck PASS after rebuilt shared exports.
+
+## TASK-022A — 2026-10-31 19:37:20 WIB
+
+- Files: `packages/shared/vitest.config.ts`.
+- Implementasi/verifikasi: Shared build artifacts remain present, but Vitest now discovers only src/**/*.spec.ts. Config ESLint PASS;11 source suites/99 tests PASS, zero dist suites collected. Vite emits a non-failing future-native-config-loader warning; no warnings or failures suppressed. TASK-023 work remains uncommitted until its own verification/commit.
