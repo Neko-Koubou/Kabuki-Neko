@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 31 task selesai, 163 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 32 task selesai, 162 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -456,7 +456,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Typecheck API/database serta API config Jest suite lulus tanpa TS151002; build API berhasil.
 
-### - [ ] TASK-024: Validasi environment dan persist secret runtime
+### - [x] TASK-024: Validasi environment dan persist secret runtime
 - **Traceability**: `US-01`, `US-16`, `US-17`, [SA §10.2](03-system-analysis.md#102-environment-tambahan-dan-compose)
 - **Depends On**: `TASK-009`, `TASK-016`, `TASK-023A`
 - **Target Files**:

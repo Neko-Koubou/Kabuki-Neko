@@ -167,3 +167,8 @@
 
 - Files: `packages/tsconfig/nestjs.json`.
 - Implementasi/verifikasi: Enabled isolatedModules for the existing NodeNext Nest compiler configuration as required by ts-jest. API/database typecheck PASS; API Nest build PASS;19 config tests PASS with no TS151002 warnings. Strict, decorator metadata and skipLibCheck=false retained; no diagnostic suppression. TASK-024 feature files remain unstaged until their own completion.
+
+## TASK-024 — 2026-10-31 19:42:56 WIB
+
+- Files: `apps/api/src/config/env.schema.ts`, `apps/api/src/config/config.service.ts`, `apps/api/src/config/secrets.service.ts`, `apps/api/src/config/config.spec.ts`.
+- Implementasi/verifikasi: Implemented typed environment/profile/topology validation for PRD+SA variables, audio manifest path, explicit safe local HTTP, Redis cluster/CIDRs, PORT compatibility and fixed JWT lifetimes. Invalid config errors expose field names only; ConfigService serializes an allowlist without credentials/URLs. Runtime secrets use64 random bytes each, distinct env overrides,0600 no-follow file reads, fsynced temporary inode and exclusive hard-link publication; multi-instance refuses missing shared secrets. API lint/typecheck/build PASS;19 Jest tests PASS including12 concurrent initializers, restart persistence, corrupt/permissive/symlink rejection, profile override and redacted URL errors. Providers are not connected in this task.
