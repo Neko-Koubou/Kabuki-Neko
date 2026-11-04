@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 41 task selesai, 154 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 42 task selesai, 153 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -588,7 +588,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/migration-postgres.spec.ts` pada engine nyata: DB kosong→schema lengkap, rerun aman, constraint negatif dan default settings benar.
 
-### - [ ] TASK-033: Tulis migrasi awal mysql
+### - [x] TASK-033: Tulis migrasi awal mysql
 - **Traceability**: `US-16`, `US-17`, [SA §2.1](03-system-analysis.md#21-konvensi-kolom-null-index-dan-migrasi)
 - **Depends On**: `TASK-030`
 - **Target Files**:
