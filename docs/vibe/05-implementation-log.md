@@ -237,3 +237,8 @@
 
 - Files: `packages/database/src/repositories/quizzes.repository.ts`, `tests/contracts/quizzes.repository.spec.ts`.
 - Implementasi/verifikasi: Repository kuis memeriksa visibilitas, owner, revisi, ID soal/opsi dan READY media di bawah lock. Duplicate PUBLIC menghasilkan PRIVATE dengan ID baru serta mempertahankan referensi media sah. Build typecheck/lint dan tiga pengujian database nyata lulus, termasuk pencarian wildcard literal, dua save satu revisi, rollback setelah insert opsi gagal, ID asing, dan akses media lintas pemilik.
+
+## TASK-037 — 2026-11-04 21:08:45 WIB
+
+- Files: `packages/database/src/repositories/media.repository.ts`, `tests/contracts/media.repository.spec.ts`.
+- Implementasi/verifikasi: Reservasi UPLOADING, transisi berbasis revisi, lock referensi cover/question/room_media, klaim cleanup maksimal 100 orphan tertua, kompensasi delete dan metrik READY tersedia. Typecheck/lint lulus. Tiga contract test engine nyata lulus untuk race attach/delete, rollback metadata invalid, stale revision, asal storage, pemulihan READY dan pengecualian upload aktif dari cleanup.
