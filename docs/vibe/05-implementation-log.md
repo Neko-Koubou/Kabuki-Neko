@@ -207,3 +207,8 @@
 
 - Files: `packages/database/src/schema/column-types.ts`.
 - Implementasi/verifikasi: Typecheck dan lint lulus. Contract migrasi SQLite berhasil menginsert user dengan is_active/auth_version/revision dari default SQL. NULL dan undefined diteruskan tanpa mengubah validasi nilai yang diberikan.
+
+## TASK-031 — 2026-11-04 20:54:31 WIB
+
+- Files: `packages/database/src/migrations/sqlite/0001-initial.ts`, `tests/contracts/migration-sqlite.spec.ts`.
+- Implementasi/verifikasi: Migrasi awal sqlite memakai SQL versioned dengan checksum, singleton global dan default BGM random. Typecheck/lint dan contract test pada engine sqlite nyata lulus: 17 tabel, dua kali migrasi mempertahankan perubahan settings, CHECK dan FK menolak mutasi invalid, ID BGM kustom tetap tersimpan.
