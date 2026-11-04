@@ -172,3 +172,8 @@
 
 - Files: `apps/api/src/config/env.schema.ts`, `apps/api/src/config/config.service.ts`, `apps/api/src/config/secrets.service.ts`, `apps/api/src/config/config.spec.ts`.
 - Implementasi/verifikasi: Implemented typed environment/profile/topology validation for PRD+SA variables, audio manifest path, explicit safe local HTTP, Redis cluster/CIDRs, PORT compatibility and fixed JWT lifetimes. Invalid config errors expose field names only; ConfigService serializes an allowlist without credentials/URLs. Runtime secrets use64 random bytes each, distinct env overrides,0600 no-follow file reads, fsynced temporary inode and exclusive hard-link publication; multi-instance refuses missing shared secrets. API lint/typecheck/build PASS;19 Jest tests PASS including12 concurrent initializers, restart persistence, corrupt/permissive/symlink rejection, profile override and redacted URL errors. Providers are not connected in this task.
+
+## TASK-025 — 2026-11-04 20:48:27 WIB
+
+- Files: `.env.example`, `apps/api/src/app.module.ts`, `apps/api/src/main.ts`.
+- Implementasi/verifikasi: Wired globally exported ConfigService/SecretsService through async Nest DI and validated API_PORT startup with graceful shutdown. Added complete env example with commented driver overrides, persistent/generated secret guidance, topology, locale/audio artifacts and browser/internal URL separation. API build/lint/typecheck PASS. Real process smoke: default test startup returns expected404 for absent probe route, restart preserves secret hash, file0600, SIGTERM terminates cleanly, invalid driver exits nonzero without exposing supplied value. No provider readiness/health claim before provider tasks.

@@ -2,17 +2,19 @@ import "reflect-metadata";
 import { Logger } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
+import { ConfigService } from "./config/config.service";
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
-  app.setGlobalPrefix("api/v1");
-  app.enableShutdownHooks();
-  const port = process.env["PORT"] === undefined ? 3001 : Number(process.env["PORT"]);
-  if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
+  const app = await NestFactory.create(AppModule, { abortOnError: false });
+  try {
+    const config = app.get(ConfigService);
+    app.setGlobalPrefix("api/v1");
+    app.enableShutdownHooks();
+    await app.listen(config.get("API_PORT"), "0.0.0.0");
+  } catch (error) {
     await app.close();
-    throw new Error("Invalid API port");
+    throw error;
   }
-  await app.listen(port, "0.0.0.0");
 }
 
 void bootstrap().catch(() => {
