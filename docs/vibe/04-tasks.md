@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 35 task selesai, 159 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 36 task selesai, 158 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -513,7 +513,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/database typecheck`; assertion metadata kolom/null/default/constraint sesuai SA sebelum migrasi ditulis.
 
-### - [ ] TASK-028: Model kuis dan aset media
+### - [x] TASK-028: Model kuis dan aset media
 - **Traceability**: `US-16`, `US-01`, `US-03`, `US-14`, [SA §2.4](03-system-analysis.md#24-konten-dan-media)
 - **Depends On**: `TASK-026`, `TASK-027`, `TASK-016B`
 - **Target Files**:

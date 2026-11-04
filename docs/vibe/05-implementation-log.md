@@ -187,3 +187,8 @@
 
 - Files: `packages/database/src/schema/settings.schema.ts`, `packages/database/src/schema/users.schema.ts`, `packages/database/src/schema/auth.schema.ts`, `packages/database/src/index.ts`.
 - Implementasi/verifikasi: Model tabel dan registry TypeORM sesuai SA. Typecheck, lint, build lulus. Metadata tiga dialek cocok dengan seluruh nama kolom SA, setiap foreign key memiliki indeks dan ON UPDATE NO ACTION. Sinkronisasi schema uji SQLite in-memory berhasil. Migrasi deployment diverifikasi di task berikutnya.
+
+## TASK-028 — 2026-11-04 20:53:12 WIB
+
+- Files: `packages/database/src/schema/quizzes.schema.ts`, `packages/database/src/schema/media.schema.ts`, `packages/database/src/index.ts`.
+- Implementasi/verifikasi: Model tabel dan registry TypeORM sesuai SA. Typecheck, lint, build lulus. Metadata tiga dialek cocok dengan seluruh nama kolom SA, setiap foreign key memiliki indeks dan ON UPDATE NO ACTION. Sinkronisasi schema uji SQLite in-memory berhasil. Migrasi deployment diverifikasi di task berikutnya.
