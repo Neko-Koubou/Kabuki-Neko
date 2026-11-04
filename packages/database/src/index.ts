@@ -8,6 +8,8 @@ import { usersSchemas } from "./schema/users.schema";
 import { authSchemas } from "./schema/auth.schema";
 import { mediaSchemas } from "./schema/media.schema";
 import { quizzesSchemas } from "./schema/quizzes.schema";
+import { runtimeSchemas } from "./schema/runtime.schema";
+import { jobsSchemas } from "./schema/jobs.schema";
 export function domainSchemas(driver: DatabaseDriver) {
   return [
     ...settingsSchemas(driver),
@@ -15,5 +17,7 @@ export function domainSchemas(driver: DatabaseDriver) {
     ...authSchemas(driver),
     ...mediaSchemas(driver),
     ...quizzesSchemas(driver),
+    ...runtimeSchemas(driver),
+    ...jobsSchemas(driver),
   ];
 }
