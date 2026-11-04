@@ -197,3 +197,8 @@
 
 - Files: `packages/database/src/schema/runtime.schema.ts`, `packages/database/src/schema/jobs.schema.ts`, `packages/database/src/index.ts`.
 - Implementasi/verifikasi: Model tabel dan registry TypeORM sesuai SA. Typecheck, lint, build lulus. Metadata tiga dialek cocok dengan seluruh nama kolom SA, setiap foreign key memiliki indeks dan ON UPDATE NO ACTION. Sinkronisasi schema uji SQLite in-memory berhasil. Migrasi deployment diverifikasi di task berikutnya.
+
+## TASK-030 — 2026-11-04 20:53:21 WIB
+
+- Files: `packages/database/src/schema/reports.schema.ts`, `packages/database/src/index.ts`.
+- Implementasi/verifikasi: Model tabel dan registry TypeORM sesuai SA. Typecheck, lint, build lulus. Metadata tiga dialek cocok dengan seluruh nama kolom SA, setiap foreign key memiliki indeks dan ON UPDATE NO ACTION. Sinkronisasi schema uji SQLite in-memory berhasil. Migrasi deployment diverifikasi di task berikutnya.

@@ -10,6 +10,7 @@ import { mediaSchemas } from "./schema/media.schema";
 import { quizzesSchemas } from "./schema/quizzes.schema";
 import { runtimeSchemas } from "./schema/runtime.schema";
 import { jobsSchemas } from "./schema/jobs.schema";
+import { reportsSchemas } from "./schema/reports.schema";
 export function domainSchemas(driver: DatabaseDriver) {
   return [
     ...settingsSchemas(driver),
@@ -19,5 +20,6 @@ export function domainSchemas(driver: DatabaseDriver) {
     ...quizzesSchemas(driver),
     ...runtimeSchemas(driver),
     ...jobsSchemas(driver),
+    ...reportsSchemas(driver),
   ];
 }
