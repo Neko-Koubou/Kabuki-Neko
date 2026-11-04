@@ -23,3 +23,4 @@ export function domainSchemas(driver: DatabaseDriver) {
     ...reportsSchemas(driver),
   ];
 }
+export { migrateDatabase } from "./migrations/migration-runner";

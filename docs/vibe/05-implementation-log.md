@@ -222,3 +222,8 @@
 
 - Files: `packages/database/src/migrations/mysql/0001-initial.ts`, `tests/contracts/migration-mysql.spec.ts`.
 - Implementasi/verifikasi: Migrasi awal mysql memakai SQL versioned dengan checksum, singleton global dan default BGM random. Typecheck/lint dan contract test pada engine mysql nyata lulus: 17 tabel, dua kali migrasi mempertahankan perubahan settings, CHECK dan FK menolak mutasi invalid, ID BGM kustom tetap tersimpan.
+
+## TASK-034 — 2026-11-04 21:03:12 WIB
+
+- Files: `packages/database/src/migrations/migration-runner.ts`, `scripts/migrate.ts`, `packages/database/src/index.ts`, `tests/contracts/migration-runner.spec.ts`.
+- Implementasi/verifikasi: Migration runner memakai lock koneksi PostgreSQL/MySQL atau lock transaksi eksklusif file SQLite, pengecekan checksum dan readiness read-only ketika auto-migrate dinonaktifkan. Typecheck/lint/build database lulus. Tiga contract test pada database nyata lulus: dua koneksi startup konkuren, checksum berubah ditolak, migrasi yang belum diterapkan ditolak jika auto=false, dan pemulihan setelah kegagalan DDL parsial MySQL.
