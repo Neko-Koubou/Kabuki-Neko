@@ -247,3 +247,8 @@
 
 - Files: `packages/database/src/repositories/runtime.repository.ts`, `tests/contracts/runtime.repository.spec.ts`.
 - Implementasi/verifikasi: Reservasi SQL memeriksa kapasitas di bawah lock singleton, memvalidasi kuis, membuat snapshot dan pin media terurut, lalu menyimpan dedup dan PIN enam digit dalam satu transaksi. Aktivasi dan release memakai sessionId/status. Typecheck/lint lulus. Contract tests pada SQLite, PostgreSQL dan MySQL membuktikan batas kapasitas saat konkurensi, batas collision PIN, replay request tanpa slot tambahan, perlindungan media dan penolakan release dari sessionId lama.
+
+## TASK-039 — 2026-11-04 21:10:59 WIB
+
+- Files: `packages/database/src/repositories/jobs.repository.ts`, `tests/contracts/jobs.repository.spec.ts`.
+- Implementasi/verifikasi: Antrean finalisasi menyimpan payload dan SHA256 kanonis per sessionId. Claim CAS menggunakan token lease unik per percobaan, lease 30 detik, retry terjadwal dan reset manual untuk host. Typecheck/lint lulus. Pada SQLite/Postgres/MySQL, dua worker hanya memperoleh satu claim, lease kedaluwarsa dapat diambil alih, worker lama ditolak, hash berbeda ditolak, dan allocation tetap ada setelah gagal.
