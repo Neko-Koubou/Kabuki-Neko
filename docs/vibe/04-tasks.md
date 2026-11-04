@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 46 task selesai, 149 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 47 task selesai, 148 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -653,7 +653,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/media.repository.spec.ts` race attach-v-delete hanya salah satu berhasil; origin/revision/in-use dan rollback teruji pada3 DB.
 
-### - [ ] TASK-038: Implementasikan repository PIN, capacity dan pins
+### - [x] TASK-038: Implementasikan repository PIN, capacity dan pins
 - **Traceability**: `US-07`, `US-12`, `US-16`, [SA §6.2](03-system-analysis.md#62-room-allocation-leases-and-lifetime)
 - **Depends On**: `TASK-037`, `TASK-020`
 - **Target Files**:

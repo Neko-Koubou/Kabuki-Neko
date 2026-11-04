@@ -242,3 +242,8 @@
 
 - Files: `packages/database/src/repositories/media.repository.ts`, `tests/contracts/media.repository.spec.ts`.
 - Implementasi/verifikasi: Reservasi UPLOADING, transisi berbasis revisi, lock referensi cover/question/room_media, klaim cleanup maksimal 100 orphan tertua, kompensasi delete dan metrik READY tersedia. Typecheck/lint lulus. Tiga contract test engine nyata lulus untuk race attach/delete, rollback metadata invalid, stale revision, asal storage, pemulihan READY dan pengecualian upload aktif dari cleanup.
+
+## TASK-038 — 2026-11-04 21:10:04 WIB
+
+- Files: `packages/database/src/repositories/runtime.repository.ts`, `tests/contracts/runtime.repository.spec.ts`.
+- Implementasi/verifikasi: Reservasi SQL memeriksa kapasitas di bawah lock singleton, memvalidasi kuis, membuat snapshot dan pin media terurut, lalu menyimpan dedup dan PIN enam digit dalam satu transaksi. Aktivasi dan release memakai sessionId/status. Typecheck/lint lulus. Contract tests pada SQLite, PostgreSQL dan MySQL membuktikan batas kapasitas saat konkurensi, batas collision PIN, replay request tanpa slot tambahan, perlindungan media dan penolakan release dari sessionId lama.
