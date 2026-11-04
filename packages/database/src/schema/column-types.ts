@@ -10,26 +10,30 @@ export function safeInteger(value: unknown): number {
   return number;
 }
 export const integerTransformer: ValueTransformer = {
-  to: (value: unknown) => (value === null ? null : safeInteger(value)),
-  from: (value: unknown) => (value === null ? null : safeInteger(value)),
+  to: (value: unknown) => (value == null ? value : safeInteger(value)),
+  from: (value: unknown) => (value == null ? value : safeInteger(value)),
 };
 export const jsonTransformer: ValueTransformer = {
-  to(value: unknown): string {
+  to(value: unknown): unknown {
+    if (value == null) return value;
     const result = JSON.stringify(value);
     if (result === undefined) throw new TypeError("Invalid JSON value");
     return result;
   },
   from(value: unknown): unknown {
+    if (value == null) return value;
     if (typeof value !== "string") throw new TypeError("Invalid database JSON");
     return JSON.parse(value) as unknown;
   },
 };
 export const booleanTransformer: ValueTransformer = {
-  to(value: unknown): number {
+  to(value: unknown): unknown {
+    if (value == null) return value;
     if (typeof value !== "boolean") throw new TypeError("Invalid boolean");
     return value ? 1 : 0;
   },
-  from(value: unknown): boolean {
+  from(value: unknown): unknown {
+    if (value == null) return value;
     if (value === true || value === 1) return true;
     if (value === false || value === 0) return false;
     throw new TypeError("Invalid database boolean");

@@ -1,12 +1,12 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 38 task selesai, 156 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 39 task selesai, 156 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
 ## 1. Execution summary
 
-Saat planning, workspace belum memiliki aplikasi, manifest, lockfile atau runner. Plan berisi **194 task** (termasuk task koreksi dan perluasan audio 2026-10-31), masing-masing **1–4 file konkret**. TASK-001 kini menyediakan manifest, lockfile dan dependency tooling; konfigurasi runner dan aplikasi menunggu task berikutnya. Perubahan upstream yang telah ada dipertahankan. Status handoff lama pada upstream merupakan catatan tahap sebelumnya, bukan instruksi mengulang SA.
+Saat planning, workspace belum memiliki aplikasi, manifest, lockfile atau runner. Plan berisi **195 task** (termasuk task koreksi dan perluasan audio 2026-10-31), masing-masing **1–4 file konkret**. TASK-001 kini menyediakan manifest, lockfile dan dependency tooling; konfigurasi runner dan aplikasi menunggu task berikutnya. Perubahan upstream yang telah ada dipertahankan. Status handoff lama pada upstream merupakan catatan tahap sebelumnya, bukan instruksi mengulang SA.
 
 Revisi audio pengguna 2026-10-31: sumber aktif `audio-assets/kabuki-neko-audio/` berisi **20 MP3 + CREDITS.md**, termasuk empat lobby dan sepuluh SFX. [Audio engine revision](audio-engine-revision.md) adalah addendum normatif yang menggantikan baseline audio lama: Opus/WebM + MP3, manifest dinamis, default random, role-specific Howler choreography dan PODIUM8s. Inventaris/hash dan gap atribusi tersedia di addendum; file input dipertahankan. Task selesai sebelumnya tetap catatan historis, koreksi dilakukan dalam task baru.
 
@@ -23,7 +23,7 @@ Status Legend: `- [ ]` Pending | `- [~]` In Progress | `- [x]` Completed | `- [!
 
 **Urutan:** ambil task Pending bernomor terkecil yang semua Depends On-nya Completed. Dependensi per-task adalah DAG operasional; phase merangkum milestone, bukan izin mengerjakan seluruh phase dalam satu `/vibe-code`. API/DB/adapter selesai sebelum integrasi UI; catalog tools/contracts lebih awal dan enam katalog lengkap tersedia sebelum provider UI. Tidak ada delegasi atau eksekusi agen paralel yang diperlukan oleh plan ini.
 
-Task berakhiran huruf adalah koreksi/perluasan atomik; jumlah pada tabel fase di atas menunjukkan181 task baseline, sedangkan total194 mencakup13 task tambahan. Detail dependensi di setiap task tetap normatif.
+Task berakhiran huruf adalah koreksi/perluasan atomik; jumlah pada tabel fase di atas menunjukkan181 task baseline, sedangkan total195 mencakup14 task tambahan. Detail dependensi di setiap task tetap normatif.
 
 ### Dependency graph
 
@@ -552,9 +552,19 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/database typecheck`; assertion metadata kolom/null/default/constraint sesuai SA sebelum migrasi ditulis.
 
+### - [x] TASK-030A: Pertahankan default dan NULL pada transformer database
+- **Traceability**: US-16, SA §2.1 dan pengujian migrasi awal.
+- **Depends On**: `TASK-030`
+- **Target Files**:
+  - `MODIFY` `packages/database/src/schema/column-types.ts`
+- **Implementation Specs**:
+  - Teruskan nilai undefined dan null sehingga ORM dapat menerapkan default atau menyimpan SQL NULL. Tetap tolak BIGINT overflow dan representasi boolean/JSON invalid.
+- **Definition of Done (Verification)**:
+  - Typecheck dan lint database lulus. Insert melalui TypeORM dengan field default yang dihilangkan berhasil pada SQLite.
+
 ### - [ ] TASK-031: Tulis migrasi awal sqlite
 - **Traceability**: `US-16`, `US-17`, [SA §2.1](03-system-analysis.md#21-konvensi-kolom-null-index-dan-migrasi)
-- **Depends On**: `TASK-030`
+- **Depends On**: `TASK-030`, `TASK-030A`
 - **Target Files**:
   - `CREATE` `packages/database/src/migrations/sqlite/0001-initial.ts`
   - `CREATE` `tests/contracts/migration-sqlite.spec.ts`

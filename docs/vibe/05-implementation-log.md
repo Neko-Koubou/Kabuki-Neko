@@ -202,3 +202,8 @@
 
 - Files: `packages/database/src/schema/reports.schema.ts`, `packages/database/src/index.ts`.
 - Implementasi/verifikasi: Model tabel dan registry TypeORM sesuai SA. Typecheck, lint, build lulus. Metadata tiga dialek cocok dengan seluruh nama kolom SA, setiap foreign key memiliki indeks dan ON UPDATE NO ACTION. Sinkronisasi schema uji SQLite in-memory berhasil. Migrasi deployment diverifikasi di task berikutnya.
+
+## TASK-030A — 2026-11-04 20:54:26 WIB
+
+- Files: `packages/database/src/schema/column-types.ts`.
+- Implementasi/verifikasi: Typecheck dan lint lulus. Contract migrasi SQLite berhasil menginsert user dengan is_active/auth_version/revision dari default SQL. NULL dan undefined diteruskan tanpa mengubah validasi nilai yang diberikan.
