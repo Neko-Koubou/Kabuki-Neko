@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 33 task selesai, 161 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 34 task selesai, 160 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -485,7 +485,7 @@ flowchart LR
 
 ## Phase 2: Database Migrations, Models & Repositories
 
-### - [ ] TASK-026: Bangun TypeORM data source lintas dialek
+### - [x] TASK-026: Bangun TypeORM data source lintas dialek
 - **Traceability**: `US-16`, `US-17`, [SA §2.1](03-system-analysis.md#21-konvensi-kolom-null-index-dan-migrasi)
 - **Depends On**: `TASK-006`, `TASK-011`
 - **Target Files**:
