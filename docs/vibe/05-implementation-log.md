@@ -212,3 +212,8 @@
 
 - Files: `packages/database/src/migrations/sqlite/0001-initial.ts`, `tests/contracts/migration-sqlite.spec.ts`.
 - Implementasi/verifikasi: Migrasi awal sqlite memakai SQL versioned dengan checksum, singleton global dan default BGM random. Typecheck/lint dan contract test pada engine sqlite nyata lulus: 17 tabel, dua kali migrasi mempertahankan perubahan settings, CHECK dan FK menolak mutasi invalid, ID BGM kustom tetap tersimpan.
+
+## TASK-032 — 2026-11-04 20:54:39 WIB
+
+- Files: `packages/database/src/migrations/postgres/0001-initial.ts`, `tests/contracts/migration-postgres.spec.ts`.
+- Implementasi/verifikasi: Migrasi awal postgres memakai SQL versioned dengan checksum, singleton global dan default BGM random. Typecheck/lint dan contract test pada engine postgres nyata lulus: 17 tabel, dua kali migrasi mempertahankan perubahan settings, CHECK dan FK menolak mutasi invalid, ID BGM kustom tetap tersimpan.
