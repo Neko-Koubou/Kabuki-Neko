@@ -182,3 +182,8 @@
 
 - Files: `packages/database/src/data-source.factory.ts`, `packages/database/src/schema/column-types.ts`, `packages/database/src/index.ts`, `tests/contracts/database-types.spec.ts`.
 - Implementasi/verifikasi: Implemented TypeORM factory for better-sqlite3/PostgreSQL/mysql2 with synchronize=false, progressive entity registry, WAL/FK/busy_timeout5000, UTC settings and bounded pools. Added SA column mappings, safe integer/string BIGINT transforms, JSON/Unicode and boolean conversion; write transactions use verified BEGIN IMMEDIATE on serialized SQLite writers or READ COMMITTED plus explicit parent locks on SQL servers, with up to3 transient retries and25–100ms jitter. Database build/typecheck/lint PASS. Real SQLite, PostgreSQL16 and MySQL8.4 contract suite:4 tests PASS covering maximum safe integers/overflow, JSON/Unicode/booleans, rollback, transient retry and actual BEGIN IMMEDIATE statement; owned containers/temp data cleaned.
+
+## TASK-027 — 2026-11-04 20:53:05 WIB
+
+- Files: `packages/database/src/schema/settings.schema.ts`, `packages/database/src/schema/users.schema.ts`, `packages/database/src/schema/auth.schema.ts`, `packages/database/src/index.ts`.
+- Implementasi/verifikasi: Model tabel dan registry TypeORM sesuai SA. Typecheck, lint, build lulus. Metadata tiga dialek cocok dengan seluruh nama kolom SA, setiap foreign key memiliki indeks dan ON UPDATE NO ACTION. Sinkronisasi schema uji SQLite in-memory berhasil. Migrasi deployment diverifikasi di task berikutnya.
