@@ -232,3 +232,8 @@
 
 - Files: `packages/database/src/repositories/users.repository.ts`, `packages/database/src/repositories/settings.repository.ts`, `packages/database/src/repositories/auth.repository.ts`, `tests/contracts/accounts.repository.spec.ts`.
 - Implementasi/verifikasi: Repository akun memakai transaksi dan lock settings/user/invite/token untuk setup, registrasi dan rotasi. Email dinormalisasi, superadmin aktif terakhir dilindungi, perubahan role/status membatalkan token, replay refresh mencabut family setelah commit, dan expiry family dipertahankan. Typecheck/lint lulus. Tiga contract test engine nyata lulus untuk setup konkuren, undangan sekali pakai, last-admin, rollback gagal insert saat refresh dan revocation setelah replay.
+
+## TASK-036 — 2026-11-04 21:06:40 WIB
+
+- Files: `packages/database/src/repositories/quizzes.repository.ts`, `tests/contracts/quizzes.repository.spec.ts`.
+- Implementasi/verifikasi: Repository kuis memeriksa visibilitas, owner, revisi, ID soal/opsi dan READY media di bawah lock. Duplicate PUBLIC menghasilkan PRIVATE dengan ID baru serta mempertahankan referensi media sah. Build typecheck/lint dan tiga pengujian database nyata lulus, termasuk pencarian wildcard literal, dua save satu revisi, rollback setelah insert opsi gagal, ID asing, dan akses media lintas pemilik.
