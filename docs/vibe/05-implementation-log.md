@@ -252,3 +252,8 @@
 
 - Files: `packages/database/src/repositories/jobs.repository.ts`, `tests/contracts/jobs.repository.spec.ts`.
 - Implementasi/verifikasi: Antrean finalisasi menyimpan payload dan SHA256 kanonis per sessionId. Claim CAS menggunakan token lease unik per percobaan, lease 30 detik, retry terjadwal dan reset manual untuk host. Typecheck/lint lulus. Pada SQLite/Postgres/MySQL, dua worker hanya memperoleh satu claim, lease kedaluwarsa dapat diambil alih, worker lama ditolak, hash berbeda ditolak, dan allocation tetap ada setelah gagal.
+
+## TASK-040 — 2026-11-04 21:12:22 WIB
+
+- Files: `packages/database/src/repositories/reports.repository.ts`, `tests/contracts/reports.repository.spec.ts`.
+- Implementasi/verifikasi: Penyimpanan laporan menggunakan satu transaksi yang memverifikasi hash dan lease, menetapkan UUIDv5 histori dan menulis semua batch serta status READY. Referensi sumber hilang menjadi NULL. Akses baca memeriksa host aktif, session/player dan pagination deterministik. Typecheck/lint lulus. Contract tests pada tiga engine menyuntikkan kegagalan pada masing-masing dari empat batch dan membuktikan semua tabel laporan tetap kosong, lalu menguji retry idempoten, pemilik asing dan penghapusan kuis sumber.
