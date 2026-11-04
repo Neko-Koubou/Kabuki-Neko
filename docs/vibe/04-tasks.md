@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 43 task selesai, 152 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 44 task selesai, 151 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -615,7 +615,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/migration-runner.spec.ts` dua startup simultan, stale checksum, failure/resume dan auto-migrate false pada tiga engine.
 
-### - [ ] TASK-035: Implementasikan repository akun dan transaksi keamanan
+### - [x] TASK-035: Implementasikan repository akun dan transaksi keamanan
 - **Traceability**: `US-01`, `US-02`, `US-15`, [SA §2.3](03-system-analysis.md#23-tabel-konfigurasi-dan-akun)
 - **Depends On**: `TASK-034`, `TASK-016`
 - **Target Files**:

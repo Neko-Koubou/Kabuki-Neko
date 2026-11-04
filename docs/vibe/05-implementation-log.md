@@ -227,3 +227,8 @@
 
 - Files: `packages/database/src/migrations/migration-runner.ts`, `scripts/migrate.ts`, `packages/database/src/index.ts`, `tests/contracts/migration-runner.spec.ts`.
 - Implementasi/verifikasi: Migration runner memakai lock koneksi PostgreSQL/MySQL atau lock transaksi eksklusif file SQLite, pengecekan checksum dan readiness read-only ketika auto-migrate dinonaktifkan. Typecheck/lint/build database lulus. Tiga contract test pada database nyata lulus: dua koneksi startup konkuren, checksum berubah ditolak, migrasi yang belum diterapkan ditolak jika auto=false, dan pemulihan setelah kegagalan DDL parsial MySQL.
+
+## TASK-035 — 2026-11-04 21:05:05 WIB
+
+- Files: `packages/database/src/repositories/users.repository.ts`, `packages/database/src/repositories/settings.repository.ts`, `packages/database/src/repositories/auth.repository.ts`, `tests/contracts/accounts.repository.spec.ts`.
+- Implementasi/verifikasi: Repository akun memakai transaksi dan lock settings/user/invite/token untuk setup, registrasi dan rotasi. Email dinormalisasi, superadmin aktif terakhir dilindungi, perubahan role/status membatalkan token, replay refresh mencabut family setelah commit, dan expiry family dipertahankan. Typecheck/lint lulus. Tiga contract test engine nyata lulus untuk setup konkuren, undangan sekali pakai, last-admin, rollback gagal insert saat refresh dan revocation setelah replay.
