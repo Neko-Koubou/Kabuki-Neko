@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 49 task selesai, 146 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 50 task selesai, 145 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -689,7 +689,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/reports.repository.spec.ts` failure setiap batch rollback, same-session retry idempotent, source deletion/null FK dan foreign player denial all 3 DB.
 
-### - [ ] TASK-041: Implementasikan dedup dan audit persistence
+### - [x] TASK-041: Implementasikan dedup dan audit persistence
 - **Traceability**: `US-01`, `US-05`, `US-06`, `US-15`, `US-20`, [SA §4.1](03-system-analysis.md#41-header-autentikasi-limit-dan-error-bersama)
 - **Depends On**: `TASK-040`
 - **Target Files**:
@@ -2868,4 +2868,4 @@ Catatan akhir Stage 4: tidak ada application code, dependency install, migration
 
 Update Stage 5, 2026-10-30: TASK-001 selesai; bukti install, kompatibilitas dan temuan audit dependency tercatat di [05-implementation-log.md](05-implementation-log.md). `.gitignore` disiapkan atas permintaan tambahan pengguna; TASK-002 tetap Pending karena konfigurasi Turbo/ESLint/Prettier belum dibuat.
 
-**Next Step**: Run `/vibe-code TASK-002` untuk konfigurasi pipeline build dan lint. Commit setiap task setelah selesai sesuai instruksi pengguna.
+**Next Step**: TASK-042 tersedia. Eksekusi dipause setelah TASK-041 sesuai permintaan pengguna 2026-11-05.

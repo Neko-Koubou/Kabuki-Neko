@@ -257,3 +257,10 @@
 
 - Files: `packages/database/src/repositories/reports.repository.ts`, `tests/contracts/reports.repository.spec.ts`.
 - Implementasi/verifikasi: Penyimpanan laporan menggunakan satu transaksi yang memverifikasi hash dan lease, menetapkan UUIDv5 histori dan menulis semua batch serta status READY. Referensi sumber hilang menjadi NULL. Akses baca memeriksa host aktif, session/player dan pagination deterministik. Typecheck/lint lulus. Contract tests pada tiga engine menyuntikkan kegagalan pada masing-masing dari empat batch dan membuktikan semua tabel laporan tetap kosong, lalu menguji retry idempoten, pemilik asing dan penghapusan kuis sumber.
+
+## TASK-041 — 2026-11-05 (Asia/Jakarta)
+
+- Files: `packages/database/src/repositories/operations.repository.ts`, `packages/database/src/repositories/audit.repository.ts`, `tests/contracts/operations.repository.spec.ts`.
+- Implementasi/verifikasi: Typecheck, lint dan build package database lulus. Contract suite operations.repository.spec.ts lulus 3/3 pada SQLite, PostgreSQL dan MySQL. Verifikasi mencakup canonical hash, klaim konkuren satu mutasi, konflik payload, isolasi aktor, rollback mutasi/audit/dedup, renewal 30s dengan lease 120s, rekonsiliasi lease kedaluwarsa tanpa mengulang mutasi, penolakan completion lama, retensi 24h yang mempertahankan pending belum direkonsiliasi, receipt tanpa credential, lookup loss host/session 30 hari, dan purge audit maksimal 1000 baris.
+- Integrasi: callback memakai EntityManager transaksi yang sama. Respons replay direkonstruksi dan diotorisasi ulang oleh service dari resource receipt; payload bebas tidak disimpan. Renewal dijadwalkan caller memakai OPERATION_TIMING.renewalMs.
+- Handoff: pause sesuai permintaan pengguna, TASK-042 belum dimulai.
