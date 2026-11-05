@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 50 task selesai, 145 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 51 task selesai, 144 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -702,7 +702,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/operations.repository.spec.ts` same/different hash, expired lease reconciliation, rollback and no secret JSON across3 DB.
 
-### - [ ] TASK-042: Hubungkan database provider ke Nest lifecycle
+### - [x] TASK-042: Hubungkan database provider ke Nest lifecycle
 - **Traceability**: `US-16`, `US-17`, [SA §1.2](03-system-analysis.md#12-pemetaan-modul-dan-file)
 - **Depends On**: `TASK-041`, `TASK-025`
 - **Target Files**:
@@ -2868,4 +2868,4 @@ Catatan akhir Stage 4: tidak ada application code, dependency install, migration
 
 Update Stage 5, 2026-10-30: TASK-001 selesai; bukti install, kompatibilitas dan temuan audit dependency tercatat di [05-implementation-log.md](05-implementation-log.md). `.gitignore` disiapkan atas permintaan tambahan pengguna; TASK-002 tetap Pending karena konfigurasi Turbo/ESLint/Prettier belum dibuat.
 
-**Next Step**: TASK-042 tersedia. Eksekusi dipause setelah TASK-041 sesuai permintaan pengguna 2026-11-05.
+**Next Step**: Lanjutkan `TASK-043`; verifikasi dan commit setiap task sesuai instruksi pengguna.

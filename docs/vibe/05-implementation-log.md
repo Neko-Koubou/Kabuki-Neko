@@ -264,3 +264,8 @@
 - Implementasi/verifikasi: Typecheck, lint dan build package database lulus. Contract suite operations.repository.spec.ts lulus 3/3 pada SQLite, PostgreSQL dan MySQL. Verifikasi mencakup canonical hash, klaim konkuren satu mutasi, konflik payload, isolasi aktor, rollback mutasi/audit/dedup, renewal 30s dengan lease 120s, rekonsiliasi lease kedaluwarsa tanpa mengulang mutasi, penolakan completion lama, retensi 24h yang mempertahankan pending belum direkonsiliasi, receipt tanpa credential, lookup loss host/session 30 hari, dan purge audit maksimal 1000 baris.
 - Integrasi: callback memakai EntityManager transaksi yang sama. Respons replay direkonstruksi dan diotorisasi ulang oleh service dari resource receipt; payload bebas tidak disimpan. Renewal dijadwalkan caller memakai OPERATION_TIMING.renewalMs.
 - Handoff: pause sesuai permintaan pengguna, TASK-042 belum dimulai.
+
+## TASK-042 — 2026-11-05 20:36:19 WIB
+
+- Files: `apps/api/src/providers/database/database.module.ts`, `apps/api/src/app.module.ts`, `packages/database/src/index.ts`, `apps/api/src/providers/database/database.module.spec.ts`.
+- Implementasi/verifikasi: DatabaseModule mengekspor DataSource dan sepuluh repository lewat DI, memigrasi 17 entity sebelum bootstrap, menutup koneksi saat shutdown maupun kegagalan migrasi, dan meredaksi error tanpa fallback driver. API typecheck, lint, build serta 4 unit test lifecycle/boot/error lulus; database build lulus.

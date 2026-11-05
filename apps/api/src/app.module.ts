@@ -1,3 +1,4 @@
+import { DatabaseModule } from "./providers/database/database.module";
 import { Global, Module } from "@nestjs/common";
 import { ConfigService } from "./config/config.service";
 import { parseEnvironment } from "./config/env.schema";
@@ -21,6 +22,6 @@ import { SecretsService } from "./config/secrets.service";
 // eslint-disable-next-line @typescript-eslint/no-extraneous-class -- Nest modules are decorator metadata containers.
 export class RuntimeConfigModule {}
 
-@Module({ imports: [RuntimeConfigModule] })
+@Module({ imports: [RuntimeConfigModule, DatabaseModule] })
 // eslint-disable-next-line @typescript-eslint/no-extraneous-class -- Nest modules are decorator metadata containers.
 export class AppModule {}

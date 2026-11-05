@@ -24,3 +24,14 @@ export function domainSchemas(driver: DatabaseDriver) {
   ];
 }
 export { migrateDatabase } from "./migrations/migration-runner";
+
+export * from "./repositories/settings.repository";
+export * from "./repositories/users.repository";
+export * from "./repositories/auth.repository";
+export * from "./repositories/quizzes.repository";
+export * from "./repositories/media.repository";
+export * from "./repositories/runtime.repository";
+export * from "./repositories/jobs.repository";
+export * from "./repositories/reports.repository";
+export * from "./repositories/operations.repository";
+export * from "./repositories/audit.repository";
