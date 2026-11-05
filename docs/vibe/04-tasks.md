@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 51 task selesai, 144 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 52 task selesai, 143 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -716,7 +716,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/providers/database/database.module.spec.ts` boot/close/error checks; `pnpm --filter @kabuki-neko/api build`.
 
-### - [ ] TASK-043: Implementasikan kontrak storage dan filesystem adapter
+### - [x] TASK-043: Implementasikan kontrak storage dan filesystem adapter
 - **Traceability**: `US-06`, `US-16`, [SA §7.1](03-system-analysis.md#71-storage-pipeline-dan-cleanup)
 - **Depends On**: `TASK-024`, `TASK-017`
 - **Target Files**:
@@ -2868,4 +2868,4 @@ Catatan akhir Stage 4: tidak ada application code, dependency install, migration
 
 Update Stage 5, 2026-10-30: TASK-001 selesai; bukti install, kompatibilitas dan temuan audit dependency tercatat di [05-implementation-log.md](05-implementation-log.md). `.gitignore` disiapkan atas permintaan tambahan pengguna; TASK-002 tetap Pending karena konfigurasi Turbo/ESLint/Prettier belum dibuat.
 
-**Next Step**: Lanjutkan `TASK-043`; verifikasi dan commit setiap task sesuai instruksi pengguna.
+**Next Step**: Lanjutkan `TASK-044`; verifikasi dan commit setiap task sesuai instruksi pengguna.

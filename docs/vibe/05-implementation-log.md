@@ -269,3 +269,8 @@
 
 - Files: `apps/api/src/providers/database/database.module.ts`, `apps/api/src/app.module.ts`, `packages/database/src/index.ts`, `apps/api/src/providers/database/database.module.spec.ts`.
 - Implementasi/verifikasi: DatabaseModule mengekspor DataSource dan sepuluh repository lewat DI, memigrasi 17 entity sebelum bootstrap, menutup koneksi saat shutdown maupun kegagalan migrasi, dan meredaksi error tanpa fallback driver. API typecheck, lint, build serta 4 unit test lifecycle/boot/error lulus; database build lulus.
+
+## TASK-043 — 2026-11-05 20:37:49 WIB
+
+- Files: `apps/api/src/providers/storage/storage.interface.ts`, `apps/api/src/providers/storage/local-storage.adapter.ts`, `apps/api/src/providers/storage/local-storage.adapter.spec.ts`.
+- Implementasi/verifikasi: Kontrak storage dan LocalStorageAdapter menyediakan upload UUID immutable, publikasi atomic hard-link tanpa overwrite, byte-size verification, readHead, delete idempoten dan health teredaksi. Key/folder/MIME divalidasi; file dan folder symlink ditolak. API typecheck/lint lulus; 3 unit test mencakup exact bytes, collision, missing delete, traversal, symlink dan filesystem failure.
