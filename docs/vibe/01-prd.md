@@ -1,8 +1,9 @@
 # PRODUCT REQUIREMENTS DOCUMENT (PRD)
 **Project Name:** Kabuki Neko  
 **Package Namespace:** `@kabuki-neko/*`  
-**Document Version:** 1.2.0
+**Document Version:** 1.3.0
 **Normalized:** 2026-10-28 — mengikuti PRD 1.1.0 dan klarifikasi pengguna; detail asli dipertahankan, tambahan terstruktur di §13–18.  
+**Amended:** 2026-10-28 — permintaan pengguna saat Stage 2: multibahasa yang dapat diperluas; tambahan normatif di §19, tanpa menghapus kebutuhan sebelumnya.<br>
 **Architecture Paradigm:** Modular Full-Stack TypeScript Monorepo  
 **Primary Tech Stack:** Next.js (App Router) + NestJS + Socket.io  
 **Distribution & License Target:** Source-Available (Apache 2.0 with Commons Clause — Free for Personal & Internal Corporate Use, Strictly Non-Commercial / No-Resale)
@@ -669,6 +670,7 @@ Keputusan eksplisit pengguna pada 2026-10-28:
 - **D-01:** Tutup input di akhir timer, terima paket terlambat sampai 1.500ms berikutnya, baru buka kunci jawaban.
 - **D-02:** MULTIPLE_SELECT parsial tanpa opsi salah tetap menaikkan streak dan memperoleh bonus.
 - **D-03:** CREATOR dapat melihat, menyalin, dan menjadi host kuis PUBLIC milik kreator lain; edit/hapus tetap hanya oleh pemilik.
+- **D-04:** UI web multibahasa (Inggris, Indonesia, Jepang, Mandarin, Spanyol, Prancis, dan dapat diperluas); pengguna/pengelola dapat menambahkan terjemahan ketika bahasa belum tersedia. Detail baseline locale di §19.
 
 ### 13.2. MoSCoW matrix
 
@@ -1158,5 +1160,60 @@ Ini adalah rincian teknis turunan, bukan izin mengubah keputusan bisnis:
 | §10 Security/NFR | US-08, US-10, US-18, US-20 |
 | §11 Deployment | US-16–17 |
 | §12 Roadmap | Seluruh US; urutan milestone dipertahankan |
+| §19 Multibahasa extensible | US-21; lintas seluruh layar US-01–20 |
 
-Status: **Stage 1 selesai untuk kebutuhan produk; desain, arsitektur rinci, implementasi dan bukti QA belum dibuat.** Review dokumen ini, lalu clear context (`/clear`) dan jalankan `$vibe-design` untuk pengalaman frontend, dilanjutkan `$vibe-sa`. Keduanya menjadi input `$vibe-tasks` sebelum `$vibe-code` mengerjakan satu TASK-XXX.
+Status: **Stage 1 selesai untuk kebutuhan produk; Stage 2 tersedia di [02-design-spec.md](02-design-spec.md), termasuk tambahan multibahasa §19. Arsitektur rinci, implementasi dan bukti QA aplikasi belum dibuat.** Review PRD dan desain, lalu clear context (`/clear`) dan jalankan `$vibe-sa`. Desain dan SA menjadi input `$vibe-tasks` sebelum `$vibe-code` mengerjakan satu TASK-XXX.
+
+## 19. TAMBAHAN PENGGUNA — MULTIBAHASA YANG DAPAT DIPERLUAS
+
+Ditambahkan 2026-10-28 saat Stage 2. Bagian ini bersifat normatif dan **P0**, melengkapi MoSCoW §13.2. Permintaan pengguna: bahasa web mencakup en, id, Jepang, China, es, fr, dan bahasa lain yang bisa ditambahkan oleh pengguna jika belum tersedia.
+
+### 19.1. Cakupan dan baseline desain
+
+- Paket awal lengkap: `en` English, `id` Bahasa Indonesia, `ja` 日本語, `zh-Hans` 简体中文, `es` Español, `fr` Français. Gunakan `ja`, bukan `jp`, sebagai kode locale Jepang. “China” diasumsikan Mandarin dengan tulisan Simplified; `zh-Hant` Traditional dapat ditambahkan terpisah melalui mekanisme yang sama.
+- Seluruh teks milik aplikasi dapat diterjemahkan: publik, setup/auth, creator/studio, host, player, admin, laporan, validasi, status koneksi, label aksesibilitas, dan notifikasi. Konten buatan kreator (judul/soal/opsi/explanation), nickname, nama instansi, dan teks lisensi resmi dipertahankan; terjemahan UI tidak menerjemahkan konten kuis secara otomatis.
+- Bahasa dipilih per browser/pengguna; host dan setiap player boleh berbeda bahasa dalam satu room. Pergantian bahasa tidak mengubah jawaban, skor, timer, identitas, PIN, draft, atau urutan opsi.
+- Prioritas awal: pilihan eksplisit yang tersimpan → bahasa browser yang didukung → default instansi → `en`. Default instansi awal `id` sebagai baseline proyek; SUPERADMIN dapat memilih default dari locale terpasang. Teks terjemahan yang tidak tersedia menggunakan fallback `en`, bukan raw key atau layar kosong.
+- Picker menampilkan nama asli bahasa, dapat dicari, dan tidak menggunakan bendera sebagai identitas bahasa. Beri jalur “Bahasa belum tersedia?” ke panduan membuat/menambahkan paket.
+- Paket terjemahan berupa data deklaratif berversi, memuat metadata locale/nama asli/arah teks, key pesan, placeholder, dan plural. Pengguna dapat menyalin template, menerjemahkan, memvalidasi, lalu memasang paket pada instalasi sendiri atau menyerahkannya kepada pengelola. Bahasa baru terdaftar otomatis dari paket valid; tidak perlu mengubah komponen atau daftar enum bahasa yang tertutup.
+- Pengunjung instalasi bersama hanya memilih bahasa yang sudah dipasang; pemasangan global memerlukan akses pengelola. Baseline tidak mengasumsikan editor terjemahan, upload paket melalui dashboard, layanan terjemahan otomatis, atau pengiriman kontribusi jarak jauh.
+- Validasi menolak paket rusak, locale duplikat yang ambigu, placeholder tidak cocok, serta konten executable. Key hilang diberi diagnostik dan fallback; paket awal harus lengkap. Tidak mengeksekusi HTML/JavaScript dari paket terjemahan.
+- Tata letak siap ekspansi teks, Unicode/CJK dan RTL; format angka/tanggal/jamak mengikuti locale. PIN tetap string enam digit ASCII termasuk nol di depan, identifier dan payload tidak diterjemahkan. Kebijakan jawaban tetap BR-10 dan tidak berubah berdasarkan bahasa UI.
+
+### US-21 — Bahasa antarmuka dan paket bahasa tambahan
+
+Sebagai **PLAYER/CREATOR/SUPERADMIN**, saya ingin memakai bahasa yang saya pahami dan dapat menambahkan paket bahasa yang belum tersedia pada instalasi yang saya kelola.
+
+```gherkin
+Feature: US-21 Multibahasa yang dapat diperluas
+  Scenario: AC-21-01 Enam bahasa awal dan pilihan independen
+    Given paket en, id, ja, zh-Hans, es, fr tersedia lengkap
+    When host memilih id dan pemain memilih ja lalu mengganti ke fr
+    Then masing-masing UI memakai bahasa pilihannya dan pilihan bertahan setelah reload
+    And fase, timer, draft jawaban, status terkirim, skor, PIN dan konten kuis tetap sama
+
+  Scenario: AC-21-02 Menambah bahasa yang belum tersedia
+    Given pengguna mengikuti template paket dan memiliki akses pengelola instalasi
+    When ia memasang paket locale baru yang valid melalui prosedur terdokumentasi
+    Then locale muncul di pemilih bahasa tanpa perubahan kode komponen atau enum bahasa
+    And pesan, plural, format dan arah teks memakai metadata paket
+
+  Scenario: AC-21-03 Paket tidak lengkap, tidak valid, atau gagal dimuat
+    Given suatu key terjemahan hilang, paket rusak, atau pemuatan locale gagal
+    When aplikasi merender UI atau memvalidasi pemasangan
+    Then key hilang memakai fallback en dan diagnostik tersedia bagi pengelola
+    And paket rusak ditolak dengan lokasi masalah tanpa mengganti paket aktif yang valid
+    And kegagalan pemuatan mempertahankan bahasa aktif serta menawarkan coba lagi tanpa kehilangan state
+
+  Scenario: AC-21-04 Ekspansi teks dan arah tulisan
+    Given locale CJK, teks terjemahan panjang, atau paket RTL valid dipakai
+    When pengguna membuka join, studio, host, player atau dialog dengan keyboard
+    Then teks dan fokus tidak terpotong, arah baca benar, PIN dan pemetaan opsi tetap stabil
+    And label aksesibilitas dan pesan validasi mengikuti bahasa UI
+```
+
+### 19.2. Handoff tambahan untuk SA dan QA
+
+SA menentukan library i18n yang kompatibel dengan stack, format pesan/plural, namespace katalog, manifest/discovery, validasi paket dan batas ukuran, lokasi pemasangan, prosedur build/restart bila diperlukan, locale persistence serta SSR/hydration tanpa kedipan bahasa. Dukungan paket eksternal bukan janji hot reload. Tambahkan `default_locale` pada settings dan kontrak locale terpasang. Bahasa browser regional memerlukan resolusi teruji; jangan menyamakan otomatis tulisan `zh-Hant` dengan `zh-Hans`.
+
+QA memeriksa kelengkapan enam katalog awal, pseudolocalization dengan ekspansi teks 40%, paket RTL contoh, Unicode/CJK dan IME, fallback, reload/persistence, pemuatan gagal, validasi placeholder, serta pergantian bahasa saat pertandingan/draft aktif. Template dan panduan penambahan bahasa menjadi deliverable rilis. Milestone 1 menyediakan kontrak/template; milestone 3 settings locale; milestone 5–6 semua UI; milestone 7 verifikasi seluruh bahasa.

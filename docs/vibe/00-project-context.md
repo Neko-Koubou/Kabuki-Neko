@@ -85,7 +85,8 @@ Bentuk singkat `docker compose up -d` pada PRD berlaku dari direktori `docker/`;
 1. Input pemain ditutup saat timer habis; penerimaan paket terlambat berlangsung 1.500ms sebelum reveal.
 2. MULTIPLE_SELECT parsial tanpa opsi salah memperoleh skor parsial, menaikkan streak, dan mendapat bonus streak.
 3. CREATOR boleh melihat, menduplikasi, dan menjadi host kuis PUBLIC milik kreator lain; edit/hapus hanya oleh pemilik.
+4. Seluruh UI web mendukung multibahasa dan bahasa tambahan melalui paket terjemahan yang dapat ditambahkan pengguna/pengelola instalasi. Bahasa awal: Inggris (`en`), Indonesia (`id`), Jepang (`ja`), Mandarin Simplified (`zh-Hans`), Spanyol (`es`), dan Prancis (`fr`). Pilihan Simplified adalah baseline desain untuk permintaan “china”; Traditional dapat ditambahkan sebagai paket terpisah. Detail kebutuhan dan acceptance criteria: PRD §19 / US-21.
 
 ## 7. Status pipeline dan langkah berikutnya
 
-Stage 0 selesai dengan dokumen ini. Stage 1 dijalankan dalam permintaan yang sama menggunakan PRD yang sudah ada. Tidak perlu mengimpor ulang atau menjalankan vibe-prd dari awal. Setelah review PRD hasil normalisasi, clear context (`/clear`) dan jalankan `$vibe-design`, lalu `$vibe-sa` sebelum perencanaan implementasi.
+Stage 0 dan Stage 1 selesai. Stage 2 tersedia pada [02-design-spec.md](02-design-spec.md); tambahan multibahasa pengguna dicatat pada PRD §19 / US-21 dan dokumen desain. Tidak perlu mengimpor ulang PRD. Review PRD dan desain, lalu clear context (`/clear`) dan jalankan `$vibe-sa` sebelum perencanaan implementasi. Belum ada kode aplikasi atau hasil QA aplikasi.
