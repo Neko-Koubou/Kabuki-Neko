@@ -279,3 +279,8 @@
 
 - Files: `apps/api/src/providers/storage/s3-storage.adapter.ts`, `apps/api/src/providers/storage/storage-registry.ts`, `tests/contracts/storage.spec.ts`.
 - Implementasi/verifikasi: S3 upload memakai conditional put immutable, size verification, path-style/public URL dan timeout; health/errors teredaksi. Registry memakai credential references dan ledger fingerprint persisten untuk menolak perubahan origin ID lintas restart serta mempertahankan historical origin. API typecheck/lint dan 2 contract tests lulus termasuk MinIO nyata, browser fetch exact bytes/header, overwrite refusal, missing delete, origin lookup dan health unavailable. AWS/R2/Spaces belum diklaim terverifikasi.
+
+## TASK-045 — 2026-11-05 20:41:45 WIB
+
+- Files: `apps/api/src/providers/storage/storage.module.ts`, `apps/api/src/main.ts`, `apps/api/src/app.module.ts`, `tests/integration/storage-serving.spec.ts`.
+- Implementasi/verifikasi: StorageModule mengikat adapter dan registry dari konfigurasi, mempersistenkan ledger origin dan menutup klien S3 saat shutdown. /uploads memakai confined file handle, MIME allowlist, nosniff, immutable cache, HEAD serta single byte-range. API typecheck/lint/build, seluruh 26 unit test dan integration test API proses nyata lulus untuk exact bytes/header, range, missing object, traversal/symlink dan missing origin.
