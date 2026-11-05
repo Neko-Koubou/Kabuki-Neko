@@ -274,3 +274,8 @@
 
 - Files: `apps/api/src/providers/storage/storage.interface.ts`, `apps/api/src/providers/storage/local-storage.adapter.ts`, `apps/api/src/providers/storage/local-storage.adapter.spec.ts`.
 - Implementasi/verifikasi: Kontrak storage dan LocalStorageAdapter menyediakan upload UUID immutable, publikasi atomic hard-link tanpa overwrite, byte-size verification, readHead, delete idempoten dan health teredaksi. Key/folder/MIME divalidasi; file dan folder symlink ditolak. API typecheck/lint lulus; 3 unit test mencakup exact bytes, collision, missing delete, traversal, symlink dan filesystem failure.
+
+## TASK-044 — 2026-11-05 20:39:42 WIB
+
+- Files: `apps/api/src/providers/storage/s3-storage.adapter.ts`, `apps/api/src/providers/storage/storage-registry.ts`, `tests/contracts/storage.spec.ts`.
+- Implementasi/verifikasi: S3 upload memakai conditional put immutable, size verification, path-style/public URL dan timeout; health/errors teredaksi. Registry memakai credential references dan ledger fingerprint persisten untuk menolak perubahan origin ID lintas restart serta mempertahankan historical origin. API typecheck/lint dan 2 contract tests lulus termasuk MinIO nyata, browser fetch exact bytes/header, overwrite refusal, missing delete, origin lookup dan health unavailable. AWS/R2/Spaces belum diklaim terverifikasi.
