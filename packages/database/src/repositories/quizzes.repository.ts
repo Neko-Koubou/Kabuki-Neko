@@ -11,6 +11,8 @@ import {
   type Option,
 } from "@kabuki-neko/shared";
 import { writeTransaction } from "../data-source.factory";
+import type { MediaRow } from "./media.repository";
+import type { UserRow } from "./users.repository";
 interface QuizRow {
   id: string;
   creator_id: string;
@@ -74,12 +76,10 @@ async function content(m: EntityManager, row: QuizRow): Promise<QuizWrite> {
     .getRepository<QuestionRow>("questions")
     .find({ where: { quiz_id: row.id }, order: { order_index: "ASC" } });
   const options = questions.length
-    ? await m
-        .getRepository<OptionRow>("question_options")
-        .find({
-          where: { question_id: In(questions.map((q) => q.id)) },
-          order: { option_index: "ASC" },
-        })
+    ? await m.getRepository<OptionRow>("question_options").find({
+        where: { question_id: In(questions.map((q) => q.id)) },
+        order: { option_index: "ASC" },
+      })
     : [];
   const groups = new Map<string, Option[]>();
   for (const opt of options) {
@@ -228,6 +228,22 @@ async function insertQuiz(m: EntityManager, actor: string, quiz: QuizWrite, now:
 }
 export class QuizzesRepository {
   constructor(private readonly db: DataSource) {}
+  private transaction<T>(
+    manager: EntityManager | undefined,
+    work: (manager: EntityManager) => Promise<T>,
+  ) {
+    if (!manager) return writeTransaction(this.db, work);
+    if (!manager.queryRunner?.isTransactionActive || manager.connection !== this.db)
+      throw new Error("INVALID_REFERENCE");
+    return work(manager);
+  }
+  media(ids: readonly string[], manager = this.db.manager) {
+    if (manager.connection !== this.db) throw new Error("INVALID_REFERENCE");
+    return manager
+      .getRepository<MediaRow>("media_assets")
+      .find({ where: { id: In([...new Set(ids)]) } });
+  }
+
   list(actor: string, input: unknown) {
     const { page, limit, sort, visibility, scope, search } = quizQuerySchema.parse(input);
     const q = this.db.getRepository<QuizRow>("quizzes").createQueryBuilder("q");
@@ -255,17 +271,23 @@ export class QuizzesRepository {
         meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
       }));
   }
-  read(actor: string, id: string) {
-    return writeTransaction(this.db, async (m) => {
+  read(actor: string, id: string, manager?: EntityManager) {
+    return this.transaction(manager, async (m) => {
       const row = await visibleRow(m, id, actor, false);
+      const quiz = await content(m, row);
+      const creator = await m
+        .getRepository<UserRow>("users")
+        .findOneByOrFail({ id: row.creator_id });
       return {
         row,
-        content: await content(m, row),
+        content: quiz,
+        creatorName: creator.name,
+        media: await this.media([...refs(quiz)], m),
         capabilities: capabilities(row.creator_id === actor),
       };
     });
   }
-  create(actor: string, input: unknown, now: number) {
+  create(actor: string, input: unknown, now: number, manager?: EntityManager) {
     const meta = quizCreateSchema.parse(input);
     const quiz = quizWriteSchema.parse({
       ...meta,
@@ -295,7 +317,7 @@ export class QuizzesRepository {
         },
       ],
     });
-    return writeTransaction(this.db, async (m) => {
+    return this.transaction(manager, async (m) => {
       await validateAssets(m, actor, quiz, new Set());
       return insertQuiz(m, actor, quiz, now);
     });
@@ -313,8 +335,8 @@ export class QuizzesRepository {
       return revision + 1;
     });
   }
-  duplicate(actor: string, id: string, now: number) {
-    return writeTransaction(this.db, async (m) => {
+  duplicate(actor: string, id: string, now: number, manager?: EntityManager) {
+    return this.transaction(manager, async (m) => {
       const row = await visibleRow(m, id, actor, false),
         quiz = await content(m, row);
       await validateAssets(m, actor, quiz, refs(quiz));

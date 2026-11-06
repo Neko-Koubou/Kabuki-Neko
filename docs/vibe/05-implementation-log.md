@@ -438,3 +438,9 @@
 - Files: quiz validator/snapshot/domain test and question shuffler; task checklist/log.
 - Draft warnings versus host rejection, current READY media and authorized retained-reference checks, independent private snapshots with context-specific accessibility and URLs; cryptographic Fisher–Yates with independent public IDs/index/colors and server-only source mapping.
 - Verification: API lint/typecheck PASS; 9 domain tests PASS across six question types, strict/foreign/missing media boundaries, source mutation isolation, all 24 puzzle permutations (including identity), public field allowlist and text-answer secrecy.
+
+## TASK-062A — 2026-11-06T23:35:59.297360+07:00
+
+- Files: quizzes repository and contract test; task checklist/log.
+- Added same-database active transaction composition for create/duplicate/read, authorized creator/media hydration and internal current-media lookup for validation.
+- Verification: database lint/typecheck/build PASS; 3 real SQLite/PostgreSQL/MySQL contracts PASS, including composed create/duplicate rollback with receipts, manager rejection, retained foreign references and ownership/revision regression.

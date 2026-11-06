@@ -1066,9 +1066,21 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/modules/quizzes/quiz-domain.spec.ts` six types valid/invalid, immutable snapshot after edit, random permutation bijective tanpa sortOrder leakage.
 
+### - [x] TASK-062A: Compose quiz operations with durable idempotency receipts
+- **Traceability**: `US-03`, `US-04`, SA §2.6 and §4.3; repository gap found before TASK-062.
+- **Depends On**: `TASK-061`
+- **Target Files**:
+  - `MODIFY` `packages/database/src/repositories/quizzes.repository.ts`
+  - `MODIFY` `tests/contracts/quizzes.repository.spec.ts`
+- **Implementation Specs**:
+  - Support same-database active transaction managers for create, duplicate and authorized reads; mutation and operation receipt must commit or roll back together.
+  - Return creator name and referenced current media with authorized quiz reads; expose internal media resolution for service validation.
+- **Definition of Done (Verification)**:
+  - Database lint/typecheck/build and real SQLite/PostgreSQL/MySQL quiz contracts including forced composed rollback and retained authorization.
+
 ### - [ ] TASK-062: Implementasikan layanan CRUD dan reuse PUBLIC
 - **Traceability**: `US-03`, `US-04`, [SA §4.3](03-system-analysis.md#43-kuis-dan-importexport)
-- **Depends On**: `TASK-061`
+- **Depends On**: `TASK-062A`
 - **Target Files**:
   - `CREATE` `apps/api/src/modules/quizzes/quizzes.service.ts`
   - `CREATE` `apps/api/src/modules/quizzes/quizzes.service.spec.ts`

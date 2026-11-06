@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  OperationsRepository,
   createDataSource,
   domainSchemas,
   migrateDatabase,
@@ -59,7 +60,38 @@ it.each<DatabaseDriver>(["sqlite", "postgres", "mysql"])(
           { title: "quiz%_", visibility: "PUBLIC", coverMediaId: media[0] },
           0,
         );
+        const operations = new OperationsRepository(db);
+        const request = {
+          actorScope: owner,
+          operation: "quiz.create" as const,
+          key: randomUUID(),
+          request: {},
+        };
+        await expect(
+          operations.run(request, 1, async (manager) => {
+            const created = await repo.create(owner, { title: "Rollback" }, 1, manager);
+            expect((await repo.read(owner, created, manager)).creatorName).toBe("Test");
+            throw new Error("CREATE-ROLLBACK");
+          }),
+        ).rejects.toThrow("CREATE-ROLLBACK");
+        expect(await db.manager.count("quizzes")).toBe(1);
+        expect(await db.manager.count("request_dedup")).toBe(0);
+        await expect(
+          operations.run(
+            { ...request, operation: "quiz.duplicate", key: randomUUID() },
+            1,
+            async (manager) => {
+              await repo.duplicate(guest, id, 1, manager);
+              throw new Error("DUPLICATE-ROLLBACK");
+            },
+          ),
+        ).rejects.toThrow("DUPLICATE-ROLLBACK");
+        expect(await db.manager.count("quizzes")).toBe(1);
+        expect(await db.manager.count("request_dedup")).toBe(0);
+        expect(() => repo.read(owner, id, db.manager)).toThrow("INVALID_REFERENCE");
         const source = await repo.read(guest, id);
+        expect(source.creatorName).toBe("Test");
+        expect(source.media.map((asset) => asset.id)).toEqual([media[0]]);
         expect(source.capabilities.canEdit).toBe(false);
         expect(source.content.questions[0]?.options).toHaveLength(2);
         expect((await repo.list(guest, { scope: "public", search: "%_" })).items).toHaveLength(1);
