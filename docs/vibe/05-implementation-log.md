@@ -450,3 +450,9 @@
 - Files: quizzes service and service test; task checklist/log.
 - Own/public listing and allowlisted hydrated detail, strict create/save, private duplication with new IDs, revision delete, and atomic resource receipts with current replay authorization. Retained foreign media does not confer edit/delete rights.
 - Verification: API lint/typecheck PASS; 4 SQLite/JWT service tests PASS for owner/public/admin permission matrix, same-key concurrent create/duplicate, deleted-resource replay denial, draft warnings, stale revision, snapshot isolation and retained-versus-forged foreign media.
+
+## TASK-063 — 2026-11-06T23:40:26.923758+07:00
+
+- Files: quizzes controller/module, app module and quiz HTTP integration test; task checklist/log.
+- Six authenticated READ/WRITE routes, strict query/body checks, quoted If-Match and ETags, shared service export for engine reuse.
+- Verification: API lint/typecheck/build PASS; real built-server HTTP integration PASS covering all six routes, default limit12, same-key create/duplicate, private404/public mutation403, absent/stale revisions, 5MiB413, delete and deleted-resource replay denial.
