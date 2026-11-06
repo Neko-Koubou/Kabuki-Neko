@@ -402,3 +402,9 @@
 - Files: `apps/api/src/modules/auth/setup.service.ts`, `setup.service.spec.ts`; checklist/log.
 - Setup/status and registration services validate strict inputs, hash passwords outside SQL locks, and commit account/token/policy/receipt in one transaction. Registration scope uses a hashed canonical email. Credential replay returns409 without new tokens. Status reflects persisted defaultLocale (`id` baseline).
 - Verification: API lint/typecheck PASS; 5 real SQLite/Argon2 service tests PASS covering first-admin race, lost-response replay, PUBLIC/SINGLE_ADMIN/INVITE_ONLY, concurrent single-use invitation, duplicate email and forced rollback/retry.
+
+## TASK-057 — 2026-11-06T18:44:13.152593+07:00
+
+- Files: `apps/api/src/common/guards/jwt.guard.ts`, `roles.guard.ts`, `ownership.guard.ts`, `guards.spec.ts`; checklist/log.
+- Verified principals use private WeakMaps shared across Nest guard instances; role and ownership checks revalidate JWT/current SQL user on each action. PUBLIC reuse, owner-only mutation, private/report404 and no SUPERADMIN bypass; reusable host checks use server-owned host identity.
+- Verification: API lint/typecheck PASS; 5 real SQLite/JWT/service/HTTP tests PASS, covering fabricated principals, forged/stale/inactive tokens, ignored role claims, owner/PUBLIC/private/report matrices, host identity and title non-disclosure.
