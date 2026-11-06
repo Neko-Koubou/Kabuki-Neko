@@ -74,6 +74,62 @@ it.each<DatabaseDriver>(["sqlite", "postgres", "mysql"])(
         );
         expect(join.filter((x) => x.status === "fulfilled")).toHaveLength(1);
         expect((await auth.invitations({ status: "USED" }, 4)).meta.total).toBe(1);
+        const credentials = await auth.credentials("ADMIN@example.org");
+        expect(credentials?.password_hash).toBe(admin.passwordHash);
+        expect(await auth.credentials("missing@example.org")).toBeNull();
+        const session = token(admin.id);
+        await expect(auth.createSession(admin.id, "changed", 1, session, 4)).rejects.toThrow(
+          "INVALID_CREDENTIALS",
+        );
+        await expect(
+          auth.createSession(admin.id, admin.passwordHash, 2, session, 4),
+        ).rejects.toThrow("INVALID_CREDENTIALS");
+        await expect(
+          auth.createSession(
+            admin.id,
+            admin.passwordHash,
+            1,
+            { ...session, user_id: randomUUID() },
+            4,
+          ),
+        ).rejects.toThrow("INVALID_REFERENCE");
+        expect(await db.manager.findOneBy("refresh_tokens", { id: session.id })).toBeNull();
+        await auth.createSession(admin.id, admin.passwordHash, 1, session, 4);
+        const other =
+          (await auth.credentials("one@example.org")) ??
+          (await auth.credentials("two@example.org"));
+        if (!other) throw new Error("Missing registered user");
+        await auth.revokeSession(other.id, session.id, 4);
+        expect(
+          (
+            await db.manager.findOneByOrFail<TokenRecord & { revoked_at: number | null }>(
+              "refresh_tokens",
+              { id: session.id },
+            )
+          ).revoked_at,
+        ).toBeNull();
+        await auth.revokeSession(admin.id, session.id, 5);
+        await auth.revokeSession(admin.id, session.id, 6);
+        expect(
+          (
+            await db.manager.findOneByOrFail<TokenRecord & { revoked_at: number | null }>(
+              "refresh_tokens",
+              { id: session.id },
+            )
+          ).revoked_at,
+        ).toBe(5);
+        expect(
+          (
+            await db.manager.findOneByOrFail<TokenRecord & { revoked_at: number | null }>(
+              "refresh_tokens",
+              { id: original.id },
+            )
+          ).revoked_at,
+        ).toBeNull();
+        await users.patch(other.id, other.revision, { isActive: false }, 6);
+        await expect(
+          auth.createSession(other.id, other.password_hash, other.auth_version, token(other.id), 7),
+        ).rejects.toThrow("INVALID_CREDENTIALS");
         const next = { ...token(admin.id), family_id: original.family_id, expires_at: 20000 };
         await expect(
           auth.rotate(original.id, original.token_hash, 1, { ...next, id: original.id }, 4),

@@ -378,3 +378,9 @@
 - Files: `apps/api/src/common/idempotency.service.ts`, `operations.controller.ts`, `idempotency.service.spec.ts`; checklist/log.
 - Canonical HTTP/file hashing, transactional receipts, current-resource authorization on replay/lookup, credential replay exceptions, reservation/reconciliation and 30-second lease renewal. Fresh responses are tied to the committed receipt, including transaction retries. Strict GET operations controller requires an authenticated access provider; production wiring belongs to TASK-058.
 - Verification: API lint/typecheck PASS; 10 tests PASS against real SQLite, including HTTP 200/401/404/422, lost response, hash conflict, actor isolation, credential canaries, rollback, expired lease reconciliation and renewal loss.
+
+## TASK-055A — 2026-11-06T18:32:26.237693+07:00
+
+- Files: `packages/database/src/repositories/auth.repository.ts`, `tests/contracts/accounts.repository.spec.ts`; checklist/log.
+- Explicit credential-only password hash selection, normalized lookup, locked session insertion with current active/hash/version checks, and actor-scoped idempotent family logout by session identifier.
+- Verification: database lint/typecheck/build PASS; all 3 SQLite/PostgreSQL/MySQL account contracts PASS, including stale credentials, rollback, foreign actor isolation, repeated logout and inactive users. Docker contract runner used sudo for socket access.

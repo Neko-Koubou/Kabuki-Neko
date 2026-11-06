@@ -1,5 +1,5 @@
 import { type DataSource, type EntityManager } from "typeorm";
-import { invitationsQuerySchema, type Invitation } from "@kabuki-neko/shared";
+import { emailSchema, invitationsQuerySchema, type Invitation } from "@kabuki-neko/shared";
 import { lockParent, writeTransaction } from "../data-source.factory";
 import { lockSettings } from "./settings.repository";
 import { insertAccount, type NewAccount, type UserRow } from "./users.repository";
@@ -66,6 +66,51 @@ async function revokeTokens(manager: EntityManager, userId: string, familyId: st
 }
 export class AuthRepository {
   constructor(private readonly db: DataSource) {}
+  credentials(email: string) {
+    return this.db
+      .getRepository<UserRow & { password_hash: string }>("users")
+      .createQueryBuilder("u")
+      .addSelect("u.password_hash")
+      .where("u.email = :email", { email: emailSchema.parse(email) })
+      .getOne();
+  }
+  createSession(
+    userId: string,
+    passwordHash: string,
+    version: number,
+    token: TokenRecord,
+    now: number,
+  ) {
+    return writeTransaction(this.db, async (manager) => {
+      await lockParent(manager, "users", userId);
+      const user = await manager
+        .getRepository<UserRow & { password_hash: string }>("users")
+        .createQueryBuilder("u")
+        .addSelect("u.password_hash")
+        .where("u.id = :userId", { userId })
+        .getOne();
+      if (
+        !user ||
+        !user.is_active ||
+        user.auth_version !== version ||
+        user.password_hash !== passwordHash
+      )
+        throw new Error("INVALID_CREDENTIALS");
+      if (token.user_id !== userId || token.expires_at <= now || token.issued_at > now)
+        throw new Error("INVALID_REFERENCE");
+      await manager.insert("refresh_tokens", token);
+      return user;
+    });
+  }
+  revokeSession(userId: string, tokenId: string, now: number) {
+    return writeTransaction(this.db, async (manager) => {
+      await lockParent(manager, "users", userId);
+      const token = await manager
+        .getRepository<StoredToken>("refresh_tokens")
+        .findOneBy({ id: tokenId, user_id: userId });
+      if (token) await revokeTokens(manager, userId, token.family_id, now);
+    });
+  }
   setup(account: NewAccount, instanceName: string, token: TokenRecord, now: number) {
     return writeTransaction(this.db, async (m) => {
       const settings = await lockSettings(m);

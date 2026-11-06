@@ -1,12 +1,12 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 68 task selesai, 132 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 69 task selesai, 132 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
 ## 1. Execution summary
 
-Saat planning, workspace belum memiliki aplikasi, manifest, lockfile atau runner. Plan berisi **200 task** (termasuk task koreksi dan perluasan audio 2026-10-31), masing-masing **1–4 file konkret**. TASK-001 kini menyediakan manifest, lockfile dan dependency tooling; konfigurasi runner dan aplikasi menunggu task berikutnya. Perubahan upstream yang telah ada dipertahankan. Status handoff lama pada upstream merupakan catatan tahap sebelumnya, bukan instruksi mengulang SA.
+Saat planning, workspace belum memiliki aplikasi, manifest, lockfile atau runner. Plan berisi **201 task** (termasuk task koreksi dan perluasan audio 2026-10-31), masing-masing **1–4 file konkret**. TASK-001 kini menyediakan manifest, lockfile dan dependency tooling; konfigurasi runner dan aplikasi menunggu task berikutnya. Perubahan upstream yang telah ada dipertahankan. Status handoff lama pada upstream merupakan catatan tahap sebelumnya, bukan instruksi mengulang SA.
 
 Revisi audio pengguna 2026-10-31: sumber aktif `audio-assets/kabuki-neko-audio/` berisi **20 MP3 + CREDITS.md**, termasuk empat lobby dan sepuluh SFX. [Audio engine revision](audio-engine-revision.md) adalah addendum normatif yang menggantikan baseline audio lama: Opus/WebM + MP3, manifest dinamis, default random, role-specific Howler choreography dan PODIUM8s. Inventaris/hash dan gap atribusi tersedia di addendum; file input dipertahankan. Task selesai sebelumnya tetap catatan historis, koreksi dilakukan dalam task baru.
 
@@ -933,9 +933,21 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/common/idempotency.service.spec.ts` lost response, different hash409, expired lease resource lookup dan actor isolation.
 
+### - [x] TASK-055A: Add transactional login session persistence
+- **Traceability**: `US-01`, `US-02`, SA §4.2; repository prerequisite discovered during TASK-055.
+- **Depends On**: `TASK-035`, `TASK-054`
+- **Target Files**:
+  - `MODIFY` `packages/database/src/repositories/auth.repository.ts`
+  - `MODIFY` `tests/contracts/accounts.repository.spec.ts`
+- **Implementation Specs**:
+  - Provide canonical email credential lookup and transactional session insertion under the user lock; recheck active status, password hash and auth version before insertion.
+  - Resolve access-token session identifiers to the current refresh family for idempotent logout without revoking another actor's family.
+- **Definition of Done (Verification)**:
+  - Database lint/typecheck/build and real SQLite/PostgreSQL/MySQL account contracts cover rejected stale credentials, successful insertion and scoped repeated logout.
+
 ### - [ ] TASK-055: Implementasikan password hashing dan token lifecycle
 - **Traceability**: `US-01`, `US-02`, [SA §4.2](03-system-analysis.md#42-setup-auth-users-dan-undangan)
-- **Depends On**: `TASK-035`, `TASK-054`, `TASK-024`
+- **Depends On**: `TASK-035`, `TASK-054`, `TASK-055A`, `TASK-024`
 - **Target Files**:
   - `CREATE` `apps/api/src/modules/auth/auth.service.ts`
   - `CREATE` `apps/api/src/modules/auth/refresh.service.ts`
