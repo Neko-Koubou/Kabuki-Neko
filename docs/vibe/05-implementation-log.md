@@ -331,3 +331,13 @@
 - Files: `apps/api/nest-cli.json`; checklist/log.
 - Nest build/watch now includes Lua runtime assets.
 - Verification: API build/lint/typecheck lulus; kelima Lua asset dist byte-identical dengan source.
+
+
+## TASK-050 — 2026-11-06T13:33:10+07:00
+
+- Files: `apps/api/src/providers/state/redis-state.store.ts`, `state.module.ts`, `apps/api/src/app.module.ts`, `tests/contracts/state-parity.spec.ts`; checklist/log.
+- Implementasi: seluruh kontrak state memakai Lua, validasi typed, pemulihan array cjson sesuai schema, namespace/session fencing, Redis TIME dan reload NOSCRIPT pada node pemilik slot. Nest memilih memory/Redis tanpa fallback; koneksi command/pub/sub terpisah, startup dibatasi 5 detik, shutdown membatalkan reconnect. Host skip/end menunggu receipt hasil commit (batas tunggu 5 detik, lalu OPERATION_PENDING untuk rekonsiliasi).
+- Verifikasi: API build/typecheck/lint PASS; 50 unit test PASS; ESLint contract PASS; 22 contract test PASS pada memory, Redis 7 nyata dan cluster tiga master. Cakupan: join/recovery/generation, dedup, freeze/result CAS, lease epoch, TTL, PIN reuse, finalization, script flush, reconnect/unavailable, namespace isolation dan distribusi event Socket.io antar dua adapter. Semua container milik run dibersihkan; sudo diperlukan untuk socket Docker.
+- Integrasi downstream: `StateProjection.register` menunggu projector domain dan gagal tertutup sebelum registrasi; gateway kelak memanggil `StateConnections.install`. Cluster routing/cache reload terverifikasi; failover/data-loss dan benchmark skala tetap task hardening tersendiri.
+
+- Verifikasi ulang sebelum commit (2026-11-06): API lint/typecheck/build, 50 unit test dan 22 contract test state-parity lulus.

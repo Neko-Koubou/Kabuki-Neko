@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 61 task selesai, 137 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 62 task selesai, 136 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -841,7 +841,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - API build/lint/typecheck lulus; assertion kelima script hasil build byte-identical dengan source.
 
-### - [ ] TASK-050: Hubungkan Redis store dan distribusi event
+### - [x] TASK-050: Hubungkan Redis store dan distribusi event
 - **Traceability**: `US-12`, `US-16`, [SA §6.1](03-system-analysis.md#61-adapter-contract-dan-redis-cluster)
 - **Depends On**: `TASK-049`, `TASK-049B`, `TASK-050A`, `TASK-025`, `TASK-045`
 - **Target Files**:
@@ -2901,4 +2901,4 @@ Catatan akhir Stage 4: tidak ada application code, dependency install, migration
 
 Update Stage 5, 2026-10-30: TASK-001 selesai; bukti install, kompatibilitas dan temuan audit dependency tercatat di [05-implementation-log.md](05-implementation-log.md). `.gitignore` disiapkan atas permintaan tambahan pengguna; TASK-002 tetap Pending karena konfigurasi Turbo/ESLint/Prettier belum dibuat.
 
-**Next Step**: Lanjutkan `TASK-050`; verifikasi dan commit setiap task sesuai instruksi pengguna.
+**Next Step**: Lanjutkan `TASK-051`; verifikasi dan commit setiap task sesuai instruksi pengguna.
