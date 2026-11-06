@@ -1025,7 +1025,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Database lint, typecheck and build; accounts repository contracts on SQLite, PostgreSQL and MySQL.
 
-### - [ ] TASK-059: Implementasikan administrasi pengguna dan undangan
+### - [x] TASK-059: Implementasikan administrasi pengguna dan undangan
 - **Traceability**: `US-01`, `US-02`, `US-15`, [SA §4.2](03-system-analysis.md#42-setup-auth-users-dan-undangan)
 - **Depends On**: `TASK-059A`
 - **Target Files**:
@@ -2962,4 +2962,4 @@ Catatan akhir Stage 4: tidak ada application code, dependency install, migration
 
 Update Stage 5, 2026-10-30: TASK-001 selesai; bukti install, kompatibilitas dan temuan audit dependency tercatat di [05-implementation-log.md](05-implementation-log.md). `.gitignore` disiapkan atas permintaan tambahan pengguna; TASK-002 tetap Pending karena konfigurasi Turbo/ESLint/Prettier belum dibuat.
 
-**Next Step**: Lanjutkan `TASK-059`; verifikasi dan commit setiap task sesuai instruksi pengguna.
+**Next Step**: Lanjutkan `TASK-060`; verifikasi dan commit setiap task sesuai instruksi pengguna.

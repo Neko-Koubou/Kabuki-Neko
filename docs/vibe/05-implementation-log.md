@@ -420,3 +420,9 @@
 - Files: users/auth repositories, accounts repository contract; task checklist/log.
 - Added strict user paging and literal search, explicit missing-resource outcomes, hash-only invitation creation within operation transactions, and locked idempotent revocation with used-invitation protection.
 - Verification: database lint/typecheck/build PASS; 3 real SQLite/PostgreSQL/MySQL contracts PASS (Docker through sudo). Covers literal wildcards, filtering/paging, missing IDs, used/repeated revoke and transaction rollback.
+
+## TASK-059 — 2026-11-06T23:29:10.730145+07:00
+
+- Files: users/invitations services and users service test; task checklist/log.
+- Current SUPERADMIN checks, strict filters and revision patches, atomic last-admin guard and session revocation, cryptographic one-time invitation generation with hash-only persistence and replay denial, status/revoke rules.
+- Verification: API lint/typecheck PASS; 4 real SQLite/JWT service tests PASS including concurrent last-admin changes, stale identity/revision, literal search, DTO secrecy, concurrent invitation replay and status precedence.
