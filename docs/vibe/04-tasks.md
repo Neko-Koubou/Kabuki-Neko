@@ -1,12 +1,12 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 60 task selesai, 137 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 61 task selesai, 137 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
 ## 1. Execution summary
 
-Saat planning, workspace belum memiliki aplikasi, manifest, lockfile atau runner. Plan berisi **197 task** (termasuk task koreksi dan perluasan audio 2026-10-31), masing-masing **1–4 file konkret**. TASK-001 kini menyediakan manifest, lockfile dan dependency tooling; konfigurasi runner dan aplikasi menunggu task berikutnya. Perubahan upstream yang telah ada dipertahankan. Status handoff lama pada upstream merupakan catatan tahap sebelumnya, bukan instruksi mengulang SA.
+Saat planning, workspace belum memiliki aplikasi, manifest, lockfile atau runner. Plan berisi **198 task** (termasuk task koreksi dan perluasan audio 2026-10-31), masing-masing **1–4 file konkret**. TASK-001 kini menyediakan manifest, lockfile dan dependency tooling; konfigurasi runner dan aplikasi menunggu task berikutnya. Perubahan upstream yang telah ada dipertahankan. Status handoff lama pada upstream merupakan catatan tahap sebelumnya, bukan instruksi mengulang SA.
 
 Revisi audio pengguna 2026-10-31: sumber aktif `audio-assets/kabuki-neko-audio/` berisi **20 MP3 + CREDITS.md**, termasuk empat lobby dan sepuluh SFX. [Audio engine revision](audio-engine-revision.md) adalah addendum normatif yang menggantikan baseline audio lama: Opus/WebM + MP3, manifest dinamis, default random, role-specific Howler choreography dan PODIUM8s. Inventaris/hash dan gap atribusi tersedia di addendum; file input dipertahankan. Task selesai sebelumnya tetap catatan historis, koreksi dilakukan dalam task baru.
 
@@ -831,9 +831,19 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Contract Redis command/finalization nyata, API lint/typecheck dan ESLint contract lulus.
 
+### - [x] TASK-050A: Sertakan script Lua pada output build API
+- **Traceability**: `US-16`, `NFR-08`, SA §1.2/§6.1; adapter produksi memuat script dari direktori build.
+- **Depends On**: `TASK-049B`
+- **Target Files**:
+  - `MODIFY` `apps/api/nest-cli.json`
+- **Implementation Specs**:
+  - Salin lima file `providers/state/lua/*.lua` sebagai Nest compiler assets; watch mode mengikuti perubahan script. Tidak bergantung pada source tree saat runtime.
+- **Definition of Done (Verification)**:
+  - API build/lint/typecheck lulus; assertion kelima script hasil build byte-identical dengan source.
+
 ### - [ ] TASK-050: Hubungkan Redis store dan distribusi event
 - **Traceability**: `US-12`, `US-16`, [SA §6.1](03-system-analysis.md#61-adapter-contract-dan-redis-cluster)
-- **Depends On**: `TASK-049`, `TASK-049B`, `TASK-025`, `TASK-045`
+- **Depends On**: `TASK-049`, `TASK-049B`, `TASK-050A`, `TASK-025`, `TASK-045`
 - **Target Files**:
   - `CREATE` `apps/api/src/providers/state/redis-state.store.ts`
   - `CREATE` `apps/api/src/providers/state/state.module.ts`

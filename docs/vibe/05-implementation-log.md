@@ -324,3 +324,10 @@
 - Files: `lua/mutate-room.lua`, `lua/close-question.lua`, `tests/contracts/redis-answers.spec.ts`; checklist/log.
 - Persisted pending host command receipts through scoring commit and added session-bound finalization maintenance after logical expiry.
 - Verification: 23 contract test Redis nyata lulus (room + answers), termasuk delayed host ACK/dedup, freeze report CAS/PERSIST, durable guard dan READY monotonic. API lint/typecheck dan ESLint contract lulus.
+
+
+## TASK-050A — 2026-11-06T10:02:48+07:00
+
+- Files: `apps/api/nest-cli.json`; checklist/log.
+- Nest build/watch now includes Lua runtime assets.
+- Verification: API build/lint/typecheck lulus; kelima Lua asset dist byte-identical dengan source.
