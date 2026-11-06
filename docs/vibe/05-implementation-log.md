@@ -372,3 +372,9 @@
 - Files: `packages/database/src/repositories/operations.repository.ts`, `tests/contracts/operations.repository.spec.ts`; checklist/log.
 - Implementasi: operasi internal auth.setup/auth.register/invitation.create memakai receipt resourceId tanpa menyimpan token atau kode undangan. Contract membuktikan retry concurrent mengeksekusi mutation sekali, receipt DONE konsisten, dan enum query publik menolak ketiga operasi credential. Replay error HTTP khusus tetap tanggung jawab TASK-054.
 - Verifikasi: shared/database build, database typecheck/lint, ESLint contract dan Prettier source PASS; 3 contract test SQLite/PostgreSQL/MySQL nyata PASS tanpa skip. Run awal hanya SQLite lulus karena akses Docker; rerun lengkap memakai sudo untuk socket Docker lulus dan runtime membersihkan container uji.
+
+## TASK-054 — 2026-11-06T18:29:43.638784+07:00
+
+- Files: `apps/api/src/common/idempotency.service.ts`, `operations.controller.ts`, `idempotency.service.spec.ts`; checklist/log.
+- Canonical HTTP/file hashing, transactional receipts, current-resource authorization on replay/lookup, credential replay exceptions, reservation/reconciliation and 30-second lease renewal. Fresh responses are tied to the committed receipt, including transaction retries. Strict GET operations controller requires an authenticated access provider; production wiring belongs to TASK-058.
+- Verification: API lint/typecheck PASS; 10 tests PASS against real SQLite, including HTTP 200/401/404/422, lost response, hash conflict, actor isolation, credential canaries, rollback, expired lease reconciliation and renewal loss.
