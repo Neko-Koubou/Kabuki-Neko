@@ -347,3 +347,9 @@
 - Files: `apps/api/src/common/zod-validation.pipe.ts`, `error.filter.ts`, `request-context.middleware.ts`, `apps/api/src/main.ts`; checklist/log.
 - Implementasi: strict schema pipe; trusted application error envelope dan generic fallback; server UUID/no-store; JSON 5MiB dan aggregate multipart limits (chunked juga), allowlist upload/import, GET/DELETE body rejection. Parser route tetap wajib enforce file limits dari settings.
 - Verifikasi: API lint/typecheck/build PASS; 10 assertion HTTP dengan Supertest pada controller Nest terisolasi PASS: JSON400, extra body/query422, success201, redacted500, unsupported415, oversized413, missing404, malformed multipart400, correlation/no-store. Script smoke sementara `/tmp/kabuki-http-boundary-smoke.cjs`; endpoint produk belum tersedia.
+
+## TASK-052 — 2026-11-06T13:40:54.289154+07:00
+
+- Files: `apps/api/src/common/rate-limit.service.ts`, `guards/origin.guard.ts`, `rate-limit.service.spec.ts`, `apps/api/src/main.ts`; checklist/log.
+- Implementasi: exact HTTP/WS tiers, Redis TIME atomic multi-window limiter, memory parity, fail503, bounded counters; upload2/cleanup1 renewable120s leases. SHA256 principal keys; trusted CIDR XFF parsing; exact Origin/client header, credentialed CORS/Vary. Auth hashing queue tetap terpisah pada TASK-055.
+- Verifikasi: API lint/typecheck/build PASS; 11 tests memory/Redis7 PASS, termasuk combined check/join, concurrency, expiry, outage dan spoofed forwarding. Docker memakai sudo; container dibersihkan. Route-specific/WS tiers dipanggil downstream sesudah identitas diverifikasi; public tier/Origin terpasang di bootstrap.

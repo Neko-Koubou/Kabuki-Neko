@@ -1,6 +1,7 @@
 import { configureUploads } from "./providers/storage/storage.module";
 import "reflect-metadata";
 import { configureHttpBoundary } from "./common/request-context.middleware";
+import { configureRequestGuards } from "./common/guards/origin.guard";
 import { Logger } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
@@ -12,6 +13,7 @@ async function bootstrap(): Promise<void> {
     const config = app.get(ConfigService);
     app.setGlobalPrefix("api/v1");
     configureHttpBoundary(app);
+    configureRequestGuards(app);
     configureUploads(app);
     app.enableShutdownHooks();
     await app.listen(config.get("API_PORT"), "0.0.0.0");
