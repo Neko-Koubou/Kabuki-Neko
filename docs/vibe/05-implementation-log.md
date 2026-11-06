@@ -303,3 +303,10 @@
 - Files: `tests/jest.contracts.config.cjs`; task checklist/log.
 - Added compiler mapping for built shared subpath declarations, matching the existing runtime mapper.
 - Verification: Compiler contract berhasil memuat private state schema; 8 test Redis dieksekusi (7 lulus, satu assertion urutan key JSON diperbaiki dalam TASK-048). ESLint config dan API typecheck/lint lulus; strict diagnostics tetap aktif.
+
+
+## TASK-048 — 2026-11-06T09:56:08+07:00
+
+- Files: `apps/api/src/providers/state/lua/{mutate-room,bind-player,release-room}.lua`, `tests/contracts/redis-room.spec.ts`; checklist/log.
+- Added bounded same-slot room commands, generation/ticket/receipt binding, logical TTL, conditional lease epochs and frozen-report-safe release. Redis cjson empty array restoration remains the typed adapter responsibility in TASK-050.
+- Verification: 10 contract test Redis 7 nyata lulus melalui container terisolasi; API lint/typecheck dan ESLint contract lulus. Test menggunakan sudo untuk akses socket Docker yang tidak tersedia bagi user shell. Tidak ada test skipped.
