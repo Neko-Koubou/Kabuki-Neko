@@ -341,3 +341,9 @@
 - Integrasi downstream: `StateProjection.register` menunggu projector domain dan gagal tertutup sebelum registrasi; gateway kelak memanggil `StateConnections.install`. Cluster routing/cache reload terverifikasi; failover/data-loss dan benchmark skala tetap task hardening tersendiri.
 
 - Verifikasi ulang sebelum commit (2026-11-06): API lint/typecheck/build, 50 unit test dan 22 contract test state-parity lulus.
+
+## TASK-051 — 2026-11-06T13:37:16.323074+07:00
+
+- Files: `apps/api/src/common/zod-validation.pipe.ts`, `error.filter.ts`, `request-context.middleware.ts`, `apps/api/src/main.ts`; checklist/log.
+- Implementasi: strict schema pipe; trusted application error envelope dan generic fallback; server UUID/no-store; JSON 5MiB dan aggregate multipart limits (chunked juga), allowlist upload/import, GET/DELETE body rejection. Parser route tetap wajib enforce file limits dari settings.
+- Verifikasi: API lint/typecheck/build PASS; 10 assertion HTTP dengan Supertest pada controller Nest terisolasi PASS: JSON400, extra body/query422, success201, redacted500, unsupported415, oversized413, missing404, malformed multipart400, correlation/no-store. Script smoke sementara `/tmp/kabuki-http-boundary-smoke.cjs`; endpoint produk belum tersedia.
