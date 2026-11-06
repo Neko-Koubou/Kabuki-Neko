@@ -1,12 +1,12 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 59 task selesai, 137 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 60 task selesai, 137 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
 ## 1. Execution summary
 
-Saat planning, workspace belum memiliki aplikasi, manifest, lockfile atau runner. Plan berisi **196 task** (termasuk task koreksi dan perluasan audio 2026-10-31), masing-masing **1–4 file konkret**. TASK-001 kini menyediakan manifest, lockfile dan dependency tooling; konfigurasi runner dan aplikasi menunggu task berikutnya. Perubahan upstream yang telah ada dipertahankan. Status handoff lama pada upstream merupakan catatan tahap sebelumnya, bukan instruksi mengulang SA.
+Saat planning, workspace belum memiliki aplikasi, manifest, lockfile atau runner. Plan berisi **197 task** (termasuk task koreksi dan perluasan audio 2026-10-31), masing-masing **1–4 file konkret**. TASK-001 kini menyediakan manifest, lockfile dan dependency tooling; konfigurasi runner dan aplikasi menunggu task berikutnya. Perubahan upstream yang telah ada dipertahankan. Status handoff lama pada upstream merupakan catatan tahap sebelumnya, bukan instruksi mengulang SA.
 
 Revisi audio pengguna 2026-10-31: sumber aktif `audio-assets/kabuki-neko-audio/` berisi **20 MP3 + CREDITS.md**, termasuk empat lobby dan sepuluh SFX. [Audio engine revision](audio-engine-revision.md) adalah addendum normatif yang menggantikan baseline audio lama: Opus/WebM + MP3, manifest dinamis, default random, role-specific Howler choreography dan PODIUM8s. Inventaris/hash dan gap atribusi tersedia di addendum; file input dipertahankan. Task selesai sebelumnya tetap catatan historis, koreksi dilakukan dalam task baru.
 
@@ -818,9 +818,22 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/redis-answers.spec.ts` concurrent submit/skip/timer and crash after freeze, no double score; t deadline/+1500/+1501 memakai controlled server fixtures.
 
+### - [x] TASK-049B: Lengkapi lifecycle command host dan finalization Redis
+- **Traceability**: `US-10`, `US-12`, `US-16`, SA §6.1/§6.3; kebutuhan integrasi seluruh interface pada TASK-050.
+- **Depends On**: `TASK-049`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/providers/state/lua/mutate-room.lua`
+  - `MODIFY` `apps/api/src/providers/state/lua/close-question.lua`
+  - `MODIFY` `tests/contracts/redis-answers.spec.ts`
+- **Implementation Specs**:
+  - Simpan dedup pending command skip/end dalam sidecar room; ACK sukses baru tersedia sesudah CAS skor/phase. Retry hash/host/version tetap diperiksa atomik.
+  - Freeze report CAS menghapus physical TTL, durable acknowledgment dan status finalization terikat session; READY tidak dapat diregresikan, gagal/pending tetap pinned.
+- **Definition of Done (Verification)**:
+  - Contract Redis command/finalization nyata, API lint/typecheck dan ESLint contract lulus.
+
 ### - [ ] TASK-050: Hubungkan Redis store dan distribusi event
 - **Traceability**: `US-12`, `US-16`, [SA §6.1](03-system-analysis.md#61-adapter-contract-dan-redis-cluster)
-- **Depends On**: `TASK-049`, `TASK-025`, `TASK-045`
+- **Depends On**: `TASK-049`, `TASK-049B`, `TASK-025`, `TASK-045`
 - **Target Files**:
   - `CREATE` `apps/api/src/providers/state/redis-state.store.ts`
   - `CREATE` `apps/api/src/providers/state/state.module.ts`

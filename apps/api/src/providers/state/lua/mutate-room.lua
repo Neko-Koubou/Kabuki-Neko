@@ -29,6 +29,26 @@ local s = cjson.decode(raw)
 if s.sessionId ~= session then return err('ROOM_NOT_FOUND') end
 local expired = now >= tonumber(redis.call('HGET', KEYS[1], 'expiresAt')) or now >= s.hardExpiresAt or (s.phase == 'LOBBY' and now >= s.lobbyActiveAt + 7200000)
 if s.phase == 'FINISHED' then expired = now >= s.timing.phaseStartedAt + 3600000 end
+-- Finalization maintenance remains available after logical gameplay expiry.
+if op.kind == 'freezeReport' then
+  if s.revision ~= op.expectedRevision or s.frozenReport ~= cjson.null then return cjson.encode({result='RETRY'}) end
+  if s.phase ~= 'PODIUM' and s.phase ~= 'FINISHED' then return err('INVALID_PHASE') end
+  if op.report.session.id ~= session or op.report.session.hostId ~= s.hostId or op.report.session.pinCode ~= s.pinCode then return err('INVALID_REFERENCE') end
+  s.frozenReport=op.report; s.revision=s.revision+1
+  redis.call('HSET',KEYS[1],'state',cjson.encode(s)); redis.call('PERSIST',KEYS[1]); redis.call('PERSIST',KEYS[3])
+  return cjson.encode({result='COMMITTED'})
+elseif op.kind == 'acknowledgeDurableReport' then
+  if s.frozenReport == cjson.null then return err('INVALID_PHASE') end
+  redis.call('HSET',KEYS[1],'durable','1'); return cjson.encode({result=true})
+elseif op.kind == 'markFinalization' then
+  local status=op.status
+  if status.sessionId ~= session then return err('INVALID_REFERENCE') end
+  if s.frozenReport == cjson.null or (status.status == 'ready' and redis.call('HGET',KEYS[1],'durable') ~= '1') then return err('FINALIZATION_PENDING') end
+  if s.finalization ~= cjson.null and s.finalization.status == 'ready' and status.status ~= 'ready' then return err('INVALID_PHASE') end
+  s.finalization=status; s.revision=s.revision+1; s.publicRevision=s.revision
+  redis.call('HSET',KEYS[1],'state',cjson.encode(s))
+  return cjson.encode({revision=s.revision})
+end
 if expired then return err('ROOM_EXPIRED') end
 local function write(public)
   s.revision = s.revision + 1
@@ -87,6 +107,7 @@ if receipt then
   return cjson.encode({committed=false, revision=s.revision, phaseVersion=s.phaseVersion, ack=receipt.ack})
 end
 if s.phaseVersion ~= op.expectedPhaseVersion then return err('STALE_PHASE') end
+if redis.call('HEXISTS',KEYS[1],'pendingCommand') == 1 then return err('OPERATION_PENDING') end
 local data
 if op.event == 'host:lock_room' then
   if s.phase ~= 'LOBBY' then return err('INVALID_PHASE') end

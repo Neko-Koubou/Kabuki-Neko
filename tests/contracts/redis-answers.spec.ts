@@ -119,6 +119,77 @@ function player(n = 6) {
   });
 }
 
+function report() {
+  return {
+    schemaVersion: 1,
+    session: {
+      id: uuid(1),
+      quizId: uuid(4),
+      quizTitleSnapshot: "Cats",
+      quizRevision: 1,
+      hostId: uuid(5),
+      pinCode: "000123",
+      displayMode: "PROJECTOR",
+      endReason: "COMPLETED",
+      totalPlayers: 1,
+      totalQuestions: 1,
+      playedQuestions: 1,
+      startedAt: 1000,
+      endedAt: 22000,
+    },
+    quiz: quiz(),
+    players: [
+      {
+        id: uuid(6),
+        sessionId: uuid(1),
+        nickname: "Neko",
+        avatarStyle: "bottts",
+        avatarSeed: "cat",
+        joinOrder: 0,
+        isKicked: false,
+        finalScore: 0,
+        finalRank: 1,
+        correctCount: 0,
+        unansweredCount: 0,
+        maxStreak: 0,
+        avgResponseTimeMs: 1000,
+        joinedAt: 0,
+        kickedAt: null,
+      },
+    ],
+    questions: [
+      {
+        questionIndex: 0,
+        sourceQuestionId: uuid(2),
+        snapshot: question(),
+        status: "PLAYED",
+        openedAt: 1000,
+        closedAt: 22000,
+        closeReason: "TIMER",
+        eligiblePlayerIds: [uuid(6)],
+      },
+    ],
+    answers: [
+      {
+        playerId: uuid(6),
+        questionIndex: 0,
+        questionId: uuid(2),
+        submissionId: uuid(7),
+        submittedPayload: "Cat",
+        result: "INCORRECT",
+        isCorrect: false,
+        accuracyNumerator: 0,
+        accuracyDenominator: 1,
+        responseTimeMs: 1000,
+        receivedAt: 2000,
+        pointsAwarded: 0,
+        streakBonusAwarded: 0,
+        currentStreak: 0,
+      },
+    ],
+  };
+}
+
 const session = uuid(1);
 const keys = [
   "kabukineko:room:{000123}:meta",
@@ -367,6 +438,83 @@ describe("Redis atomic answer admission and scoring commit", () => {
     ).toMatchObject({ result: "RETRY" });
     expect(await state()).toMatchObject({ phase: "QUESTION_ANSWERING" });
     expect(await run("close-question", input)).toMatchObject({ result: "COMMITTED" });
+  });
+  it.each(["host:skip_timer", "host:end_game"])(
+    "persists %s ACK only after score CAS and rejects conflicting retries",
+    async (event) => {
+      await seed();
+      const op = {
+        kind: "hostCommand",
+        event,
+        hostId: uuid(5),
+        requestId: uuid(50),
+        payloadHash: "a".repeat(64),
+        expectedPhaseVersion: 1,
+      };
+      expect(await run("close-question", { ...op, hostId: uuid(90) })).toMatchObject({
+        error: "FORBIDDEN",
+      });
+      expect(await run("close-question", op)).toMatchObject({ error: "OPERATION_PENDING" });
+      expect(await run("close-question", { ...op, payloadHash: "b".repeat(64) })).toMatchObject({
+        error: "IDEMPOTENCY_CONFLICT",
+      });
+      expect(await run("admit-answer", answer())).toMatchObject({ error: "INVALID_PHASE" });
+      expect(await run("close-question", await commit())).toMatchObject({ result: "COMMITTED" });
+      const response = await run("close-question", op);
+      expect(response).toMatchObject({
+        committed: false,
+        ack: { ok: true, data: { phase: event === "host:end_game" ? "PODIUM" : "ANSWER_REVEAL" } },
+      });
+      expect(await run("close-question", op)).toEqual(response);
+    },
+  );
+  it("pins reports before durable acknowledgment and prevents finalization regression", async () => {
+    await seed();
+    const end = {
+      kind: "hostCommand",
+      event: "host:end_game",
+      hostId: uuid(5),
+      requestId: uuid(50),
+      payloadHash: "a".repeat(64),
+      expectedPhaseVersion: 1,
+    };
+    await run("close-question", end);
+    await run("close-question", await commit());
+    const snapshot = await state();
+    expect(
+      await run("mutate-room", { kind: "freezeReport", expectedRevision: 0, report: report() }),
+    ).toMatchObject({ result: "RETRY" });
+    expect(
+      await run("mutate-room", {
+        kind: "freezeReport",
+        expectedRevision: snapshot.revision,
+        report: report(),
+      }),
+    ).toMatchObject({ result: "COMMITTED" });
+    expect(await redis.pttl(keys[0] ?? "")).toBe(-1);
+    const status = {
+      sessionId: session,
+      status: "ready",
+      reportId: session,
+      retryable: false,
+      errorCode: null,
+      updatedAt: Date.now(),
+    };
+    expect(await run("mutate-room", { kind: "markFinalization", status })).toMatchObject({
+      error: "FINALIZATION_PENDING",
+    });
+    expect(await run("mutate-room", { kind: "acknowledgeDurableReport" })).toMatchObject({
+      result: true,
+    });
+    expect(await run("mutate-room", { kind: "markFinalization", status })).toHaveProperty(
+      "revision",
+    );
+    expect(
+      await run("mutate-room", {
+        kind: "markFinalization",
+        status: { ...status, status: "pending", reportId: null },
+      }),
+    ).toMatchObject({ error: "INVALID_PHASE" });
   });
   it("matches SHA-256 test vectors in both production scripts", async () => {
     for (const name of ["admit-answer", "close-question"]) {

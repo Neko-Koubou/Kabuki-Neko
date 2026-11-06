@@ -317,3 +317,10 @@
 - Files: `apps/api/src/providers/state/lua/admit-answer.lua`, `close-question.lua`, `tests/contracts/redis-answers.spec.ts`; checklist/log.
 - Atomic Redis TIME admission, immutable answer/freeze, last-required-answer close, immediate skip/end, complete totals/result/phase CAS. Controlled clock is substituted only in test-loaded source; production has no caller timestamp override.
 - Verification: 10 contract test Redis 7 nyata lulus: deadline/+1500/+1501, concurrent submit/skip, duplicate ACK setelah reveal, freeze recovery, result CAS once, empty required set, stale generation/revision dan SHA-256 vectors. API lint/typecheck dan ESLint contract lulus.
+
+
+## TASK-049B — 2026-11-06T10:01:26+07:00
+
+- Files: `lua/mutate-room.lua`, `lua/close-question.lua`, `tests/contracts/redis-answers.spec.ts`; checklist/log.
+- Persisted pending host command receipts through scoring commit and added session-bound finalization maintenance after logical expiry.
+- Verification: 23 contract test Redis nyata lulus (room + answers), termasuk delayed host ACK/dedup, freeze report CAS/PERSIST, durable guard dan READY monotonic. API lint/typecheck dan ESLint contract lulus.

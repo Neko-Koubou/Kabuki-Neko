@@ -63,6 +63,46 @@ local function freeze(reason)
   s.closedQuestions[tostring(s.questionIndex)]=closed; s.accepting=false
   return closed
 end
+-- Host skip/end use the same atomic freeze and persist their pending receipt.
+-- The API waits/reconciles this receipt; an interim freeze is never a success ACK.
+local function ack(command)
+  local data={phase=s.phase,phaseVersion=s.phaseVersion}
+  if command.event == 'host:end_game' then data.phase='PODIUM'; data.finalization=s.finalization end
+  local response={ok=true,requestId=command.requestId,serverTime=now,data=data}
+  s.commands[command.requestId]={actorId=command.hostId,payloadHash=command.payloadHash,ack=response,createdAt=now}
+  return response
+end
+if op.kind == 'hostCommand' then
+  if expired then return err('ROOM_EXPIRED') end
+  if op.hostId ~= s.hostId then return err('FORBIDDEN') end
+  local previous=s.commands[op.requestId]
+  if previous then
+    if previous.actorId ~= op.hostId or previous.payloadHash ~= op.payloadHash then return err('IDEMPOTENCY_CONFLICT') end
+    return cjson.encode({committed=false,revision=s.revision,phaseVersion=s.phaseVersion,ack=previous.ack})
+  end
+  local pending=redis.call('HGET',KEYS[1],'pendingCommand')
+  if pending then
+    pending=cjson.decode(pending)
+    if pending.requestId == op.requestId and pending.payloadHash ~= op.payloadHash then return err('IDEMPOTENCY_CONFLICT') end
+    return err('OPERATION_PENDING')
+  end
+  if op.expectedPhaseVersion ~= s.phaseVersion then return err('STALE_PHASE') end
+  if op.event ~= 'host:skip_timer' and op.event ~= 'host:end_game' then return err('INVALID_FORMAT') end
+  if s.phase == 'QUESTION_ANSWERING' then
+    if not s.accepting then return err('OPERATION_PENDING') end
+    freeze(op.event == 'host:end_game' and 'HOST_END' or 'HOST_SKIP')
+    write(false); redis.call('HSET',KEYS[1],'pendingCommand',cjson.encode(op))
+    return err('OPERATION_PENDING')
+  end
+  if op.event == 'host:skip_timer' then return err('INVALID_PHASE') end
+  if s.phase ~= 'PODIUM' and s.phase ~= 'FINISHED' then
+    s.phase='PODIUM'; s.phaseVersion=s.phaseVersion+1; s.accepting=false; s.endReason='HOST_ENDED'
+    s.timing={phaseStartedAt=now,phaseEndsAt=now+8000,questionStartedAt=cjson.null,inputClosesAt=cjson.null,acceptanceClosesAt=cjson.null}
+    s.finalization={sessionId=session,status='pending',reportId=cjson.null,retryable=true,errorCode=cjson.null,updatedAt=now}
+  end
+  local response=ack(op); write(true)
+  return cjson.encode({committed=true,revision=s.revision,phaseVersion=s.phaseVersion,ack=response})
+end
 local index=s.questionIndex ~= cjson.null and tostring(s.questionIndex) or 'none'
 local closed=s.closedQuestions[index]
 if op.kind == 'commit' then
@@ -87,7 +127,10 @@ if op.kind == 'commit' then
     s.endReason=closed.reason == 'EXPIRED' and 'EXPIRED' or 'HOST_ENDED'
     s.finalization={sessionId=session,status='pending',reportId=cjson.null,retryable=true,errorCode=cjson.null,updatedAt=now}
   end
-  write(true); return cjson.encode({result='COMMITTED',revision=s.revision,phaseVersion=s.phaseVersion})
+  local pending=redis.call('HGET',KEYS[1],'pendingCommand')
+  if pending then ack(cjson.decode(pending)) end
+  write(true); redis.call('HDEL',KEYS[1],'pendingCommand')
+  return cjson.encode({result='COMMITTED',revision=s.revision,phaseVersion=s.phaseVersion})
 end
 if op.kind ~= 'close' then return err('INVALID_FORMAT') end
 if expired and op.reason ~= 'EXPIRED' then return err('ROOM_EXPIRED') end
