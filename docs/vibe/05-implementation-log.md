@@ -310,3 +310,10 @@
 - Files: `apps/api/src/providers/state/lua/{mutate-room,bind-player,release-room}.lua`, `tests/contracts/redis-room.spec.ts`; checklist/log.
 - Added bounded same-slot room commands, generation/ticket/receipt binding, logical TTL, conditional lease epochs and frozen-report-safe release. Redis cjson empty array restoration remains the typed adapter responsibility in TASK-050.
 - Verification: 10 contract test Redis 7 nyata lulus melalui container terisolasi; API lint/typecheck dan ESLint contract lulus. Test menggunakan sudo untuk akses socket Docker yang tidak tersedia bagi user shell. Tidak ada test skipped.
+
+
+## TASK-049 — 2026-11-06T09:59:18+07:00
+
+- Files: `apps/api/src/providers/state/lua/admit-answer.lua`, `close-question.lua`, `tests/contracts/redis-answers.spec.ts`; checklist/log.
+- Atomic Redis TIME admission, immutable answer/freeze, last-required-answer close, immediate skip/end, complete totals/result/phase CAS. Controlled clock is substituted only in test-loaded source; production has no caller timestamp override.
+- Verification: 10 contract test Redis 7 nyata lulus: deadline/+1500/+1501, concurrent submit/skip, duplicate ACK setelah reveal, freeze recovery, result CAS once, empty required set, stale generation/revision dan SHA-256 vectors. API lint/typecheck dan ESLint contract lulus.
