@@ -221,13 +221,7 @@ function fromCsv(text: string): Omit<QuizExportV1, "media"> {
     questions,
   };
 }
-export function importQuiz(
-  bytes: Uint8Array,
-  format: "json" | "csv",
-  actorId: string,
-  media: ReadonlyMap<string, CurrentQuizMedia>,
-  mapping: unknown = {},
-) {
+export function parseImportDocument(bytes: Uint8Array, format: "json" | "csv") {
   if (bytes.byteLength > IMPORT_LIMITS.bytes) throw new ApiError("PAYLOAD_TOO_LARGE", 413);
   let text: string;
   try {
@@ -235,7 +229,6 @@ export function importQuiz(
   } catch {
     throw new ApiError("MALFORMED_IMPORT", 400);
   }
-  const mediaMap = checked(mediaMapSchema, mapping, "mediaMap");
   let document: Omit<QuizExportV1, "media">;
   if (format === "json") {
     const value = json(text);
@@ -250,6 +243,17 @@ export function importQuiz(
   } else document = fromCsv(text);
   if (!importStructureGuardSchema.safeParse(document).success)
     throw new ApiError("PAYLOAD_TOO_LARGE", 413);
+  return document;
+}
+export function importQuiz(
+  bytes: Uint8Array,
+  format: "json" | "csv",
+  actorId: string,
+  media: ReadonlyMap<string, CurrentQuizMedia>,
+  mapping: unknown = {},
+) {
+  const document = parseImportDocument(bytes, format);
+  const mediaMap = checked(mediaMapSchema, mapping, "mediaMap");
   const errors: Issue[] = [];
   function resolve(ref: string | null, path: string) {
     if (ref === null) return null;

@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 82 task selesai, 122 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 83 task selesai, 122 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -1118,9 +1118,24 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/modules/quizzes/quiz-transfer.spec.ts` malformed headers/JSON cells/version/depth, media denied dan malicious URLs; exported keys preserve puzzle/text semantics.
 
+### - [x] TASK-064A: Persist imported quiz graphs in the operation transaction
+- **Traceability**: `US-05`, SA §4.3 and §7.2; prerequisite discovered while implementing TASK-065.
+- **Depends On**: `TASK-064`
+- **Target Files**:
+  - `MODIFY` `packages/database/src/repositories/quizzes.repository.ts`
+  - `MODIFY` `tests/contracts/quizzes.repository.spec.ts`
+  - `MODIFY` `apps/api/src/modules/quizzes/quiz-import.ts`
+- **Implementation Specs**:
+  - Expose bounded structural parsing for the service to resolve only actual media references before validation; retain existing JSON/CSV behavior.
+  - Insert a validated imported draft with fresh quiz/question/option IDs and PRIVATE visibility using the same active database transaction as its operation receipt.
+  - Lock and recheck owned READY media; reject foreign references and invalid transaction managers. Roll back the entire graph and receipt on failure.
+- **Definition of Done (Verification)**:
+  - Database lint/typecheck/build and `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/quizzes.repository.spec.ts` pass for SQLite/PostgreSQL/MySQL. API lint/typecheck and quiz-transfer unit tests also pass.
+- **Commit Message**: `TASK-064A: Persist imported quiz graphs atomically with operation receipts`
+
 ### - [ ] TASK-065: Hubungkan transaksi import dan download templates
 - **Traceability**: `US-05`, [SA §4.3](03-system-analysis.md#43-kuis-dan-importexport)
-- **Depends On**: `TASK-064`
+- **Depends On**: `TASK-064`, `TASK-064A`
 - **Target Files**:
   - `MODIFY` `apps/api/src/modules/quizzes/quizzes.controller.ts`
   - `MODIFY` `apps/api/src/modules/quizzes/quizzes.service.ts`

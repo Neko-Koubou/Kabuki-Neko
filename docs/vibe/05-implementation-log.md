@@ -462,3 +462,9 @@
 - Files: quiz import/export, transfer tests and docs/import-format.md; task checklist/log.
 - Strict UTF-8/BOM, bounded JSON and RFC4180 CSV with exact 17 headers; all six types/draft semantics, safe export filenames, new PRIVATE import IDs, owned READY media mapping without URL fetch, bounded diagnostics and format guide.
 - Verification: API lint/typecheck PASS; 5 transfer tests PASS including JSON/CSV roundtrips, malformed headers/cells/UTF-8/version/depth/bytes, 600 actual issues capped to 200, foreign/pending media denial and no network requests.
+
+## TASK-064A — 2026-11-07T04:26:59.025848+07:00
+
+- Files: quizzes repository/contract and quiz import parser; task checklist/log.
+- Added transactional PRIVATE draft insertion with fresh graph IDs and locked owned READY media checks. Exposed bounded structural parsing for precise media resolution before import validation.
+- Verification: database lint/typecheck/build and API lint/typecheck PASS; 3 real SQLite/PostgreSQL/MySQL contracts and 5 transfer unit tests PASS. Initial container run lacked socket access; full rerun through sudo passed. Tests cover graph/receipt rollback, foreign media rejection, active-manager requirement and successful import persistence.

@@ -96,6 +96,42 @@ it.each<DatabaseDriver>(["sqlite", "postgres", "mysql"])(
         expect(source.content.questions[0]?.options).toHaveLength(2);
         expect((await repo.list(guest, { scope: "public", search: "%_" })).items).toHaveLength(1);
         await expect(repo.save(guest, id, 1, source.content, 1)).rejects.toThrow("FORBIDDEN");
+        expect(() => repo.importDraft(owner, source.content, 1, db.manager)).toThrow(
+          "INVALID_REFERENCE",
+        );
+        await expect(
+          operations.run({ ...request, operation: "quiz.import" }, 1, async (manager) => {
+            await repo.importDraft(guest, source.content, 1, manager);
+            throw new Error("Unexpected import");
+          }),
+        ).rejects.toThrow("INVALID_REFERENCE");
+        await expect(
+          operations.run({ ...request, operation: "quiz.import" }, 1, async (manager) => {
+            const importedId = await repo.importDraft(owner, source.content, 1, manager);
+            const imported = await repo.read(owner, importedId, manager);
+            expect(imported.content.visibility).toBe("PRIVATE");
+            expect(imported.content.questions[0]?.id).not.toBe(source.content.questions[0]?.id);
+            expect(imported.content.questions[0]?.options[0]?.id).not.toBe(
+              source.content.questions[0]?.options[0]?.id,
+            );
+            throw new Error("IMPORT-ROLLBACK");
+          }),
+        ).rejects.toThrow("IMPORT-ROLLBACK");
+        expect(await db.manager.count("quizzes")).toBe(1);
+        expect(await db.manager.count("questions")).toBe(1);
+        expect(await db.manager.count("question_options")).toBe(2);
+        expect(await db.manager.count("request_dedup")).toBe(0);
+        const receipt = await operations.run(
+          { ...request, operation: "quiz.import" },
+          1,
+          async (manager) => ({
+            resourceId: await repo.importDraft(owner, source.content, 1, manager),
+            httpStatus: 201,
+          }),
+        );
+        expect(receipt.resource_id).toBeTruthy();
+        expect(await db.manager.count("quizzes")).toBe(2);
+        expect(await db.manager.count("request_dedup")).toBe(1);
         const copy = await repo.duplicate(guest, id, 1),
           snapshot = await repo.read(guest, copy);
         expect(snapshot.content.visibility).toBe("PRIVATE");

@@ -322,6 +322,22 @@ export class QuizzesRepository {
       return insertQuiz(m, actor, quiz, now);
     });
   }
+  importDraft(actor: string, input: unknown, now: number, manager: EntityManager) {
+    const draft = quizWriteSchema.parse(input);
+    const quiz = quizWriteSchema.parse({
+      ...draft,
+      visibility: "PRIVATE",
+      questions: draft.questions.map((question) => ({
+        ...question,
+        id: randomUUID(),
+        options: question.options.map((option) => ({ ...option, id: randomUUID() })),
+      })),
+    });
+    return this.transaction(manager, async (m) => {
+      await validateAssets(m, actor, quiz, new Set());
+      return insertQuiz(m, actor, quiz, now);
+    });
+  }
   save(actor: string, id: string, revision: number, input: unknown, now: number) {
     const quiz = quizWriteSchema.parse(input);
     return writeTransaction(this.db, async (m) => {
