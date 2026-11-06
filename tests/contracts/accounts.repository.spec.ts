@@ -3,6 +3,7 @@ import {
   createDataSource,
   domainSchemas,
   migrateDatabase,
+  OperationsRepository,
   type DatabaseDriver,
 } from "../../packages/database/src";
 import {
@@ -49,6 +50,26 @@ it.each<DatabaseDriver>(["sqlite", "postgres", "mysql"])(
           settings = new SettingsRepository(db);
         const admin = account("Admin@Example.ORG"),
           original = token(admin.id);
+        const operations = new OperationsRepository(db);
+        const operation = {
+          actorScope: "setup",
+          operation: "auth.setup" as const,
+          key: randomUUID(),
+          request: {},
+        };
+        await expect(
+          operations.run(operation, 1, async (manager) => {
+            await auth.setup(admin, "Test", original, 1, manager);
+            throw new Error("ROLLBACK-CANARY");
+          }),
+        ).rejects.toThrow("ROLLBACK-CANARY");
+        expect(await db.manager.count("users")).toBe(0);
+        expect(await db.manager.count("refresh_tokens")).toBe(0);
+        expect(await db.manager.count("request_dedup")).toBe(0);
+        expect((await settings.current()).initialized).toBe(false);
+        expect(() => auth.setup(admin, "Test", original, 1, db.manager)).toThrow(
+          "INVALID_REFERENCE",
+        );
         const setup = await Promise.allSettled([
           auth.setup(admin, "Test", original, 1),
           auth.setup(admin, "Test", original, 1),
@@ -68,6 +89,20 @@ it.each<DatabaseDriver>(["sqlite", "postgres", "mysql"])(
           created_at: 2,
           expires_at: 999,
         });
+        const rejected = account("rollback@example.org");
+        await expect(
+          operations.run(
+            { ...operation, operation: "auth.register", key: randomUUID() },
+            3,
+            async (manager) => {
+              await auth.register(rejected, token(rejected.id), 3, inviteHash, manager);
+              throw new Error("REGISTER-ROLLBACK-CANARY");
+            },
+          ),
+        ).rejects.toThrow("REGISTER-ROLLBACK-CANARY");
+        expect(await auth.credentials(rejected.email)).toBeNull();
+        expect((await auth.invitations({ status: "ACTIVE" }, 3)).meta.total).toBe(1);
+        expect(await db.manager.count("request_dedup")).toBe(0);
         const entrants = [account("one@example.org"), account("two@example.org")];
         const join = await Promise.allSettled(
           entrants.map((a) => auth.register(a, token(a.id), 3, inviteHash)),

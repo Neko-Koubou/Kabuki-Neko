@@ -111,8 +111,23 @@ export class AuthRepository {
       if (token) await revokeTokens(manager, userId, token.family_id, now);
     });
   }
-  setup(account: NewAccount, instanceName: string, token: TokenRecord, now: number) {
-    return writeTransaction(this.db, async (m) => {
+  private transaction<T>(
+    manager: EntityManager | undefined,
+    work: (manager: EntityManager) => Promise<T>,
+  ) {
+    if (!manager) return writeTransaction(this.db, work);
+    if (!manager.queryRunner?.isTransactionActive || manager.connection !== this.db)
+      throw new Error("INVALID_REFERENCE");
+    return work(manager);
+  }
+  setup(
+    account: NewAccount,
+    instanceName: string,
+    token: TokenRecord,
+    now: number,
+    manager?: EntityManager,
+  ) {
+    return this.transaction(manager, async (m) => {
       const settings = await lockSettings(m);
       if (settings.initialized || (await m.count("users")) !== 0) throw new Error("SETUP_COMPLETE");
       const user = await createWithToken(m, account, "SUPERADMIN", token, now);
@@ -125,8 +140,14 @@ export class AuthRepository {
       return user;
     });
   }
-  register(account: NewAccount, token: TokenRecord, now: number, inviteHash?: string) {
-    return writeTransaction(this.db, async (m) => {
+  register(
+    account: NewAccount,
+    token: TokenRecord,
+    now: number,
+    inviteHash?: string,
+    manager?: EntityManager,
+  ) {
+    return this.transaction(manager, async (m) => {
       const settings = await lockSettings(m);
       if (!settings.initialized) throw new Error("SETUP_REQUIRED");
       if (settings.registration_mode === "SINGLE_ADMIN") throw new Error("REGISTRATION_CLOSED");

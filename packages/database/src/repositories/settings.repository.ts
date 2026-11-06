@@ -21,6 +21,9 @@ export async function lockSettings(manager: EntityManager) {
 }
 export class SettingsRepository {
   constructor(private readonly db: DataSource) {}
+  current() {
+    return this.db.getRepository<SettingsRow>("system_settings").findOneByOrFail({ id: "global" });
+  }
   async patch(revision: number, input: unknown, now: number) {
     const fields = settingsPatchSchema.parse(input);
     return writeTransaction(this.db, async (manager) => {

@@ -390,3 +390,9 @@
 - Files: `apps/api/src/modules/auth/auth.service.ts`, `refresh.service.ts`, `refresh.service.spec.ts`; checklist/log.
 - Argon2id m65536/t3/p1/salt16 with shared two-job/twenty-waiter bound, dummy verification and uniform login denial; transactional session insertion. HS256 access900s and separate-secret/audience refresh7d absolute families, SHA256 persistence, locked rotation/reuse revocation, current user/version checks, scoped idempotent logout and narrow cookie options.
 - Verification: API lint/typecheck PASS; 10 real SQLite/Argon2/JWT tests PASS. Two concurrent hashes measured 230ms, RSS baseline212017152 bytes, sampled peak352788480 bytes (delta140771328 bytes); local test-run measurement, not a production benchmark. Tests cover consumed/reused/concurrent refresh, expiry, inactive/stale users, wrong audience/algorithm/signature, logout, hash saturation503 and cookie attributes.
+
+## TASK-056A — 2026-11-06T18:37:58.509367+07:00
+
+- Files: `packages/database/src/repositories/auth.repository.ts`, `settings.repository.ts`, `tests/contracts/accounts.repository.spec.ts`; checklist/log.
+- Setup/register can share a caller-owned active transaction from the same database; standalone calls retain their own transaction. Added typed current settings lookup.
+- Verification: database lint/typecheck/build PASS; all 3 real SQLite/PostgreSQL/MySQL account contracts PASS. Forced composed setup/register failure rolls back account, refresh token, initialized flag, invitation consumption and operation receipt together; nontransactional manager rejected. Docker runner used sudo.
