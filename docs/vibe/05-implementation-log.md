@@ -289,3 +289,10 @@
 
 - Files: `apps/api/src/providers/state/game-state.interface.ts`, `apps/api/src/providers/state/private-state.schema.ts`, `apps/api/src/providers/state/private-state.schema.spec.ts`.
 - Implementasi/verifikasi: Schema privat strict mencakup room/player, snapshot kuis, jawaban, freeze/result, lease/ticket/receipt terpisah dan reservasi kapasitas. Kontrak operasi atomik melarang read-modify-write gameplay generik. Frozen report menolak credential/socket, memvalidasi referensi dan batas byte; UUIDv5 terbatas pada ID histori yang dihasilkan. Frozen install, build shared/database, API typecheck/lint dan 7 unit test lulus.
+
+
+## TASK-047 — 2026-11-06T09:50:12+07:00
+
+- Files: `apps/api/src/providers/state/memory-state.store.ts`, `memory-state.store.spec.ts`; task checklist/log.
+- Implemented synchronous atomic memory operations, authoritative clock, delayed skip/end ACK until scoring commit, session/generation fences, dedup, logical expiry/sweep, durable-report retention and injected role projection.
+- Verification: API lint dan typecheck lulus; 17 unit test memory-state lulus (inclusive deadline, answer/close race, replay/conflict, freeze/CAS once, empty required set, generation, PIN reuse, lease epoch, detached state, retention, join receipt, scheduler CAS dan friendly ticket).
