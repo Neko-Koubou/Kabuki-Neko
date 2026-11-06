@@ -1,6 +1,6 @@
 import type { DataSource, EntityManager } from "typeorm";
-import { emailSchema, userPatchSchema, type User } from "@kabuki-neko/shared";
-import { lockParent, writeTransaction } from "../data-source.factory";
+import { emailSchema, userPatchSchema, usersQuerySchema, type User } from "@kabuki-neko/shared";
+import { writeTransaction } from "../data-source.factory";
 import { lockSettings } from "./settings.repository";
 export interface UserRow {
   id: string;
@@ -44,13 +44,35 @@ export class UsersRepository {
   current(id: string) {
     return this.db.getRepository<UserRow>("users").findOneBy({ id });
   }
+  async list(input: unknown) {
+    const { page, limit, search, role, isActive } = usersQuerySchema.parse(input);
+    const q = this.db.getRepository<UserRow>("users").createQueryBuilder("u");
+    if (search)
+      q.andWhere(
+        "(LOWER(u.name) LIKE LOWER(:search) ESCAPE '!' OR LOWER(u.email) LIKE LOWER(:search) ESCAPE '!')",
+        {
+          search: `%${search.replace(/[!%_]/gu, "!$&")}%`,
+        },
+      );
+    if (role !== undefined) q.andWhere("u.role = :role", { role });
+    if (isActive !== undefined) q.andWhere("u.is_active = :isActive", { isActive });
+    const [items, total] = await q
+      .orderBy("u.created_at", "DESC")
+      .addOrderBy("u.id", "ASC")
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+    return { items, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+  }
   async patch(id: string, revision: number, input: unknown, now: number) {
     const patch = userPatchSchema.parse(input);
     return writeTransaction(this.db, async (manager) => {
       await lockSettings(manager);
-      await lockParent(manager, "users", id);
       const repo = manager.getRepository<UserRow>("users");
-      const row = await repo.findOneByOrFail({ id });
+      const query = repo.createQueryBuilder("u").where("u.id = :id", { id });
+      if (manager.connection.options.type !== "better-sqlite3") query.setLock("pessimistic_write");
+      const row = await query.getOne();
+      if (!row) throw new Error("NOT_FOUND");
       if (row.revision !== revision) throw new Error("REVISION_CONFLICT");
       const role = patch.role ?? row.role,
         active = patch.isActive ?? row.is_active;

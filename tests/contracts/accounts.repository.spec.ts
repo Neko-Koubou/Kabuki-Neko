@@ -165,6 +165,48 @@ it.each<DatabaseDriver>(["sqlite", "postgres", "mysql"])(
         await expect(
           auth.createSession(other.id, other.password_hash, other.auth_version, token(other.id), 7),
         ).rejects.toThrow("INVALID_CREDENTIALS");
+        expect(
+          (await users.list({ search: "ADMIN@", role: "SUPERADMIN", isActive: "true" })).items.map(
+            (u) => u.id,
+          ),
+        ).toEqual([admin.id]);
+        expect((await users.list({ search: "%" })).meta.total).toBe(0);
+        expect((await users.list({ search: "_" })).meta.total).toBe(0);
+        expect((await users.list({ page: 2, limit: 1 })).items).toHaveLength(1);
+        await expect(users.patch(randomUUID(), 1, { isActive: false }, 7)).rejects.toThrow(
+          "NOT_FOUND",
+        );
+        const freshId = randomUUID();
+        const created = await auth.createInvitation(freshId, admin.id, "a".repeat(64), 100, 7);
+        expect(created.status).toBe("ACTIVE");
+        expect(JSON.stringify(created)).not.toContain("a".repeat(64));
+        await auth.revokeInvitation(freshId, 8);
+        await auth.revokeInvitation(freshId, 9);
+        expect((await auth.invitations({ status: "REVOKED" }, 200)).items[0]).toMatchObject({
+          id: freshId,
+          revokedAt: 8,
+        });
+        await expect(auth.revokeInvitation(inviteId, 8)).rejects.toThrow("INVITE_UNAVAILABLE");
+        await expect(auth.revokeInvitation(randomUUID(), 8)).rejects.toThrow("NOT_FOUND");
+        const rollbackInvite = randomUUID();
+        await expect(
+          operations.run(
+            { ...operation, operation: "invitation.create", key: randomUUID() },
+            8,
+            async (manager) => {
+              await auth.createInvitation(
+                rollbackInvite,
+                admin.id,
+                "b".repeat(64),
+                100,
+                8,
+                manager,
+              );
+              throw new Error("INVITE-ROLLBACK");
+            },
+          ),
+        ).rejects.toThrow("INVITE-ROLLBACK");
+        expect(await db.manager.findOneBy("invitations", { id: rollbackInvite })).toBeNull();
         const next = { ...token(admin.id), family_id: original.family_id, expires_at: 20000 };
         await expect(
           auth.rotate(original.id, original.token_hash, 1, { ...next, id: original.id }, 4),

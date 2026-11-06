@@ -211,6 +211,43 @@ export class AuthRepository {
       .where("expires_at < :cutoff", { cutoff: now - 86_400_000 })
       .execute();
   }
+  createInvitation(
+    id: string,
+    actorId: string,
+    codeHash: string,
+    expiresAt: number,
+    now: number,
+    manager?: EntityManager,
+  ) {
+    if (!/^[a-f0-9]{64}$/u.test(codeHash) || expiresAt <= now) throw new Error("INVALID_REFERENCE");
+    return this.transaction(manager, async (m) => {
+      await m.insert("invitations", {
+        id,
+        created_by: actorId,
+        code_hash: codeHash,
+        created_at: now,
+        expires_at: expiresAt,
+      });
+      return invitation(
+        await m.getRepository<InviteRow>("invitations").findOneByOrFail({ id }),
+        now,
+      );
+    });
+  }
+  async revokeInvitation(id: string, now: number) {
+    return writeTransaction(this.db, async (m) => {
+      const query = m
+        .getRepository<InviteRow>("invitations")
+        .createQueryBuilder("i")
+        .where("i.id = :id", { id });
+      if (m.connection.options.type !== "better-sqlite3") query.setLock("pessimistic_write");
+      const row = await query.getOne();
+      if (!row) throw new Error("NOT_FOUND");
+      if (row.used_at !== null) throw new Error("INVITE_UNAVAILABLE");
+      if (row.revoked_at === null) await m.update("invitations", id, { revoked_at: now });
+      return { revoked: true as const };
+    });
+  }
   async invitations(input: unknown, now: number) {
     const { page, limit, status } = invitationsQuerySchema.parse(input);
     const q = this.db.getRepository<InviteRow>("invitations").createQueryBuilder("i");

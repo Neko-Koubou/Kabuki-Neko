@@ -1011,9 +1011,23 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Assertion HTTP setup201 once, login200, me200, refresh rotation200, logout200, inactive login401; run API build/typecheck dan existing auth specs.
 
+### - [x] TASK-059A: Complete user administration repository operations
+- **Traceability**: `US-01`, `US-02`, `US-15`, SA §4.2; prerequisite gap discovered while implementing TASK-059.
+- **Depends On**: `TASK-058`
+- **Target Files**:
+  - `MODIFY` `packages/database/src/repositories/users.repository.ts`
+  - `MODIFY` `packages/database/src/repositories/auth.repository.ts`
+  - `MODIFY` `tests/contracts/accounts.repository.spec.ts`
+- **Implementation Specs**:
+  - Add validated user paging/filtering with escaped literal search and deterministic ordering.
+  - Add transactional invitation creation with hash-only persistence and idempotency transaction support; serialize revocation with consumption and reject used invitations.
+  - Return NOT_FOUND for missing user mutations and invitations.
+- **Definition of Done (Verification)**:
+  - Database lint, typecheck and build; accounts repository contracts on SQLite, PostgreSQL and MySQL.
+
 ### - [ ] TASK-059: Implementasikan administrasi pengguna dan undangan
 - **Traceability**: `US-01`, `US-02`, `US-15`, [SA §4.2](03-system-analysis.md#42-setup-auth-users-dan-undangan)
-- **Depends On**: `TASK-058`
+- **Depends On**: `TASK-059A`
 - **Target Files**:
   - `CREATE` `apps/api/src/modules/users/users.service.ts`
   - `CREATE` `apps/api/src/modules/users/invitations.service.ts`

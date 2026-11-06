@@ -414,3 +414,9 @@
 - Files: `apps/api/src/modules/auth/auth.controller.ts`, `auth.module.ts`, `apps/api/src/common/common.module.ts`, `apps/api/src/app.module.ts`; checklist/log.
 - Seven auth routes with strict queries/bodies, tiered limits, cookie parsing and scoped HttpOnly/SameSite cookies; secure flag follows configured public API HTTPS. Common providers wire audit/metrics, auth/ownership guards and actor-scoped operation lookup with current resource access.
 - Verification: API lint/typecheck/build PASS; 30 auth/guard/idempotency regression tests PASS. Isolated actual Nest app HTTP assertions PASS for setup201/replay409, login200/me200/register201, refresh rotation200, repeated logout200, inactive401, Origin403, strict422 and operations401/404. No credential in response DTO/receipt; runtime cleanup completed.
+
+## TASK-059A — 2026-11-06T23:26:20.949572+07:00
+
+- Files: users/auth repositories, accounts repository contract; task checklist/log.
+- Added strict user paging and literal search, explicit missing-resource outcomes, hash-only invitation creation within operation transactions, and locked idempotent revocation with used-invitation protection.
+- Verification: database lint/typecheck/build PASS; 3 real SQLite/PostgreSQL/MySQL contracts PASS (Docker through sudo). Covers literal wildcards, filtering/paging, missing IDs, used/repeated revoke and transaction rollback.
