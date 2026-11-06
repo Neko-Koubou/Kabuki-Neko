@@ -284,3 +284,8 @@
 
 - Files: `apps/api/src/providers/storage/storage.module.ts`, `apps/api/src/main.ts`, `apps/api/src/app.module.ts`, `tests/integration/storage-serving.spec.ts`.
 - Implementasi/verifikasi: StorageModule mengikat adapter dan registry dari konfigurasi, mempersistenkan ledger origin dan menutup klien S3 saat shutdown. /uploads memakai confined file handle, MIME allowlist, nosniff, immutable cache, HEAD serta single byte-range. API typecheck/lint/build, seluruh 26 unit test dan integration test API proses nyata lulus untuk exact bytes/header, range, missing object, traversal/symlink dan missing origin.
+
+## TASK-046 — 2026-11-06T09:39:30+07:00
+
+- Files: `apps/api/src/providers/state/game-state.interface.ts`, `apps/api/src/providers/state/private-state.schema.ts`, `apps/api/src/providers/state/private-state.schema.spec.ts`.
+- Implementasi/verifikasi: Schema privat strict mencakup room/player, snapshot kuis, jawaban, freeze/result, lease/ticket/receipt terpisah dan reservasi kapasitas. Kontrak operasi atomik melarang read-modify-write gameplay generik. Frozen report menolak credential/socket, memvalidasi referensi dan batas byte; UUIDv5 terbatas pada ID histori yang dihasilkan. Frozen install, build shared/database, API typecheck/lint dan 7 unit test lulus.
