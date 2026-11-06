@@ -396,3 +396,9 @@
 - Files: `packages/database/src/repositories/auth.repository.ts`, `settings.repository.ts`, `tests/contracts/accounts.repository.spec.ts`; checklist/log.
 - Setup/register can share a caller-owned active transaction from the same database; standalone calls retain their own transaction. Added typed current settings lookup.
 - Verification: database lint/typecheck/build PASS; all 3 real SQLite/PostgreSQL/MySQL account contracts PASS. Forced composed setup/register failure rolls back account, refresh token, initialized flag, invitation consumption and operation receipt together; nontransactional manager rejected. Docker runner used sudo.
+
+## TASK-056 — 2026-11-06T18:40:31.662399+07:00
+
+- Files: `apps/api/src/modules/auth/setup.service.ts`, `setup.service.spec.ts`; checklist/log.
+- Setup/status and registration services validate strict inputs, hash passwords outside SQL locks, and commit account/token/policy/receipt in one transaction. Registration scope uses a hashed canonical email. Credential replay returns409 without new tokens. Status reflects persisted defaultLocale (`id` baseline).
+- Verification: API lint/typecheck PASS; 5 real SQLite/Argon2 service tests PASS covering first-admin race, lost-response replay, PUBLIC/SINGLE_ADMIN/INVITE_ONLY, concurrent single-use invitation, duplicate email and forced rollback/retry.
