@@ -1,3 +1,4 @@
+import { AuthModule } from "./modules/auth/auth.module";
 import { StateModule } from "./providers/state/state.module";
 import { StorageModule } from "./providers/storage/storage.module";
 import { DatabaseModule } from "./providers/database/database.module";
@@ -24,6 +25,6 @@ import { SecretsService } from "./config/secrets.service";
 // eslint-disable-next-line @typescript-eslint/no-extraneous-class -- Nest modules are decorator metadata containers.
 export class RuntimeConfigModule {}
 
-@Module({ imports: [RuntimeConfigModule, DatabaseModule, StorageModule, StateModule] })
+@Module({ imports: [RuntimeConfigModule, DatabaseModule, StorageModule, StateModule, AuthModule] })
 // eslint-disable-next-line @typescript-eslint/no-extraneous-class -- Nest modules are decorator metadata containers.
 export class AppModule {}

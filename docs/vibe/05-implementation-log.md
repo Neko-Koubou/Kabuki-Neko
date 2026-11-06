@@ -408,3 +408,9 @@
 - Files: `apps/api/src/common/guards/jwt.guard.ts`, `roles.guard.ts`, `ownership.guard.ts`, `guards.spec.ts`; checklist/log.
 - Verified principals use private WeakMaps shared across Nest guard instances; role and ownership checks revalidate JWT/current SQL user on each action. PUBLIC reuse, owner-only mutation, private/report404 and no SUPERADMIN bypass; reusable host checks use server-owned host identity.
 - Verification: API lint/typecheck PASS; 5 real SQLite/JWT/service/HTTP tests PASS, covering fabricated principals, forged/stale/inactive tokens, ignored role claims, owner/PUBLIC/private/report matrices, host identity and title non-disclosure.
+
+## TASK-058 — 2026-11-06T18:48:23.002733+07:00
+
+- Files: `apps/api/src/modules/auth/auth.controller.ts`, `auth.module.ts`, `apps/api/src/common/common.module.ts`, `apps/api/src/app.module.ts`; checklist/log.
+- Seven auth routes with strict queries/bodies, tiered limits, cookie parsing and scoped HttpOnly/SameSite cookies; secure flag follows configured public API HTTPS. Common providers wire audit/metrics, auth/ownership guards and actor-scoped operation lookup with current resource access.
+- Verification: API lint/typecheck/build PASS; 30 auth/guard/idempotency regression tests PASS. Isolated actual Nest app HTTP assertions PASS for setup201/replay409, login200/me200/register201, refresh rotation200, repeated logout200, inactive401, Origin403, strict422 and operations401/404. No credential in response DTO/receipt; runtime cleanup completed.
