@@ -71,12 +71,20 @@ export class AuditRepository {
       .addOrderBy("a.id")
       .getOne();
   }
-  purge(now: number) {
+  purge(now: number, retentionDays = 30) {
+    if (
+      !Number.isSafeInteger(now) ||
+      now < 0 ||
+      !Number.isInteger(retentionDays) ||
+      retentionDays < 7 ||
+      retentionDays > 365
+    )
+      throw new Error("INVALID_FORMAT");
     return writeTransaction(this.db, async (m) => {
       const rows = await m
         .getRepository<AuditRow>("audit_events")
         .createQueryBuilder("a")
-        .where("a.occurred_at<=:cutoff", { cutoff: now - AUDIT_RETENTION_MS })
+        .where("a.occurred_at<=:cutoff", { cutoff: now - retentionDays * 86400000 })
         .orderBy("a.occurred_at")
         .addOrderBy("a.id")
         .take(1000)

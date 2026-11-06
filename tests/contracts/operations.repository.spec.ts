@@ -188,6 +188,16 @@ it.each<DatabaseDriver>(["sqlite", "postgres", "mysql"])(
         expect(await audit.purge(AUDIT_RETENTION_MS + 10)).toBe(1);
         expect(await audit.purge(AUDIT_RETENTION_MS + 10)).toBe(0);
         expect(await db.manager.count("audit_events")).toBe(1);
+        for (const days of [6, 366, 7.5, NaN])
+          expect(() => audit.purge(100, days)).toThrow("INVALID_FORMAT");
+        expect(() => audit.purge(-1)).toThrow("INVALID_FORMAT");
+        await db.manager.clear("audit_events");
+        await audit.append(event, 10);
+        expect(await audit.purge(7 * 86400000 + 9, 7)).toBe(0);
+        expect(await audit.purge(7 * 86400000 + 10, 7)).toBe(1);
+        await audit.append(event, 10);
+        expect(await audit.purge(365 * 86400000 + 9, 365)).toBe(0);
+        expect(await audit.purge(365 * 86400000 + 10, 365)).toBe(1);
       } finally {
         await db.destroy();
       }

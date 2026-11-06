@@ -1,12 +1,12 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 64 task selesai, 134 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 65 task selesai, 134 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
 ## 1. Execution summary
 
-Saat planning, workspace belum memiliki aplikasi, manifest, lockfile atau runner. Plan berisi **198 task** (termasuk task koreksi dan perluasan audio 2026-10-31), masing-masing **1–4 file konkret**. TASK-001 kini menyediakan manifest, lockfile dan dependency tooling; konfigurasi runner dan aplikasi menunggu task berikutnya. Perubahan upstream yang telah ada dipertahankan. Status handoff lama pada upstream merupakan catatan tahap sebelumnya, bukan instruksi mengulang SA.
+Saat planning, workspace belum memiliki aplikasi, manifest, lockfile atau runner. Plan berisi **199 task** (termasuk task koreksi dan perluasan audio 2026-10-31), masing-masing **1–4 file konkret**. TASK-001 kini menyediakan manifest, lockfile dan dependency tooling; konfigurasi runner dan aplikasi menunggu task berikutnya. Perubahan upstream yang telah ada dipertahankan. Status handoff lama pada upstream merupakan catatan tahap sebelumnya, bukan instruksi mengulang SA.
 
 Revisi audio pengguna 2026-10-31: sumber aktif `audio-assets/kabuki-neko-audio/` berisi **20 MP3 + CREDITS.md**, termasuk empat lobby dan sepuluh SFX. [Audio engine revision](audio-engine-revision.md) adalah addendum normatif yang menggantikan baseline audio lama: Opus/WebM + MP3, manifest dinamis, default random, role-specific Howler choreography dan PODIUM8s. Inventaris/hash dan gap atribusi tersedia di addendum; file input dipertahankan. Task selesai sebelumnya tetap catatan historis, koreksi dilakukan dalam task baru.
 
@@ -885,9 +885,20 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/common/rate-limit.service.spec.ts` combined join/check budget, spoofed XFF, Origin deny, Redis failure dan concurrent limits.
 
+### - [x] TASK-053A: Selaraskan retensi audit dengan konfigurasi runtime
+- **Traceability**: `US-20`, SA §10.1, environment `AUDIT_RETENTION_DAYS`; prerequisite TASK-053 ditemukan saat implementasi.
+- **Depends On**: `TASK-041`, `TASK-052`
+- **Target Files**:
+  - `MODIFY` `packages/database/src/repositories/audit.repository.ts`
+  - `MODIFY` `tests/contracts/operations.repository.spec.ts`
+- **Implementation Specs**:
+  - Parameter retensi hari 7–365 dengan default30 pada purge; validasi integer dan timestamp sebelum query. Pertahankan batch maksimum1000 dan lookup room-loss30d.
+- **Definition of Done (Verification)**:
+  - Database lint/typecheck/build; contract operations repository pada SQLite/PostgreSQL/MySQL untuk batas7/365, input invalid dan batch1000.
+
 ### - [ ] TASK-053: Sediakan audit service dan operational metrics
 - **Traceability**: `US-20`, [SA §10.1](03-system-analysis.md#101-kontrol-owasp-top-10)
-- **Depends On**: `TASK-041`, `TASK-052`
+- **Depends On**: `TASK-041`, `TASK-052`, `TASK-053A`
 - **Target Files**:
   - `CREATE` `apps/api/src/common/audit.service.ts`
   - `CREATE` `apps/api/src/common/metrics.service.ts`

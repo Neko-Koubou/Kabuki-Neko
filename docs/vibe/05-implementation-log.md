@@ -353,3 +353,9 @@
 - Files: `apps/api/src/common/rate-limit.service.ts`, `guards/origin.guard.ts`, `rate-limit.service.spec.ts`, `apps/api/src/main.ts`; checklist/log.
 - Implementasi: exact HTTP/WS tiers, Redis TIME atomic multi-window limiter, memory parity, fail503, bounded counters; upload2/cleanup1 renewable120s leases. SHA256 principal keys; trusted CIDR XFF parsing; exact Origin/client header, credentialed CORS/Vary. Auth hashing queue tetap terpisah pada TASK-055.
 - Verifikasi: API lint/typecheck/build PASS; 11 tests memory/Redis7 PASS, termasuk combined check/join, concurrency, expiry, outage dan spoofed forwarding. Docker memakai sudo; container dibersihkan. Route-specific/WS tiers dipanggil downstream sesudah identitas diverifikasi; public tier/Origin terpasang di bootstrap.
+
+## TASK-053A — 2026-11-06T13:42:56.136298+07:00
+
+- Files: `packages/database/src/repositories/audit.repository.ts`, `tests/contracts/operations.repository.spec.ts`; checklist/log.
+- Parameter retensi7–365 hari untuk purge, default30; validasi sebelum query dan batch1000 tetap.
+- Verifikasi: database lint/typecheck/build PASS; 3 contract test SQLite/PostgreSQL/MySQL PASS, termasuk batas retensi dan invalid input.
