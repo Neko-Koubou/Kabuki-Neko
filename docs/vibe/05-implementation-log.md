@@ -432,3 +432,9 @@
 - Files: users controller/module, app module, users HTTP integration test; task checklist/log.
 - Registered all five SUPERADMIN/ADMIN-tier routes with strict queries, quoted If-Match validation, ETag updates, one-time invitation responses and static route ordering.
 - Verification: API lint/typecheck/build PASS; real built API HTTP integration PASS across five routes, CREATOR403/no metadata, paging/filter422, absent/stale revisions, last-admin409, access/refresh revocation401, invitation replay409 without plaintext, used revoke409 and repeated unused revoke200. Test uses isolated runtime and cleans up server/database.
+
+## TASK-061 — 2026-11-06T23:34:26.116261+07:00
+
+- Files: quiz validator/snapshot/domain test and question shuffler; task checklist/log.
+- Draft warnings versus host rejection, current READY media and authorized retained-reference checks, independent private snapshots with context-specific accessibility and URLs; cryptographic Fisher–Yates with independent public IDs/index/colors and server-only source mapping.
+- Verification: API lint/typecheck PASS; 9 domain tests PASS across six question types, strict/foreign/missing media boundaries, source mutation isolation, all 24 puzzle permutations (including identity), public field allowlist and text-answer secrecy.

@@ -1052,7 +1052,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:integration --runInBand --runTestsByPath tests/integration/users.spec.ts` all 5 routes, creator deny, stale revision, used invitation revoke409 and cookie/token revocation.
 
-### - [ ] TASK-061: Implementasikan validasi dan snapshot kuis
+### - [x] TASK-061: Implementasikan validasi dan snapshot kuis
 - **Traceability**: `US-03`, `US-04`, `US-07`, `US-10`, [SA §2.6](03-system-analysis.md#26-transaksi-dan-referensi-lintas-pemilik)
 - **Depends On**: `TASK-036`, `TASK-046`, `TASK-058`
 - **Target Files**:
@@ -2962,4 +2962,4 @@ Catatan akhir Stage 4: tidak ada application code, dependency install, migration
 
 Update Stage 5, 2026-10-30: TASK-001 selesai; bukti install, kompatibilitas dan temuan audit dependency tercatat di [05-implementation-log.md](05-implementation-log.md). `.gitignore` disiapkan atas permintaan tambahan pengguna; TASK-002 tetap Pending karena konfigurasi Turbo/ESLint/Prettier belum dibuat.
 
-**Next Step**: Lanjutkan `TASK-061`; verifikasi dan commit setiap task sesuai instruksi pengguna.
+**Next Step**: Lanjutkan `TASK-062`; verifikasi dan commit setiap task sesuai instruksi pengguna.
