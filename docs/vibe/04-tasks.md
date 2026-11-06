@@ -1,12 +1,12 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 56 task selesai, 139 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 57 task selesai, 139 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
 ## 1. Execution summary
 
-Saat planning, workspace belum memiliki aplikasi, manifest, lockfile atau runner. Plan berisi **195 task** (termasuk task koreksi dan perluasan audio 2026-10-31), masing-masing **1–4 file konkret**. TASK-001 kini menyediakan manifest, lockfile dan dependency tooling; konfigurasi runner dan aplikasi menunggu task berikutnya. Perubahan upstream yang telah ada dipertahankan. Status handoff lama pada upstream merupakan catatan tahap sebelumnya, bukan instruksi mengulang SA.
+Saat planning, workspace belum memiliki aplikasi, manifest, lockfile atau runner. Plan berisi **196 task** (termasuk task koreksi dan perluasan audio 2026-10-31), masing-masing **1–4 file konkret**. TASK-001 kini menyediakan manifest, lockfile dan dependency tooling; konfigurasi runner dan aplikasi menunggu task berikutnya. Perubahan upstream yang telah ada dipertahankan. Status handoff lama pada upstream merupakan catatan tahap sebelumnya, bukan instruksi mengulang SA.
 
 Revisi audio pengguna 2026-10-31: sumber aktif `audio-assets/kabuki-neko-audio/` berisi **20 MP3 + CREDITS.md**, termasuk empat lobby dan sepuluh SFX. [Audio engine revision](audio-engine-revision.md) adalah addendum normatif yang menggantikan baseline audio lama: Opus/WebM + MP3, manifest dinamis, default random, role-specific Howler choreography dan PODIUM8s. Inventaris/hash dan gap atribusi tersedia di addendum; file input dipertahankan. Task selesai sebelumnya tetap catatan historis, koreksi dilakukan dalam task baru.
 
@@ -781,9 +781,19 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/providers/state/memory-state.store.spec.ts` answer-v-close, same/different submit, inclusive deadline, freeze/recompute once, empty-required-set dan session reuse.
 
-### - [ ] TASK-048: Tulis Lua mutasi room, player binding dan release
+### - [x] TASK-048A: Selaraskan resolver TypeScript contract harness untuk shared subpaths
+- **Traceability**: `US-16`, `NFR-08`, SA §6.1/§11.2; ditemukan saat contract Redis mengimpor private state schema API.
+- **Depends On**: `TASK-011`, `TASK-046`
+- **Target Files**:
+  - `MODIFY` `tests/jest.contracts.config.cjs`
+- **Implementation Specs**:
+  - Tambahkan mapping compiler shared subpaths ke declaration build yang sama dengan Jest runtime mapper. Pertahankan strict diagnostics; jangan melewati typecheck.
+- **Definition of Done (Verification)**:
+  - Contract Redis melewati kompilasi private-state schema tanpa TS2307; ESLint config lulus dan API typecheck lulus.
+
+### - [~] TASK-048: Tulis Lua mutasi room, player binding dan release
 - **Traceability**: `US-07`, `US-08`, `US-12`, `US-16`, [SA §6.1](03-system-analysis.md#61-adapter-contract-dan-redis-cluster)
-- **Depends On**: `TASK-047`, `TASK-011`
+- **Depends On**: `TASK-047`, `TASK-011`, `TASK-048A`
 - **Target Files**:
   - `CREATE` `apps/api/src/providers/state/lua/mutate-room.lua`
   - `CREATE` `apps/api/src/providers/state/lua/bind-player.lua`

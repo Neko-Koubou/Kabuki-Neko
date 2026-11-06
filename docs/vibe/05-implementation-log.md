@@ -296,3 +296,10 @@
 - Files: `apps/api/src/providers/state/memory-state.store.ts`, `memory-state.store.spec.ts`; task checklist/log.
 - Implemented synchronous atomic memory operations, authoritative clock, delayed skip/end ACK until scoring commit, session/generation fences, dedup, logical expiry/sweep, durable-report retention and injected role projection.
 - Verification: API lint dan typecheck lulus; 17 unit test memory-state lulus (inclusive deadline, answer/close race, replay/conflict, freeze/CAS once, empty required set, generation, PIN reuse, lease epoch, detached state, retention, join receipt, scheduler CAS dan friendly ticket).
+
+
+## TASK-048A — 2026-11-06T09:55:09+07:00
+
+- Files: `tests/jest.contracts.config.cjs`; task checklist/log.
+- Added compiler mapping for built shared subpath declarations, matching the existing runtime mapper.
+- Verification: Compiler contract berhasil memuat private state schema; 8 test Redis dieksekusi (7 lulus, satu assertion urutan key JSON diperbaiki dalam TASK-048). ESLint config dan API typecheck/lint lulus; strict diagnostics tetap aktif.

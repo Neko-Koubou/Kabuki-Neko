@@ -19,6 +19,9 @@ module.exports = {
           target: "ES2023",
           module: "CommonJS",
           moduleResolution: "Node",
+          paths: {
+            "@kabuki-neko/shared/*": [path.resolve(__dirname, "../packages/shared/dist/*")],
+          },
           strict: true,
           noUncheckedIndexedAccess: true,
           exactOptionalPropertyTypes: true,
