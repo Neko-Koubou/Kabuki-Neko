@@ -444,3 +444,9 @@
 - Files: quizzes repository and contract test; task checklist/log.
 - Added same-database active transaction composition for create/duplicate/read, authorized creator/media hydration and internal current-media lookup for validation.
 - Verification: database lint/typecheck/build PASS; 3 real SQLite/PostgreSQL/MySQL contracts PASS, including composed create/duplicate rollback with receipts, manager rejection, retained foreign references and ownership/revision regression.
+
+## TASK-062 — 2026-11-06T23:38:10.616024+07:00
+
+- Files: quizzes service and service test; task checklist/log.
+- Own/public listing and allowlisted hydrated detail, strict create/save, private duplication with new IDs, revision delete, and atomic resource receipts with current replay authorization. Retained foreign media does not confer edit/delete rights.
+- Verification: API lint/typecheck PASS; 4 SQLite/JWT service tests PASS for owner/public/admin permission matrix, same-key concurrent create/duplicate, deleted-resource replay denial, draft warnings, stale revision, snapshot isolation and retained-versus-forged foreign media.

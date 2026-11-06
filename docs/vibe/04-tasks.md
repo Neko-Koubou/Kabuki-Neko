@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 77 task selesai, 126 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 80 task selesai, 124 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -1078,7 +1078,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Database lint/typecheck/build and real SQLite/PostgreSQL/MySQL quiz contracts including forced composed rollback and retained authorization.
 
-### - [ ] TASK-062: Implementasikan layanan CRUD dan reuse PUBLIC
+### - [x] TASK-062: Implementasikan layanan CRUD dan reuse PUBLIC
 - **Traceability**: `US-03`, `US-04`, [SA §4.3](03-system-analysis.md#43-kuis-dan-importexport)
 - **Depends On**: `TASK-062A`
 - **Target Files**:
@@ -2974,4 +2974,4 @@ Catatan akhir Stage 4: tidak ada application code, dependency install, migration
 
 Update Stage 5, 2026-10-30: TASK-001 selesai; bukti install, kompatibilitas dan temuan audit dependency tercatat di [05-implementation-log.md](05-implementation-log.md). `.gitignore` disiapkan atas permintaan tambahan pengguna; TASK-002 tetap Pending karena konfigurasi Turbo/ESLint/Prettier belum dibuat.
 
-**Next Step**: Lanjutkan `TASK-062`; verifikasi dan commit setiap task sesuai instruksi pengguna.
+**Next Step**: Lanjutkan `TASK-063`; verifikasi dan commit setiap task sesuai instruksi pengguna.
