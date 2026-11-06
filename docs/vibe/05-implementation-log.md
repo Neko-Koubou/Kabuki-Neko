@@ -456,3 +456,9 @@
 - Files: quizzes controller/module, app module and quiz HTTP integration test; task checklist/log.
 - Six authenticated READ/WRITE routes, strict query/body checks, quoted If-Match and ETags, shared service export for engine reuse.
 - Verification: API lint/typecheck/build PASS; real built-server HTTP integration PASS covering all six routes, default limit12, same-key create/duplicate, private404/public mutation403, absent/stale revisions, 5MiB413, delete and deleted-resource replay denial.
+
+## TASK-064 — 2026-11-06T23:43:56.529462+07:00
+
+- Files: quiz import/export, transfer tests and docs/import-format.md; task checklist/log.
+- Strict UTF-8/BOM, bounded JSON and RFC4180 CSV with exact 17 headers; all six types/draft semantics, safe export filenames, new PRIVATE import IDs, owned READY media mapping without URL fetch, bounded diagnostics and format guide.
+- Verification: API lint/typecheck PASS; 5 transfer tests PASS including JSON/CSV roundtrips, malformed headers/cells/UTF-8/version/depth/bytes, 600 actual issues capped to 200, foreign/pending media denial and no network requests.
