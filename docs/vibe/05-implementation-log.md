@@ -384,3 +384,9 @@
 - Files: `packages/database/src/repositories/auth.repository.ts`, `tests/contracts/accounts.repository.spec.ts`; checklist/log.
 - Explicit credential-only password hash selection, normalized lookup, locked session insertion with current active/hash/version checks, and actor-scoped idempotent family logout by session identifier.
 - Verification: database lint/typecheck/build PASS; all 3 SQLite/PostgreSQL/MySQL account contracts PASS, including stale credentials, rollback, foreign actor isolation, repeated logout and inactive users. Docker contract runner used sudo for socket access.
+
+## TASK-055 — 2026-11-06T18:36:15.346797+07:00
+
+- Files: `apps/api/src/modules/auth/auth.service.ts`, `refresh.service.ts`, `refresh.service.spec.ts`; checklist/log.
+- Argon2id m65536/t3/p1/salt16 with shared two-job/twenty-waiter bound, dummy verification and uniform login denial; transactional session insertion. HS256 access900s and separate-secret/audience refresh7d absolute families, SHA256 persistence, locked rotation/reuse revocation, current user/version checks, scoped idempotent logout and narrow cookie options.
+- Verification: API lint/typecheck PASS; 10 real SQLite/Argon2/JWT tests PASS. Two concurrent hashes measured 230ms, RSS baseline212017152 bytes, sampled peak352788480 bytes (delta140771328 bytes); local test-run measurement, not a production benchmark. Tests cover consumed/reused/concurrent refresh, expiry, inactive/stale users, wrong audience/algorithm/signature, logout, hash saturation503 and cookie attributes.
