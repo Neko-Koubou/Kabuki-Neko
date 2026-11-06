@@ -5,6 +5,9 @@ import { lockSettings } from "./settings.repository";
 
 export const OPERATION_TIMING = { leaseMs: 120000, renewalMs: 30000, retentionMs: 86400000 };
 const operations = [
+  "auth.setup",
+  "auth.register",
+  "invitation.create",
   "quiz.create",
   "quiz.duplicate",
   "quiz.import",

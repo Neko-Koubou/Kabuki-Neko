@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { operationQuerySchema } from "@kabuki-neko/shared/schemas/quiz.schema";
 import {
   createDataSource,
   domainSchemas,
@@ -188,6 +189,34 @@ it.each<DatabaseDriver>(["sqlite", "postgres", "mysql"])(
         expect(await audit.purge(AUDIT_RETENTION_MS + 10)).toBe(1);
         expect(await audit.purge(AUDIT_RETENTION_MS + 10)).toBe(0);
         expect(await db.manager.count("audit_events")).toBe(1);
+        for (const operation of ["auth.setup", "auth.register", "invitation.create"] as const) {
+          let called = 0;
+          const credentialRequest = { ...request, key: randomUUID(), operation };
+          const create = async () => {
+            called++;
+            return {
+              httpStatus: 201,
+              resourceId: resource,
+              token: "CREDENTIAL-CANARY",
+              inviteCode: "CREDENTIAL-CANARY",
+            };
+          };
+          const receipts = await Promise.all([
+            ops.run(credentialRequest, 100, create),
+            ops.run(credentialRequest, 100, create),
+          ]);
+          expect(called).toBe(1);
+          expect(receipts[0]?.id).toBe(receipts[1]?.id);
+          for (const receipt of receipts) {
+            expect(receipt.state).toBe("DONE");
+            expect(receipt.response_json).toEqual({ resourceId: resource });
+            expect(receipt.http_status).toBe(201);
+          }
+          expect(operationQuerySchema.safeParse({ operation }).success).toBe(false);
+        }
+        expect(JSON.stringify(await db.manager.find("request_dedup"))).not.toContain(
+          "CREDENTIAL-CANARY",
+        );
         for (const days of [6, 366, 7.5, NaN])
           expect(() => audit.purge(100, days)).toThrow("INVALID_FORMAT");
         expect(() => audit.purge(-1)).toThrow("INVALID_FORMAT");

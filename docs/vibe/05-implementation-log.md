@@ -365,3 +365,10 @@
 - Files: `apps/api/src/common/audit.service.ts`, `metrics.service.ts`, `audit.service.spec.ts`; checklist/log.
 - Audit projection allowlist, UTC/stdout/SQL, redacted errors; runtime retention7–365 daily purge1000, scheduler lifecycle. Closed metric names/error-code labels, latency histograms dan throttled failed-job alarm.
 - Verifikasi: API lint/typecheck PASS; 6 tests SQLite nyata PASS termasuk canary secret, retention bounds/batch, scheduler shutdown dan metrics. Provider wiring menunggu TASK-058; worker alarm call sites menunggu finalization tasks.
+
+
+## TASK-054A — 2026-11-06T18:23:45+07:00
+
+- Files: `packages/database/src/repositories/operations.repository.ts`, `tests/contracts/operations.repository.spec.ts`; checklist/log.
+- Implementasi: operasi internal auth.setup/auth.register/invitation.create memakai receipt resourceId tanpa menyimpan token atau kode undangan. Contract membuktikan retry concurrent mengeksekusi mutation sekali, receipt DONE konsisten, dan enum query publik menolak ketiga operasi credential. Replay error HTTP khusus tetap tanggung jawab TASK-054.
+- Verifikasi: shared/database build, database typecheck/lint, ESLint contract dan Prettier source PASS; 3 contract test SQLite/PostgreSQL/MySQL nyata PASS tanpa skip. Run awal hanya SQLite lulus karena akses Docker; rerun lengkap memakai sudo untuk socket Docker lulus dan runtime membersihkan container uji.

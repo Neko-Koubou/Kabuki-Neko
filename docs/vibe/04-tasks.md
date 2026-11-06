@@ -1,12 +1,12 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 66 task selesai, 133 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 67 task selesai, 133 task Pending**.
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
 ## 1. Execution summary
 
-Saat planning, workspace belum memiliki aplikasi, manifest, lockfile atau runner. Plan berisi **199 task** (termasuk task koreksi dan perluasan audio 2026-10-31), masing-masing **1–4 file konkret**. TASK-001 kini menyediakan manifest, lockfile dan dependency tooling; konfigurasi runner dan aplikasi menunggu task berikutnya. Perubahan upstream yang telah ada dipertahankan. Status handoff lama pada upstream merupakan catatan tahap sebelumnya, bukan instruksi mengulang SA.
+Saat planning, workspace belum memiliki aplikasi, manifest, lockfile atau runner. Plan berisi **200 task** (termasuk task koreksi dan perluasan audio 2026-10-31), masing-masing **1–4 file konkret**. TASK-001 kini menyediakan manifest, lockfile dan dependency tooling; konfigurasi runner dan aplikasi menunggu task berikutnya. Perubahan upstream yang telah ada dipertahankan. Status handoff lama pada upstream merupakan catatan tahap sebelumnya, bukan instruksi mengulang SA.
 
 Revisi audio pengguna 2026-10-31: sumber aktif `audio-assets/kabuki-neko-audio/` berisi **20 MP3 + CREDITS.md**, termasuk empat lobby dan sepuluh SFX. [Audio engine revision](audio-engine-revision.md) adalah addendum normatif yang menggantikan baseline audio lama: Opus/WebM + MP3, manifest dinamis, default random, role-specific Howler choreography dan PODIUM8s. Inventaris/hash dan gap atribusi tersedia di addendum; file input dipertahankan. Task selesai sebelumnya tetap catatan historis, koreksi dilakukan dalam task baru.
 
@@ -909,9 +909,20 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/common/audit.service.spec.ts` canary secrets tidak muncul pada logs/traces; purge menghormati7–365d dan 1000 batch.
 
+### - [x] TASK-054A: Tambahkan receipt operasi credential tanpa menyimpan token
+- **Traceability**: `US-01`, `US-02`, SA §4.2; prerequisite reconciliation TASK-054.
+- **Depends On**: `TASK-041`, `TASK-053`
+- **Target Files**:
+  - `MODIFY` `packages/database/src/repositories/operations.repository.ts`
+  - `MODIFY` `tests/contracts/operations.repository.spec.ts`
+- **Implementation Specs**:
+  - Terima auth.setup/auth.register/invitation.create sebagai operasi internal dengan receipt resourceId saja. Query publik tetap memakai enum shared tanpa operasi credential.
+- **Definition of Done (Verification)**:
+  - Database lint/typecheck/build; contract tiga dialek membuktikan mutation once dan plaintext token/code tidak tersimpan.
+
 ### - [ ] TASK-054: Implementasikan reconciliation operasi HTTP
 - **Traceability**: `US-01`, `US-03`, `US-05`, `US-06`, `US-15`, [SA §4.1](03-system-analysis.md#41-header-autentikasi-limit-dan-error-bersama)
-- **Depends On**: `TASK-053`
+- **Depends On**: `TASK-053`, `TASK-054A`
 - **Target Files**:
   - `CREATE` `apps/api/src/common/idempotency.service.ts`
   - `CREATE` `apps/api/src/common/operations.controller.ts`
