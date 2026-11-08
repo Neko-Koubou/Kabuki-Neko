@@ -1924,7 +1924,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate`, `pnpm locales:build` dan `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/locale-coverage.spec.ts`; enam locale coverage 1, errors 0/warnings 0, template dapat diekstrak dan divalidasi.
 
-### - [ ] TASK-113: Sediakan logo, maskot dan favicon Kabuki Neko
+### - [x] TASK-113: Sediakan logo, maskot dan favicon Kabuki Neko
 - **Traceability**: `US-18`, `US-19`, [SA §8.3](03-system-analysis.md#83-budget-qr-font-dan-accessible-media), [Design §1](02-design-spec.md#1-arah-estetika-dan-prinsip-pengalaman)
 - **Depends On**: `TASK-087`, `TASK-013`
 - **Target Files**:

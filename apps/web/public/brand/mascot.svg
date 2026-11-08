@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" width="320" height="320" aria-hidden="true" focusable="false">
+  <!-- Kabuki Neko mascot (decorative): original artwork for the Kabuki Neko project, Apache-2.0
+       with Commons Clause like the rest of the repository. Kabuki cat face with crimson kumadori
+       (stage makeup) strokes, a gold forehead crest and a calm, friendly expression. Colors:
+       Kumadori Crimson #D9381E, Kabuki Gold #F59E0B, Sumi Ink #18181B, face paint #FFF8F0. -->
+  <g stroke="#18181B" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M70 136 L86 34 L150 92 Z" fill="#FFF8F0" stroke-width="7"/>
+    <path d="M250 136 L234 34 L170 92 Z" fill="#FFF8F0" stroke-width="7"/>
+    <path d="M90 108 L97 62 L128 90 Z" fill="#D9381E" stroke="none"/>
+    <path d="M230 108 L223 62 L192 90 Z" fill="#D9381E" stroke="none"/>
+    <ellipse cx="160" cy="178" rx="116" ry="102" fill="#FFF8F0" stroke-width="7"/>
+  </g>
+  <g fill="none" stroke="#D9381E" stroke-linecap="round">
+    <path d="M70 206 C82 168 104 146 136 136" stroke-width="11"/>
+    <path d="M250 206 C238 168 216 146 184 136" stroke-width="11"/>
+    <path d="M92 228 C104 214 118 206 132 204" stroke-width="7"/>
+    <path d="M228 228 C216 214 202 206 188 204" stroke-width="7"/>
+  </g>
+  <path d="M160 96 L174 112 L160 128 L146 112 Z" fill="#F59E0B" stroke="#18181B" stroke-width="4" stroke-linejoin="round"/>
+  <g fill="none" stroke="#18181B" stroke-linecap="round">
+    <path d="M104 132 C116 120 130 118 142 124" stroke-width="8"/>
+    <path d="M216 132 C204 120 190 118 178 124" stroke-width="8"/>
+  </g>
+  <g fill="#18181B">
+    <path d="M110 170 C118 158 136 156 146 166 C138 176 120 178 110 170 Z"/>
+    <path d="M210 170 C202 158 184 156 174 166 C182 176 200 178 210 170 Z"/>
+  </g>
+  <circle cx="134" cy="165" r="3" fill="#FFF8F0"/>
+  <circle cx="186" cy="165" r="3" fill="#FFF8F0"/>
+  <path d="M151 196 L169 196 L160 207 Z" fill="#D9381E" stroke="#18181B" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M142 216 C148 224 156 224 160 214 C164 224 172 224 178 216" fill="none" stroke="#18181B" stroke-width="4" stroke-linecap="round"/>
+  <g stroke="#18181B" stroke-width="3" stroke-linecap="round">
+    <path d="M58 196 L104 202"/>
+    <path d="M60 220 L104 214"/>
+    <path d="M262 196 L216 202"/>
+    <path d="M260 220 L216 214"/>
+  </g>
+  <path d="M92 272 C128 296 192 296 228 272" fill="none" stroke="#F59E0B" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="160" cy="292" r="12" fill="#F59E0B" stroke="#18181B" stroke-width="4"/>
+  <path d="M154 292 L166 292" stroke="#18181B" stroke-width="3" stroke-linecap="round"/>
+</svg>
