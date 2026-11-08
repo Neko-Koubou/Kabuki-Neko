@@ -1819,7 +1819,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale es --namespaces common,auth` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-105: Lengkapi katalog es: quizzes, studio, media
+### - [x] TASK-105: Lengkapi katalog es: quizzes, studio, media
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`, `TASK-104`, `TASK-089`
 - **Target Files**:
