@@ -1,3 +1,8 @@
+/**
+ * Integration coverage for serving local uploads through the built API: confined keys, MIME and
+ * immutable caching, HEAD/ranges, method checks behind the global Origin guard, traversal/symlink
+ * denial without leaking file contents, and fail-closed lookup of unconfigured storage origins.
+ */
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:net";
@@ -20,7 +25,9 @@ it("serves confined uploads with MIME, immutable caching, HEAD/ranges and safe e
     listener.close((error) => (error ? reject(error) : resolve())),
   );
   const base = `http://127.0.0.1:${port}`;
-  const storage = await LocalStorageAdapter.create(rt.env.LOCAL_STORAGE_PATH!, `${base}/uploads`);
+  const root = rt.env.LOCAL_STORAGE_PATH;
+  if (!root) throw new Error("Test runtime has no local storage path");
+  const storage = await LocalStorageAdapter.create(root, `${base}/uploads`);
   const upload = await storage.upload({
     buffer: Buffer.from([0, 255, 42, 75]),
     originalName: "test",
@@ -66,7 +73,17 @@ it("serves confined uploads with MIME, immutable caching, HEAD/ranges and safe e
     expect(range.headers.get("content-range")).toBe("bytes 1-2/4");
     expect(Buffer.from(await range.arrayBuffer())).toEqual(Buffer.from([255, 42]));
     expect((await fetch(upload.publicUrl, { headers: { Range: "bytes=8-9" } })).status).toBe(416);
-    expect((await fetch(upload.publicUrl, { method: "POST" })).status).toBe(405);
+    // The global Origin guard rejects unattributed unsafe methods before any route runs (TASK-052);
+    // a same-site web client reaches the upload server, which only allows GET/HEAD.
+    const crossSite = await fetch(upload.publicUrl, { method: "POST" });
+    expect(crossSite.status).toBe(403);
+    expect(await crossSite.json()).toMatchObject({ errorCode: "ORIGIN_DENIED" });
+    const sameSite = await fetch(upload.publicUrl, {
+      method: "POST",
+      headers: { Origin: "http://localhost:3000", "X-Kabuki-Client": "web-v1" },
+    });
+    expect(sameSite.status).toBe(405);
+    expect(sameSite.headers.get("allow")).toBe("GET, HEAD");
     for (const path of [
       "%2e%2e%2fsecret",
       "questions/%2fetc%2fpasswd",

@@ -1272,6 +1272,17 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:integration --runInBand --runTestsByPath tests/integration/media.spec.ts` local+MinIO image201, MIME/size rejection, ownership and reference-v-delete race.
 
+### - [x] TASK-069A: Align upload-serving method checks with the global Origin guard
+- **Traceability**: `US-06`, `NFR-04`, [SA §7.1](03-system-analysis.md#71-storage-pipeline-dan-cleanup); found during TASK-069 regression: the TASK-045 test expected `POST /uploads/...` without Origin to be 405, but the TASK-052 global Origin guard answers 403 first.
+- **Depends On**: `TASK-045`, `TASK-052`
+- **Target Files**:
+  - `MODIFY` `tests/integration/storage-serving.spec.ts`
+- **Implementation Specs**:
+  - Keep the guard order (cross-site/unattributed unsafe requests are rejected before any route). Assert both layers: POST without Origin/X-Kabuki-Client → 403 `ORIGIN_DENIED`; POST from the allowed web origin → 405 with `Allow: GET, HEAD`. No production code change.
+- **Definition of Done (Verification)**:
+  - `pnpm test:integration --runInBand --runTestsByPath tests/integration/storage-serving.spec.ts` PASS; ESLint/Prettier on the spec PASS.
+- **Commit Message**: `TASK-069A: Align upload-serving method checks with the global Origin guard`
+
 ### - [ ] TASK-070: Bangun validator paket bahasa
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator)
 - **Depends On**: `TASK-023`, `TASK-011`
