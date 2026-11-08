@@ -1296,7 +1296,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/locale-packages.spec.ts` temporary complete/partial/invalid/RTL packages and all diagnostics; executable contents never evaluated.
 
-### - [ ] TASK-071: Bangun catalog bundle dan template bahasa
+### - [x] TASK-071: Bangun catalog bundle dan template bahasa
 - **Traceability**: `US-21`, [SA §8.2](03-system-analysis.md#82-install-matching-dan-hydration)
 - **Depends On**: `TASK-070`
 - **Target Files**:
