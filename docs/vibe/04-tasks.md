@@ -1462,7 +1462,7 @@ flowchart LR
   - Database lint/typecheck/build PASS; `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/runtime.repository.spec.ts` PASS on SQLite/PostgreSQL/MySQL.
 - **Commit Message**: `TASK-081A: List retired allocations awaiting PIN and media release`
 
-### - [ ] TASK-081: Implementasikan timer lease dan retention room
+### - [x] TASK-081: Implementasikan timer lease dan retention room
 - **Traceability**: `US-10`, `US-12`, `US-14`, `US-16`, [SA §6.2](03-system-analysis.md#62-room-allocation-leases-and-lifetime)
 - **Depends On**: `TASK-080`, `TASK-081A`
 - **Target Files**:
