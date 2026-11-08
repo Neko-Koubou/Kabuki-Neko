@@ -1401,7 +1401,7 @@ flowchart LR
   - Database lint/typecheck/build PASS; `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/runtime.repository.spec.ts` PASS on SQLite/PostgreSQL/MySQL including stale selection boundaries and lookup.
 - **Commit Message**: `TASK-078A: Expose stale CREATING allocations and allocation lookup`
 
-### - [ ] TASK-078: Implementasikan alokasi room dan rekonsiliasi create
+### - [x] TASK-078: Implementasikan alokasi room dan rekonsiliasi create
 - **Traceability**: `US-07`, `US-12`, `US-16`, [SA §6.2](03-system-analysis.md#62-room-allocation-leases-and-lifetime)
 - **Depends On**: `TASK-077`, `TASK-038`, `TASK-054`, `TASK-074`, `TASK-078A`
 - **Target Files**:

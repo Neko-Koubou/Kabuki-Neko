@@ -611,11 +611,12 @@
 - Verification PASS: `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/modules/game-engine/room-capacity.spec.ts` 5 tests (bounds incl. 8000 escaped controls = 48002 bytes; short quiz configured 1 → 1 and 5000 → roster-limited with both budgets respected, worst-case report and 15-family-emoji roster within reservation; 200-question mixed worst-case quiz: fully serialized worst report ≤ base + N×perPlayer ≤ 64 MiB and every public question ≤ reserved max; >512 KiB public question and configured 0 rejected; kicked seats counted). API typecheck PASS.
 - Correction: the first TASK-077 commit (`43cfda7`) was pushed while `pnpm --filter @kabuki-neko/api lint` reported an unused `emptyAccessibility` import in the spec (the verification chain did not stop on the lint failure). Follow-up commit removes the import; re-run: API lint PASS, typecheck PASS, room-capacity spec 5/5 PASS.
 
-## TASK-078: Implementasikan alokasi room dan rekonsiliasi create — IN PROGRESS
-- **Started**: 2026-11-08T10:23:35+07:00
-- **Plan**: `apps/api/src/modules/game-engine/room-registry.service.ts`, `apps/api/src/modules/game-engine/room-registry.service.spec.ts`
-- **Done so far**: design only (no files written).
-- **Verification**: not started — paused (marker reset to `[ ]`) until corrective TASK-078A adds stale CREATING lookup to the runtime repository.
+## TASK-078 — 2026-11-08T10:28:52+07:00
+
+- Files: `apps/api/src/modules/game-engine/room-registry.service.ts`, `room-registry.service.spec.ts`; task checklist/log. Prerequisite corrective TASK-078A (repository lookups) landed first.
+- `createRoom(principal, request)`: current host from DB; one `RuntimeRepository.reserve` transaction authorizes own/PUBLIC quiz at the exact revision, builds the playable private snapshot (`createQuizSnapshot`, host mode, retained refs) under the same locks, plans capacity with current `max_players_per_room` (TASK-077), pins READY media, allocates a PIN (≤32 attempts) under `MAX_ACTIVE_ROOMS`, writes the `room.create` receipt and stores the creation snapshot. Then the state store creates the room if absent (deterministic `initialRoomState` from the allocation, TTL hard end + 24 h horizon) and SQL activates it; the ACK is returned only after activation. Errors: 404/409 revision/409 key conflict/422 QUIZ_NOT_PLAYABLE/503 PIN_EXHAUSTED/503 CAPACITY_REACHED; a lost allocation removes the created state and answers 409 ROOM_LOST.
+- `reconcileCreating(now)`: CREATING allocations older than 120 s are activated when their state exists, otherwise released (PIN, media pins and pending receipt freed).
+- Verification PASS: `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/modules/game-engine/room-registry.service.spec.ts` 4 tests (two concurrent instances + retry → one ACTIVE allocation and LOBBY room, payload change 409; private foreign 404, stale revision 409, draft 422, PUBLIC reuse hosted by guest, no allocations after failures; 31 collisions then success on the 32nd attempt, then PIN_EXHAUSTED, active-room cap 503; crash before state → retry same room, crash before activation → retry same session, stale with state activated and without state released only after 120 s, allocation lost before activation → state removed and no dead ACK). API lint/typecheck PASS; API Jest 25 suites/189 tests PASS.
 
 ## TASK-078A — 2026-11-08T10:25:34+07:00
 
