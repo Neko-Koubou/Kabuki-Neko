@@ -1979,7 +1979,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Assertion font decode dan glyph Latin/diacritics; notices cocok semua sumber/checksum aset dan ketentuan redistribusi; CJK fallback tidak tofu. `pnpm exec tsx scripts/package-assets.ts` menghasilkan kedua legal text files dengan isi sumber identik.
 
-### - [ ] TASK-116: Implementasikan matching dan format locale
+### - [x] TASK-116: Implementasikan matching dan format locale
 - **Traceability**: `US-21`, [SA §8.2](03-system-analysis.md#82-install-matching-dan-hydration)
 - **Depends On**: `TASK-112`, `TASK-087`
 - **Target Files**:
