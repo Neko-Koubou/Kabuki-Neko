@@ -2191,7 +2191,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Fake timer/Howler tests all phases/10SFX both roles,5s vs10s sprint, puzzle priority, hidden-tab skip, recovery and8000ms FINISHED, rate reset, vibration absent API, autoplay blocked/retry and no duplicate audio.
 
-### - [ ] TASK-130B: Bangun kontrol audio Host dan opt-in Streamer
+### - [x] TASK-130B: Bangun kontrol audio Host dan opt-in Streamer
 - **Traceability**: `US-07`, `US-13`, `US-18`, `US-19`, `US-21`, [Audio revision](audio-engine-revision.md); instruksi pengguna 2026-10-31.
 - **Depends On**: `TASK-130A`, `TASK-119`
 - **Target Files**:
