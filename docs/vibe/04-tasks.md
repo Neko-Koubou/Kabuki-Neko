@@ -1181,9 +1181,22 @@ flowchart LR
   - Database lint/typecheck/build and `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/quizzes.repository.spec.ts` pass for SQLite/PostgreSQL/MySQL. API lint/typecheck and quiz-transfer unit tests also pass.
 - **Commit Message**: `TASK-064A: Persist imported quiz graphs atomically with operation receipts`
 
+### - [x] TASK-064B: Keep multipart request streams paused until the route parser reads them
+- **Traceability**: `US-05`, `US-06`, [SA §4.3](03-system-analysis.md#43-kuis-dan-importexport), [SA §4.4](03-system-analysis.md#44-media-system-et-locales); prerequisite discovered while implementing TASK-065 (multipart import received no file part).
+- **Depends On**: `TASK-051`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/common/request-context.middleware.ts`
+  - `CREATE` `apps/api/src/common/request-context.middleware.spec.ts`
+- **Implementation Specs**:
+  - The aggregate multipart byte counter attaches a `data` listener, which switches the request into flowing mode; chunks emitted while async guards/rate limiters run are lost before multer pipes the stream. Pause the stream after attaching the counter so the first route parser resumes it and both consumers see every chunk.
+  - Keep existing limits, 413 envelope on chunked overflow, multipart route allowlist and 415/400 behaviour unchanged. Document each function.
+- **Definition of Done (Verification)**:
+  - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/common/request-context.middleware.spec.ts` covers a multipart body read after an async delay (all bytes received), chunked overflow 413, non-allowlisted multipart 415 and missing boundary 400; API lint/typecheck PASS.
+- **Commit Message**: `TASK-064B: Keep multipart request streams paused until route parsers consume them`
+
 ### - [ ] TASK-065: Hubungkan transaksi import dan download templates
 - **Traceability**: `US-05`, [SA §4.3](03-system-analysis.md#43-kuis-dan-importexport)
-- **Depends On**: `TASK-064`, `TASK-064A`
+- **Depends On**: `TASK-064`, `TASK-064A`, `TASK-064B`
 - **Target Files**:
   - `MODIFY` `apps/api/src/modules/quizzes/quizzes.controller.ts`
   - `MODIFY` `apps/api/src/modules/quizzes/quizzes.service.ts`

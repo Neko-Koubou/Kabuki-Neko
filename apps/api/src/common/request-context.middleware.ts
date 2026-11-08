@@ -8,6 +8,11 @@ export const MULTIPART_METADATA_LIMIT = 256 * 1024;
 /** Route upload parsers must additionally enforce configured file/MIME/field limits. */
 export const MULTIPART_FILE_LIMIT = 250 * 1024 * 1024;
 
+/**
+ * First HTTP middleware: assigns a correlation ID, applies no-store/nosniff headers and admits only
+ * JSON bodies or multipart bodies on the two upload routes, enforcing their aggregate byte caps
+ * before any parser runs. Multipart streams are left paused for the route-level parser.
+ */
 export function requestContext(request: Request, response: Response, next: NextFunction): void {
   response.locals.correlationId = randomUUID();
   response.setHeader("X-Request-Id", response.locals.correlationId as string);
@@ -51,6 +56,7 @@ export function requestContext(request: Request, response: Response, next: NextF
     }
     // Enforce the same aggregate cap for chunked requests before file processing.
     let bytes = 0;
+    /** Counts streamed multipart bytes and answers 413 once the route aggregate cap is exceeded. */
     const count = (chunk: Buffer) => {
       bytes += chunk.length;
       if (bytes > limit) {
@@ -62,6 +68,10 @@ export function requestContext(request: Request, response: Response, next: NextF
       }
     };
     request.on("data", count);
+    // A `data` listener switches the stream into flowing mode. Pause it again so chunks are held
+    // until the route parser (multer) pipes the request after async guards and rate limits run;
+    // piping resumes the stream and both the counter and the parser then observe every chunk.
+    request.pause();
     response.once("close", () => request.removeListener("data", count));
   } else if (!request.is("application/json")) {
     next(new ApiError("UNSUPPORTED_CONTENT_TYPE", 415));
@@ -70,6 +80,7 @@ export function requestContext(request: Request, response: Response, next: NextF
   next();
 }
 
+/** Installs the request context, the bounded strict JSON parser and the global error filter. */
 export function configureHttpBoundary(app: INestApplication): void {
   app.use(requestContext);
   app.use(json({ limit: JSON_BODY_LIMIT, strict: true, inflate: false }));

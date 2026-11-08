@@ -488,3 +488,15 @@
 - `@types/node` in api and web pinned exact to 26.6.6 (same as root/shared/database). The workspace now resolves a single `@types/node` 26.6.6 and a single `typeorm` peer variant in the lockfile.
 - `apps/web/next.config.ts`: the `declare global` block for `URLPatternInput`/`URLPatternOptions` is still required — Node 26 types expose `URLPattern`, `URLPatternInit` and `URLPatternResult` globally, but the input/options aliases stay scoped to `"node:url"`; Next 16.4 `spec-extension/url-pattern.d.ts` references them globally. Removing the block passed the incremental `tsc` (stale `.tsbuildinfo`) but failed with `--incremental false` (TS2304/TS2552), so the block stays and its comment now names Node 26. `nextConfig` options unchanged.
 - Verification PASS: `pnpm install --frozen-lockfile` stable (SHA-256 `5b1fb5eb…dfe550`); `pnpm -r ls @types/node --depth 0` → only 26.6.6 (5 packages); api typecheck/lint/build and Jest 15 suites/119 tests; web typecheck/lint/build plus `tsc --noEmit --incremental false`.
+
+## TASK-065: Hubungkan transaksi import dan download templates — IN PROGRESS
+- **Started**: 2026-11-08T09:18:57+07:00
+- **Plan**: `apps/api/src/modules/quizzes/quizzes.controller.ts`, `apps/api/src/modules/quizzes/quizzes.service.ts`, `apps/api/src/modules/quizzes/quizzes.module.ts`, `tests/integration/quiz-transfer.spec.ts`
+- **Done so far**: service export/template/import, controller routes with bounded multer parser, module doc comment, integration spec written (uncommitted).
+- **Verification**: integration run FAILED — every multipart import returned 422 `file REQUIRED`: the requestContext byte counter put the request into flowing mode before multer ran. Paused (marker reset to `[ ]`) until corrective TASK-064B lands.
+
+## TASK-064B — 2026-11-08T09:26:19+07:00
+
+- Files: `apps/api/src/common/request-context.middleware.ts`, `apps/api/src/common/request-context.middleware.spec.ts`; task checklist (new corrective task inserted before TASK-065, TASK-065 now depends on it)/log.
+- Root cause (found by the TASK-065 integration run): the aggregate multipart byte counter attached a `data` listener, switching the request into flowing mode; chunks emitted while async JWT guard + rate limiter ran were lost, so multer saw no file part. The middleware now calls `request.pause()` right after attaching the counter; the route parser's `pipe()` resumes the stream and both consumers observe every chunk. Limits, allowlist, 413/415/400 envelopes unchanged; middleware functions documented.
+- Verification PASS: new spec 3 tests (multipart read after a 50 ms async delay receives all 131072 bytes; chunked overflow → server finished 413 `PAYLOAD_TOO_LARGE`; non-allowlisted multipart 415; missing boundary 400). Regression check: with `request.pause()` removed the first test fails (Expected/Received byte count). API lint/typecheck PASS; full API Jest 16 suites/122 tests PASS; Prettier check PASS.
