@@ -1580,7 +1580,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web build` lulus dengan konfigurasi baru; CSS hasil build memuat utility Tailwind setelah TASK-087 mengimpor `tailwindcss`.
 
-### - [ ] TASK-087: Terapkan design tokens dan preferensi tema
+### - [x] TASK-087: Terapkan design tokens dan preferensi tema
 - **Traceability**: `US-18`, `US-21`, [SA §8.3](03-system-analysis.md#83-budget-qr-font-dan-accessible-media), [Design §2](02-design-spec.md#2-design-tokens-dan-tema)
 - **Depends On**: `TASK-010`, `TASK-014`, `TASK-012`, `TASK-087A`
 - **Target Files**:
