@@ -1488,7 +1488,7 @@ flowchart LR
   - API lint/typecheck/build PASS; existing memory store and private-state unit tests PASS; `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/state-parity.spec.ts` (memory + real Redis) PASS with the avatar scenario exercised by an ad-hoc parity script recorded in the log.
 - **Commit Message**: `TASK-082A: Add atomic lobby avatar updates to both state stores`
 
-### - [ ] TASK-082: Expose Socket.io transport dan seluruh events
+### - [x] TASK-082: Expose Socket.io transport dan seluruh events
 - **Traceability**: `US-07`, `US-08`, `US-09`, `US-10`, `US-12`, `US-13`, `US-16`, [SA §5.1](03-system-analysis.md#51-transport-envelopes-scopes)
 - **Depends On**: `TASK-081`, `TASK-052`, `TASK-082A`
 - **Target Files**:
