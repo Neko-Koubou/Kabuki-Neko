@@ -1377,7 +1377,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/modules/game-engine/room-projector.spec.ts` recursive serialization leak scan all 8 phases/both roles/both modes including reconnect.
 
-### - [ ] TASK-077: Hitung reservation kapasitas snapshot dan laporan
+### - [x] TASK-077: Hitung reservation kapasitas snapshot dan laporan
 - **Traceability**: `US-07`, `US-16`, `US-20`, [SA §10.3](03-system-analysis.md#103-recoveryretention-and-known-limits)
 - **Depends On**: `TASK-076`
 - **Target Files**:
