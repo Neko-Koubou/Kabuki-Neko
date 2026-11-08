@@ -2007,7 +2007,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/providers/locale-provider.spec.tsx` deferred/failed fetch, reload persistence/RTL/lang and child state not remounted.
 
-### - [ ] TASK-118: Bangun tombol, field dan choice primitives
+### - [x] TASK-118: Bangun tombol, field dan choice primitives
 - **Traceability**: `US-18`, `US-21`, [SA §8.3](03-system-analysis.md#83-budget-qr-font-dan-accessible-media), [Design §5.1](02-design-spec.md#51-reusable-base-components)
 - **Depends On**: `TASK-117`
 - **Target Files**:
