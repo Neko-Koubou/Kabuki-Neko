@@ -1502,7 +1502,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:integration --runInBand --runTestsByPath tests/integration/game-gateway.spec.ts` real socket clients: all handlers ACK contract, 401/403/oversize/rate limits, player cannot receive report or private fields.
 
-### - [ ] TASK-083: Implementasikan freeze-to-queue dan laporan writer
+### - [x] TASK-083: Implementasikan freeze-to-queue dan laporan writer
 - **Traceability**: `US-14`, [SA §6.3](03-system-analysis.md#63-finalization-and-durability)
 - **Depends On**: `TASK-082`, `TASK-040`
 - **Target Files**:
