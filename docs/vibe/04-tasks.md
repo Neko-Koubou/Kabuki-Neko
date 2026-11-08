@@ -2165,7 +2165,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/hooks/use-game-clock.spec.tsx` clock jumps/rebase/zero grace and reconnect latest phase; server acceptance untouched.
 
-### - [ ] TASK-130: Bangun singleton audio manager dan preference store
+### - [x] TASK-130: Bangun singleton audio manager dan preference store
 - **Traceability**: `US-07`, `US-13`, `US-18`, `US-19`, `US-21`, [Audio revision](audio-engine-revision.md); instruksi pengguna 2026-10-31.
 - **Depends On**: `TASK-129`, `TASK-114`, `TASK-074`
 - **Target Files**:
