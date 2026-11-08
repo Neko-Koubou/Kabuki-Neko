@@ -1540,7 +1540,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/reports.repository.spec.ts` pada SQLite/PostgreSQL/MySQL: list ready-only/host lain/host nonaktif/filter/search wildcard escape/pagination, bulk players/answers urutan stabil dan gate pending.
 
-### - [ ] TASK-085: Implementasikan analitik laporan dan CSV
+### - [x] TASK-085: Implementasikan analitik laporan dan CSV
 - **Traceability**: `US-14`, [SA §4.5](03-system-analysis.md#45-reports)
 - **Depends On**: `TASK-084`, `TASK-085A`
 - **Target Files**:
