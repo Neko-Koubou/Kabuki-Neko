@@ -1514,7 +1514,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/modules/reports/report-finalizer.spec.ts` rollback every insert boundary, source deletion, DB unavailable then recovery and stable IDs.
 
-### - [ ] TASK-084: Implementasikan worker antrean dan retry finalisasi
+### - [x] TASK-084: Implementasikan worker antrean dan retry finalisasi
 - **Traceability**: `US-14`, `US-20`, [SA §6.3](03-system-analysis.md#63-finalization-and-durability)
 - **Depends On**: `TASK-083`
 - **Target Files**:
