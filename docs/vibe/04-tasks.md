@@ -1337,7 +1337,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/modules/system/registries.spec.ts` bad hash/version/defaultLocale failure, external seventh locale registered tanpa enum edits.
 
-### - [ ] TASK-074: Expose seluruh REST system
+### - [x] TASK-074: Expose seluruh REST system
 - **Traceability**: `US-15`, `US-16`, `US-17`, `US-19`, `US-21`, [SA §4.4](03-system-analysis.md#44-media-system-et-locales)
 - **Depends On**: `TASK-073`
 - **Target Files**:

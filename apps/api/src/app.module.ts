@@ -1,5 +1,6 @@
 import { MediaModule } from "./modules/media/media.module";
 import { QuizzesModule } from "./modules/quizzes/quizzes.module";
+import { SystemModule } from "./modules/system/system.module";
 import { UsersModule } from "./modules/users/users.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { StateModule } from "./providers/state/state.module";
@@ -39,6 +40,7 @@ export class RuntimeConfigModule {}
     UsersModule,
     QuizzesModule,
     MediaModule,
+    SystemModule,
   ],
 })
 // eslint-disable-next-line @typescript-eslint/no-extraneous-class -- Nest modules are decorator metadata containers.
