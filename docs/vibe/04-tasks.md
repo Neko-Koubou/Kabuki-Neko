@@ -1283,7 +1283,7 @@ flowchart LR
   - `pnpm test:integration --runInBand --runTestsByPath tests/integration/storage-serving.spec.ts` PASS; ESLint/Prettier on the spec PASS.
 - **Commit Message**: `TASK-069A: Align upload-serving method checks with the global Origin guard`
 
-### - [ ] TASK-070: Bangun validator paket bahasa
+### - [x] TASK-070: Bangun validator paket bahasa
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator)
 - **Depends On**: `TASK-023`, `TASK-011`
 - **Target Files**:
