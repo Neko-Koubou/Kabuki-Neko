@@ -1,0 +1,661 @@
+{
+  "schemaVersion": 1,
+  "description": "Provenance of the 20 supplied audio inputs and their 40 generated web outputs (TASK-114A). Evidence only: no attribution is guessed, and nothing here grants or confirms distribution rights.",
+  "checkedAt": "2026-11-08",
+  "sourceDirectory": "audio-assets/kabuki-neko-audio",
+  "generatedOutputDirectory": "apps/web/public/audio",
+  "credits": {
+    "file": "audio-assets/kabuki-neko-audio/CREDITS.md",
+    "publicCopy": "/audio/CREDITS.md",
+    "copyRule": "byte-identical (pnpm audio:optimize)"
+  },
+  "codeLicense": {
+    "name": "Apache License 2.0 with Commons Clause v1.0",
+    "file": "LICENSE",
+    "appliesToAudio": false
+  },
+  "assetLicense": {
+    "name": "OpenTracks Audio Source Usage License",
+    "url": "https://opentracks.com/en/help/articles/license/",
+    "previouslyLinkedUrl": "https://opentracks.com/en/license/ (returns HTTP 404 on 2026-11-08)",
+    "fetchedAt": "2026-11-08",
+    "fetchedPageSha256": "8def39e5b9b78563e24577d76b747700af454f58e923c99eaf0c40e9eb72a893",
+    "relevantTerms": [
+      "Format conversion and editing are permitted.",
+      "The license targets primary users creating works; embedding into tool apps or platforms and licensing to their users requires consulting site management in advance.",
+      "Distributing or selling the audio sources themselves is prohibited, commercial or not, in any format that lets end users use the audio alone.",
+      "Using audio sources where end users can easily access and duplicate the audio files without conversion is prohibited.",
+      "Credits are not required by the license; creators may set additional conditions."
+    ]
+  },
+  "releaseStatus": "release-unverified",
+  "releaseBlockers": [
+    "No written permission from OpenTracks site management for embedding the audio into Kabuki Neko as a self-hostable platform used by others.",
+    "No written permission for storing the audio files in the repository and serving them as downloadable files from the web app.",
+    "Metadata discrepancies for bgm-lobby-matcha (#13513) and bgm-think-sprint (#3300) must be confirmed by the asset owner.",
+    "The ten SFX have no per-file source page or creator record."
+  ],
+  "files": [
+    {
+      "path": "01-lobby/bgm-lobby-kabuki.mp3",
+      "sha256": "84e242467b76ab0dc5af06aec3feb313c6ab6e474d4892bbbda37346c3e205cd",
+      "bytes": 3030732,
+      "durationSeconds": 151.537,
+      "outputs": ["/audio/01-lobby/bgm-lobby-kabuki.webm", "/audio/01-lobby/bgm-lobby-kabuki.mp3"],
+      "phase": "lobby",
+      "cue": "kabuki",
+      "kind": "bgm",
+      "suppliedCredit": {
+        "title": "Cat life",
+        "composer": "GT-K",
+        "url": "https://opentracks.com/id/bgm/detail/2551"
+      },
+      "source": {
+        "provider": "OpenTracks (formerly DOVA-SYNDROME)",
+        "trackId": "2551",
+        "url": "https://opentracks.com/en/bgm/detail/2551",
+        "pageTitle": "Cat life",
+        "pageComposer": "GT-K",
+        "pageComposerId": "102"
+      },
+      "verification": {
+        "checkedAt": "2026-11-08",
+        "status": "matched",
+        "notes": []
+      }
+    },
+    {
+      "path": "01-lobby/bgm-lobby-matcha.mp3",
+      "sha256": "20646812638e795c609a2574c745418be512f5189d46f5f5d2e7896bff3f3842",
+      "bytes": 7679660,
+      "durationSeconds": 191.887,
+      "outputs": ["/audio/01-lobby/bgm-lobby-matcha.webm", "/audio/01-lobby/bgm-lobby-matcha.mp3"],
+      "phase": "lobby",
+      "cue": "matcha",
+      "kind": "bgm",
+      "suppliedCredit": {
+        "title": "2:23 AM / 10℃",
+        "composer": "Sharou (しゃろう)",
+        "url": "https://opentracks.com/en/bgm/detail/13513"
+      },
+      "source": {
+        "provider": "OpenTracks (formerly DOVA-SYNDROME)",
+        "trackId": "13513",
+        "url": "https://opentracks.com/en/bgm/detail/13513",
+        "pageTitle": "Pink Steroid",
+        "pageComposer": "Anonyment",
+        "pageComposerId": "23"
+      },
+      "verification": {
+        "checkedAt": "2026-11-08",
+        "status": "discrepancy",
+        "notes": [
+          "Source page title is \"Pink Steroid\"; supplied credit says \"2:23 AM / 10℃\".",
+          "Source page composer is \"Anonyment\"; supplied credit says \"Sharou (しゃろう)\"."
+        ]
+      }
+    },
+    {
+      "path": "01-lobby/bgm-lobby-neko8bit.mp3",
+      "sha256": "a13fb4cde21bce4fe3c32ecbb388742e5ef416da612b6f1e6b529e0a4c4874c3",
+      "bytes": 4748608,
+      "durationSeconds": 144.072,
+      "outputs": [
+        "/audio/01-lobby/bgm-lobby-neko8bit.webm",
+        "/audio/01-lobby/bgm-lobby-neko8bit.mp3"
+      ],
+      "phase": "lobby",
+      "cue": "neko8bit",
+      "kind": "bgm",
+      "suppliedCredit": {
+        "title": "ICat sonata",
+        "composer": "Hupple",
+        "url": "https://opentracks.com/id/bgm/detail/12959"
+      },
+      "source": {
+        "provider": "OpenTracks (formerly DOVA-SYNDROME)",
+        "trackId": "12959",
+        "url": "https://opentracks.com/en/bgm/detail/12959",
+        "pageTitle": "Cat sonata - 8bit",
+        "pageComposer": "Hupple",
+        "pageComposerId": "400"
+      },
+      "verification": {
+        "checkedAt": "2026-11-08",
+        "status": "matched-after-correction",
+        "notes": [
+          "Supplied title \"ICat sonata\" was a typo; CREDITS now uses the source title \"Cat sonata - 8bit\" (link and composer match)."
+        ]
+      }
+    },
+    {
+      "path": "01-lobby/bgm-lobby-showtime.mp3",
+      "sha256": "3fbf55e57777abd7801912ea9938e53c03befd55dd0f2720b021a7270874be22",
+      "bytes": 1183968,
+      "durationSeconds": 29.571,
+      "outputs": [
+        "/audio/01-lobby/bgm-lobby-showtime.webm",
+        "/audio/01-lobby/bgm-lobby-showtime.mp3"
+      ],
+      "phase": "lobby",
+      "cue": "showtime",
+      "kind": "bgm",
+      "suppliedCredit": {
+        "title": "Black Agent",
+        "composer": "MFP【Marron Fields Production】",
+        "url": "https://opentracks.com/en/bgm/detail/23982"
+      },
+      "source": {
+        "provider": "OpenTracks (formerly DOVA-SYNDROME)",
+        "trackId": "23982",
+        "url": "https://opentracks.com/en/bgm/detail/23982",
+        "pageTitle": "Black Agent",
+        "pageComposer": "MFP【Marron Fields Production】",
+        "pageComposerId": "188"
+      },
+      "verification": {
+        "checkedAt": "2026-11-08",
+        "status": "matched",
+        "notes": []
+      }
+    },
+    {
+      "path": "02-thinking/bgm-think-puzzle.mp3",
+      "sha256": "59083d3365281346e20fad655157000f5e745eca8bff23b01c11d12c4eae3a26",
+      "bytes": 1099331,
+      "durationSeconds": 27.455,
+      "outputs": [
+        "/audio/02-thinking/bgm-think-puzzle.webm",
+        "/audio/02-thinking/bgm-think-puzzle.mp3"
+      ],
+      "phase": "thinking",
+      "cue": "puzzle",
+      "kind": "bgm",
+      "suppliedCredit": {
+        "title": "Pacific Samba",
+        "composer": "MFP【Marron Fields Production】",
+        "url": "hhttps://opentracks.com/en/bgm/detail/23981"
+      },
+      "source": {
+        "provider": "OpenTracks (formerly DOVA-SYNDROME)",
+        "trackId": "23981",
+        "url": "https://opentracks.com/en/bgm/detail/23981",
+        "pageTitle": "Pacific Samba",
+        "pageComposer": "MFP【Marron Fields Production】",
+        "pageComposerId": "188"
+      },
+      "verification": {
+        "checkedAt": "2026-11-08",
+        "status": "matched",
+        "notes": [
+          "Supplied URL \"hhttps://opentracks.com/en/bgm/detail/23981\" was malformed and is repaired in CREDITS."
+        ]
+      }
+    },
+    {
+      "path": "02-thinking/bgm-think-sprint.mp3",
+      "sha256": "e3df71f3295ad801c6177e75dd4e328a8820790888b590277f526e12786b76a8",
+      "bytes": 638427,
+      "durationSeconds": 39.967,
+      "outputs": [
+        "/audio/02-thinking/bgm-think-sprint.webm",
+        "/audio/02-thinking/bgm-think-sprint.mp3"
+      ],
+      "phase": "thinking",
+      "cue": "sprint",
+      "kind": "bgm",
+      "suppliedCredit": {
+        "title": "quiz time man",
+        "composer": "Takumi Higashi (東 たくみ)",
+        "url": "https://opentracks.com/en/bgm/detail/3300"
+      },
+      "source": {
+        "provider": "OpenTracks (formerly DOVA-SYNDROME)",
+        "trackId": "3300",
+        "url": "https://opentracks.com/en/bgm/detail/3300",
+        "pageTitle": "quiz time man",
+        "pageComposer": "alaki paca",
+        "pageComposerId": "44"
+      },
+      "verification": {
+        "checkedAt": "2026-11-08",
+        "status": "discrepancy",
+        "notes": [
+          "Source page composer is \"alaki paca\"; supplied credit says \"Takumi Higashi (東 たくみ)\"."
+        ]
+      }
+    },
+    {
+      "path": "02-thinking/bgm-think-standard.mp3",
+      "sha256": "bb47a7c1943a6ebc10abf425c844ad94c0c667a5cc18f122294f4b8dca50da01",
+      "bytes": 1994817,
+      "durationSeconds": 83.075,
+      "outputs": [
+        "/audio/02-thinking/bgm-think-standard.webm",
+        "/audio/02-thinking/bgm-think-standard.mp3"
+      ],
+      "phase": "thinking",
+      "cue": "standard",
+      "kind": "bgm",
+      "suppliedCredit": {
+        "title": "Quiz Time",
+        "composer": "shimtone",
+        "url": "https://opentracks.com/en/bgm/detail/12099"
+      },
+      "source": {
+        "provider": "OpenTracks (formerly DOVA-SYNDROME)",
+        "trackId": "12099",
+        "url": "https://opentracks.com/en/bgm/detail/12099",
+        "pageTitle": "Quiz Time",
+        "pageComposer": "shimtone",
+        "pageComposerId": "290"
+      },
+      "verification": {
+        "checkedAt": "2026-11-08",
+        "status": "matched",
+        "notes": []
+      }
+    },
+    {
+      "path": "03-leaderboard/bgm-leaderboard-groove.mp3",
+      "sha256": "154e6a8eb8fb3a58d57bbfaac8ae5deddfb361781f2b1ca3e7dc5bd86aaacf2c",
+      "bytes": 3213376,
+      "durationSeconds": 80.232,
+      "outputs": [
+        "/audio/03-leaderboard/bgm-leaderboard-groove.webm",
+        "/audio/03-leaderboard/bgm-leaderboard-groove.mp3"
+      ],
+      "phase": "leaderboard",
+      "cue": "groove",
+      "kind": "bgm",
+      "suppliedCredit": {
+        "title": "Have a nice day",
+        "composer": "えだまめ88",
+        "url": "https://opentracks.com/en/bgm/detail/18070"
+      },
+      "source": {
+        "provider": "OpenTracks (formerly DOVA-SYNDROME)",
+        "trackId": "18070",
+        "url": "https://opentracks.com/en/bgm/detail/18070",
+        "pageTitle": "Have a nice day",
+        "pageComposer": "えだまめ88",
+        "pageComposerId": "351"
+      },
+      "verification": {
+        "checkedAt": "2026-11-08",
+        "status": "matched",
+        "notes": []
+      }
+    },
+    {
+      "path": "04-podium/bgm-podium-buildup.mp3",
+      "sha256": "0d76cb6cecd0652a38e347ecf2a4a915837a31a04267766ba773b3fc980390ef",
+      "bytes": 5083056,
+      "durationSeconds": 211.704,
+      "outputs": [
+        "/audio/04-podium/bgm-podium-buildup.webm",
+        "/audio/04-podium/bgm-podium-buildup.mp3"
+      ],
+      "phase": "podium",
+      "cue": "buildup",
+      "kind": "bgm",
+      "suppliedCredit": {
+        "title": "CLAP!",
+        "composer": "T.Waraya",
+        "url": "https://https://opentracks.com/en/bgm/detail/182"
+      },
+      "source": {
+        "provider": "OpenTracks (formerly DOVA-SYNDROME)",
+        "trackId": "182",
+        "url": "https://opentracks.com/en/bgm/detail/182",
+        "pageTitle": "CLAP!",
+        "pageComposer": "T.Waraya",
+        "pageComposerId": "3"
+      },
+      "verification": {
+        "checkedAt": "2026-11-08",
+        "status": "matched",
+        "notes": [
+          "Supplied URL \"https://https://opentracks.com/en/bgm/detail/182\" was malformed and is repaired in CREDITS."
+        ]
+      }
+    },
+    {
+      "path": "04-podium/bgm-podium-victory.mp3",
+      "sha256": "4764255bde27feaa547749631daac5e2d4d72a1615ae4e58a07530546b058672",
+      "bytes": 9505524,
+      "durationSeconds": 395.893,
+      "outputs": [
+        "/audio/04-podium/bgm-podium-victory.webm",
+        "/audio/04-podium/bgm-podium-victory.mp3"
+      ],
+      "phase": "podium",
+      "cue": "victory",
+      "kind": "bgm",
+      "suppliedCredit": {
+        "title": "Crescendo Jitter",
+        "composer": "まんぼう二等兵",
+        "url": "https://opentracks.com/en/bgm/detail/23364"
+      },
+      "source": {
+        "provider": "OpenTracks (formerly DOVA-SYNDROME)",
+        "trackId": "23364",
+        "url": "https://opentracks.com/en/bgm/detail/23364",
+        "pageTitle": "Crescendo Jitter",
+        "pageComposer": "まんぼう二等兵",
+        "pageComposerId": "157"
+      },
+      "verification": {
+        "checkedAt": "2026-11-08",
+        "status": "matched",
+        "notes": []
+      }
+    },
+    {
+      "path": "05-sfx/sfx-answer-correct.mp3",
+      "sha256": "e94301a555dfce24900d7abaaa893334097ec9655aa621124b04fd9c33e4d6db",
+      "bytes": 40123,
+      "durationSeconds": 1.228,
+      "outputs": ["/audio/05-sfx/sfx-answer-correct.webm", "/audio/05-sfx/sfx-answer-correct.mp3"],
+      "phase": "sfx",
+      "cue": "answerCorrect",
+      "kind": "sfx",
+      "suppliedCredit": {
+        "title": null,
+        "composer": null,
+        "url": "https://opentracks.com/en/se/"
+      },
+      "source": {
+        "provider": "OpenTracks (formerly DOVA-SYNDROME)",
+        "trackId": null,
+        "url": "https://opentracks.com/en/se",
+        "pageTitle": null,
+        "pageComposer": null,
+        "pageComposerId": null
+      },
+      "verification": {
+        "checkedAt": "2026-11-08",
+        "status": "unverified",
+        "notes": [
+          "Only a general SFX library link was supplied (the supplied /en/se/ form returns 404; /en/se works). No per-file source page or creator is recorded; do not assume attribution."
+        ]
+      }
+    },
+    {
+      "path": "05-sfx/sfx-answer-wrong.mp3",
+      "sha256": "4c02589a6a598ec1e4b665abac52a67cf5b49fb874cf72f1728d8aea2b79b1e9",
+      "bytes": 40750,
+      "durationSeconds": 1.698,
+      "outputs": ["/audio/05-sfx/sfx-answer-wrong.webm", "/audio/05-sfx/sfx-answer-wrong.mp3"],
+      "phase": "sfx",
+      "cue": "answerWrong",
+      "kind": "sfx",
+      "suppliedCredit": {
+        "title": null,
+        "composer": null,
+        "url": "https://opentracks.com/en/se/"
+      },
+      "source": {
+        "provider": "OpenTracks (formerly DOVA-SYNDROME)",
+        "trackId": null,
+        "url": "https://opentracks.com/en/se",
+        "pageTitle": null,
+        "pageComposer": null,
+        "pageComposerId": null
+      },
+      "verification": {
+        "checkedAt": "2026-11-08",
+        "status": "unverified",
+        "notes": [
+          "Only a general SFX library link was supplied (the supplied /en/se/ form returns 404; /en/se works). No per-file source page or creator is recorded; do not assume attribution."
+        ]
+      }
+    },
+    {
+      "path": "05-sfx/sfx-hyoshigi-start.mp3",
+      "sha256": "daf1e106dc295082358b689101533655b76779fd9a24f2be8b5edf684eb9d884",
+      "bytes": 12955,
+      "durationSeconds": 0.784,
+      "outputs": ["/audio/05-sfx/sfx-hyoshigi-start.webm", "/audio/05-sfx/sfx-hyoshigi-start.mp3"],
+      "phase": "sfx",
+      "cue": "hyoshigiStart",
+      "kind": "sfx",
+      "suppliedCredit": {
+        "title": null,
+        "composer": null,
+        "url": "https://opentracks.com/en/se/"
+      },
+      "source": {
+        "provider": "OpenTracks (formerly DOVA-SYNDROME)",
+        "trackId": null,
+        "url": "https://opentracks.com/en/se",
+        "pageTitle": null,
+        "pageComposer": null,
+        "pageComposerId": null
+      },
+      "verification": {
+        "checkedAt": "2026-11-08",
+        "status": "unverified",
+        "notes": [
+          "Only a general SFX library link was supplied (the supplied /en/se/ form returns 404; /en/se works). No per-file source page or creator is recorded; do not assume attribution."
+        ]
+      }
+    },
+    {
+      "path": "05-sfx/sfx-neko-pop.mp3",
+      "sha256": "a4fae393fad93cd24c6902ca9d5914986353139e4751585caea62bad290f2472",
+      "bytes": 9970,
+      "durationSeconds": 0.648,
+      "outputs": ["/audio/05-sfx/sfx-neko-pop.webm", "/audio/05-sfx/sfx-neko-pop.mp3"],
+      "phase": "sfx",
+      "cue": "nekoPop",
+      "kind": "sfx",
+      "suppliedCredit": {
+        "title": null,
+        "composer": null,
+        "url": "https://opentracks.com/en/se/"
+      },
+      "source": {
+        "provider": "OpenTracks (formerly DOVA-SYNDROME)",
+        "trackId": null,
+        "url": "https://opentracks.com/en/se",
+        "pageTitle": null,
+        "pageComposer": null,
+        "pageComposerId": null
+      },
+      "verification": {
+        "checkedAt": "2026-11-08",
+        "status": "unverified",
+        "notes": [
+          "Only a general SFX library link was supplied (the supplied /en/se/ form returns 404; /en/se works). No per-file source page or creator is recorded; do not assume attribution."
+        ]
+      }
+    },
+    {
+      "path": "05-sfx/sfx-podium-spotlight.mp3",
+      "sha256": "ee48934885f0ca34c69b4bc4284b3c214d15585e86cf489c262c5220bc0f36bc",
+      "bytes": 198111,
+      "durationSeconds": 6.165,
+      "outputs": [
+        "/audio/05-sfx/sfx-podium-spotlight.webm",
+        "/audio/05-sfx/sfx-podium-spotlight.mp3"
+      ],
+      "phase": "sfx",
+      "cue": "podiumSpotlight",
+      "kind": "sfx",
+      "suppliedCredit": {
+        "title": null,
+        "composer": null,
+        "url": "https://opentracks.com/en/se/"
+      },
+      "source": {
+        "provider": "OpenTracks (formerly DOVA-SYNDROME)",
+        "trackId": null,
+        "url": "https://opentracks.com/en/se",
+        "pageTitle": null,
+        "pageComposer": null,
+        "pageComposerId": null
+      },
+      "verification": {
+        "checkedAt": "2026-11-08",
+        "status": "unverified",
+        "notes": [
+          "Only a general SFX library link was supplied (the supplied /en/se/ form returns 404; /en/se works). No per-file source page or creator is recorded; do not assume attribution."
+        ]
+      }
+    },
+    {
+      "path": "05-sfx/sfx-question-whoosh.mp3",
+      "sha256": "c7655219637304c269eca65e880b6bf41ce5b0419c4125b53e691be9f3d93bc3",
+      "bytes": 36779,
+      "durationSeconds": 2.273,
+      "outputs": [
+        "/audio/05-sfx/sfx-question-whoosh.webm",
+        "/audio/05-sfx/sfx-question-whoosh.mp3"
+      ],
+      "phase": "sfx",
+      "cue": "questionWhoosh",
+      "kind": "sfx",
+      "suppliedCredit": {
+        "title": null,
+        "composer": null,
+        "url": "https://opentracks.com/en/se/"
+      },
+      "source": {
+        "provider": "OpenTracks (formerly DOVA-SYNDROME)",
+        "trackId": null,
+        "url": "https://opentracks.com/en/se",
+        "pageTitle": null,
+        "pageComposer": null,
+        "pageComposerId": null
+      },
+      "verification": {
+        "checkedAt": "2026-11-08",
+        "status": "unverified",
+        "notes": [
+          "Only a general SFX library link was supplied (the supplied /en/se/ form returns 404; /en/se works). No per-file source page or creator is recorded; do not assume attribution."
+        ]
+      }
+    },
+    {
+      "path": "05-sfx/sfx-reveal-bar.mp3",
+      "sha256": "beb816685abf3cb658c1a0999576cf9ae8ab95c961b400e8546d8d49ace8f24f",
+      "bytes": 241920,
+      "durationSeconds": 6.048,
+      "outputs": ["/audio/05-sfx/sfx-reveal-bar.webm", "/audio/05-sfx/sfx-reveal-bar.mp3"],
+      "phase": "sfx",
+      "cue": "revealBar",
+      "kind": "sfx",
+      "suppliedCredit": {
+        "title": null,
+        "composer": null,
+        "url": "https://opentracks.com/en/se/"
+      },
+      "source": {
+        "provider": "OpenTracks (formerly DOVA-SYNDROME)",
+        "trackId": null,
+        "url": "https://opentracks.com/en/se",
+        "pageTitle": null,
+        "pageComposer": null,
+        "pageComposerId": null
+      },
+      "verification": {
+        "checkedAt": "2026-11-08",
+        "status": "unverified",
+        "notes": [
+          "Only a general SFX library link was supplied (the supplied /en/se/ form returns 404; /en/se works). No per-file source page or creator is recorded; do not assume attribution."
+        ]
+      }
+    },
+    {
+      "path": "05-sfx/sfx-streak-fire.mp3",
+      "sha256": "03d23f5ad2ffc8c09d511c22c84fbae8dac62ca2db225ba9e58a0e60ee1567b0",
+      "bytes": 37615,
+      "durationSeconds": 1.567,
+      "outputs": ["/audio/05-sfx/sfx-streak-fire.webm", "/audio/05-sfx/sfx-streak-fire.mp3"],
+      "phase": "sfx",
+      "cue": "streakFire",
+      "kind": "sfx",
+      "suppliedCredit": {
+        "title": null,
+        "composer": null,
+        "url": "https://opentracks.com/en/se/"
+      },
+      "source": {
+        "provider": "OpenTracks (formerly DOVA-SYNDROME)",
+        "trackId": null,
+        "url": "https://opentracks.com/en/se",
+        "pageTitle": null,
+        "pageComposer": null,
+        "pageComposerId": null
+      },
+      "verification": {
+        "checkedAt": "2026-11-08",
+        "status": "unverified",
+        "notes": [
+          "Only a general SFX library link was supplied (the supplied /en/se/ form returns 404; /en/se works). No per-file source page or creator is recorded; do not assume attribution."
+        ]
+      }
+    },
+    {
+      "path": "05-sfx/sfx-tick-last5s.mp3",
+      "sha256": "452508dde277a3f3ec6511773d2c2f363b4152b6d0480be5b010456acb37da90",
+      "bytes": 456410,
+      "durationSeconds": 28.5,
+      "outputs": ["/audio/05-sfx/sfx-tick-last5s.webm", "/audio/05-sfx/sfx-tick-last5s.mp3"],
+      "phase": "sfx",
+      "cue": "tickLast5s",
+      "kind": "sfx",
+      "suppliedCredit": {
+        "title": null,
+        "composer": null,
+        "url": "https://opentracks.com/en/se/"
+      },
+      "source": {
+        "provider": "OpenTracks (formerly DOVA-SYNDROME)",
+        "trackId": null,
+        "url": "https://opentracks.com/en/se",
+        "pageTitle": null,
+        "pageComposer": null,
+        "pageComposerId": null
+      },
+      "verification": {
+        "checkedAt": "2026-11-08",
+        "status": "unverified",
+        "notes": [
+          "Only a general SFX library link was supplied (the supplied /en/se/ form returns 404; /en/se works). No per-file source page or creator is recorded; do not assume attribution."
+        ]
+      }
+    },
+    {
+      "path": "05-sfx/sfx-timeup-gong.mp3",
+      "sha256": "cad65f5ab04826ecd7ddddd8f70d65704780b8f219ee0ed4f692e2baf5c00fcf",
+      "bytes": 97092,
+      "durationSeconds": 2.325,
+      "outputs": ["/audio/05-sfx/sfx-timeup-gong.webm", "/audio/05-sfx/sfx-timeup-gong.mp3"],
+      "phase": "sfx",
+      "cue": "timeupGong",
+      "kind": "sfx",
+      "suppliedCredit": {
+        "title": null,
+        "composer": null,
+        "url": "https://opentracks.com/en/se/"
+      },
+      "source": {
+        "provider": "OpenTracks (formerly DOVA-SYNDROME)",
+        "trackId": null,
+        "url": "https://opentracks.com/en/se",
+        "pageTitle": null,
+        "pageComposer": null,
+        "pageComposerId": null
+      },
+      "verification": {
+        "checkedAt": "2026-11-08",
+        "status": "unverified",
+        "notes": [
+          "Only a general SFX library link was supplied (the supplied /en/se/ form returns 404; /en/se works). No per-file source page or creator is recorded; do not assume attribution."
+        ]
+      }
+    }
+  ]
+}

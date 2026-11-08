@@ -1952,7 +1952,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - pnpm audio:optimize berhasil; ffprobe semua40 output codec/duration/decode; node --test scripts/optimize-audio.spec.mjs untuk3/4/N lobby, missing cue, corrupt source, conversion failure/stale cleanup dan safe publication. Lint script dan manifest shared validation PASS.
 
-### - [ ] TASK-114A: Rapikan kredit audio untuk repo dan distribusi
+### - [x] TASK-114A: Rapikan kredit audio untuk repo dan distribusi
 - **Traceability**: `US-07`, `US-13`, `US-18`, `US-19`, `US-21`, [Audio revision](audio-engine-revision.md); instruksi pengguna 2026-10-31.
 - **Depends On**: `TASK-114`
 - **Target Files**:

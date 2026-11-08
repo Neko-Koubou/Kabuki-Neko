@@ -21,8 +21,20 @@ Source integrity:
 - MPL-2.0 packages (including axe and Lightning CSS) retain their file-level licensing requirements. CC-BY data such as caniuse-lite retains attribution requirements.
 - Test services are independent processes: PostgreSQL16, MySQL8, Redis7 and MinIO. MinIO test source is [official commit 9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a](https://github.com/minio/minio/tree/9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a), AGPL-3.0; the test image retains its LICENSE and source provenance. Production service images and Go/base-image inventories remain release checks.
 - Brand assets were added in TASK-113 (see “Kabuki Neko brand assets” below). Noto Sans has not been added yet; document its source, OFL terms and checksums when introduced in TASK-115.
-- Local audio candidates under `audio-assets/kabuki-neko-audio/` have a supplied CREDITS.md and manifest, but per-file provenance and redistributability have not been independently verified. Some credit URLs are malformed and SFX credits currently reference only a library landing page. No audio has been packaged or relicensed by this task; TASK-114/115 must resolve these before distribution.
+- Audio assets: see “Audio assets (third-party, release-unverified)” below. Their distribution rights are not yet confirmed.
 - `pause@0.0.1` has no package.json license field, so pnpm reports Unknown. Its installed Readme.md includes the full MIT license and copyright (c) 2012 TJ Holowaychuk. The inventory below records this inspected MIT evidence.
+
+## Audio assets (third-party, release-unverified)
+
+The 20 supplied audio files in `audio-assets/kabuki-neko-audio/` (10 BGM, 10 SFX) and the 40 WebM/MP3 files generated from them by `pnpm audio:optimize` are **not** covered by the project LICENSE. Copyright stays with the individual composers/creators who publish them on OpenTracks (formerly DOVA-SYNDROME) under the [OpenTracks Audio Source Usage License](https://opentracks.com/en/help/articles/license/) plus any creator-specific conditions. Per-track titles, composers and source links are in the [audio credits](audio-assets/kabuki-neko-audio/CREDITS.md) (copied byte-for-byte to `/audio/CREDITS.md`), and per-file SHA-256, duration, outputs and verification evidence are in [`docs/audio-provenance.json`](docs/audio-provenance.json).
+
+Checked on 2026-11-08 against the official license page and each BGM source page:
+
+- Seven BGM tracks match their source page title and composer; `bgm-lobby-neko8bit` matches after correcting the supplied title typo (“ICat sonata” → “Cat sonata - 8bit”). Two malformed source links (`hhttps://`, `https://https://`), the stale license link and the SFX library link were repaired.
+- `bgm-lobby-matcha` (#13513) and `bgm-think-sprint` (#3300) do not match their source pages (title/composer); the asset owner must confirm the correct source. The ten SFX only have a general library link, with no per-file source or creator.
+- The OpenTracks license permits format conversion and editing, but asks tool apps/platforms to consult site management before embedding audio and licensing it to their users, and prohibits distributing the audio files themselves or using them where end users can easily access and copy the audio files.
+
+**Release status: release-unverified.** No written permission exists yet for embedding these files in a self-hostable platform, storing them in this repository, or serving them as downloadable files. Until that permission is obtained, or the assets are replaced by audio whose terms allow it, do not treat the audio as cleared for release or redistribution. This notice records evidence; it is not legal advice.
 
 ## Kabuki Neko brand assets
 
