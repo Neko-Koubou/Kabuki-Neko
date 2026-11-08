@@ -19,6 +19,8 @@
     "locales:validate": "tsx scripts/locales-validate.ts",
     "locales:build": "tsx scripts/locales-build.ts",
     "locales:template": "tsx scripts/locales-template.ts",
+    "audio:optimize": "node scripts/optimize-audio.mjs",
+    "test:audio": "node --test scripts/optimize-audio.spec.mjs",
     "benchmark:game": "tsx scripts/benchmark-game.ts",
     "deploy:scale": "tsx scripts/start-profile.ts",
     "db:migrate": "tsx scripts/migrate.ts"

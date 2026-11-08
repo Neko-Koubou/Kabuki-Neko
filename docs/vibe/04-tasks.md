@@ -1938,7 +1938,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Assertion visual di browser: ketiga SVG decode pada16/32/128/320px, tidak ada external/script nodes, logo terbaca light/dark; notices cocok aset.
 
-### - [ ] TASK-114: Bangun pipeline FFmpeg dual-format dan manifest audio
+### - [x] TASK-114: Bangun pipeline FFmpeg dual-format dan manifest audio
 - **Traceability**: `US-07`, `US-13`, `US-18`, `US-19`, `US-21`, [Audio revision](audio-engine-revision.md); instruksi pengguna 2026-10-31.
 - **Depends On**: `TASK-113`, `TASK-016B`
 - **Target Files**:

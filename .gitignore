@@ -53,6 +53,10 @@ runtime-secrets.json
 # Generated locale bundles, templates, and legal copies
 /locales-built/
 /apps/web/public/locales/
+# Generated web audio (pnpm audio:optimize) and its transient staging/previous directories
+/apps/web/public/audio/
+/apps/web/public/.audio.staging-*/
+/apps/web/public/.audio.previous-*/
 /apps/web/public/legal/
 
 # Temporary files and logs
