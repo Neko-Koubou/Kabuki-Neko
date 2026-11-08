@@ -216,6 +216,17 @@ export class RuntimeRepository {
       .take(Math.max(1, Math.min(limit, 500)))
       .getMany();
   }
+  /** CLOSED/LOST allocations idle since before `before`, oldest first (release retry scan). */
+  retired(before: number, limit = 100): Promise<Allocation[]> {
+    return this.db
+      .getRepository<Allocation>("room_allocations")
+      .createQueryBuilder("r")
+      .where("r.status IN ('CLOSED','LOST') AND r.last_heartbeat_at<:before", { before })
+      .orderBy("r.last_heartbeat_at", "ASC")
+      .addOrderBy("r.id", "ASC")
+      .take(Math.max(1, Math.min(limit, 100)))
+      .getMany();
+  }
   /** CREATING allocations created before `before` (crashed creates), oldest first, bounded. */
   staleCreating(before: number, limit = 100): Promise<Allocation[]> {
     return this.db

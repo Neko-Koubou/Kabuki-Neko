@@ -109,6 +109,9 @@ it.each<DatabaseDriver>(["sqlite", "postgres", "mysql"])(
         expect(await repo.heartbeat(replacement.id, 6)).toBe(true);
         expect(await repo.transition(replacement.id, "ACTIVE", "LOST", 7)).toBe(true);
         expect(await repo.active()).toEqual([]);
+        // TASK-081A: retired rows become visible to the release scan after their idle cutoff.
+        expect(await repo.retired(7)).toEqual([]);
+        expect((await repo.retired(8)).map((row) => row.id)).toEqual([replacement.id]);
         expect(await repo.release(replacement.id, replacement.pin_code, 8)).toBe(false);
         expect(await repo.release(replacement.id, replacement.pin_code, 3600007)).toBe(true);
         expect((await media.claimDelete(assetId, hostId, 2, 3600008)).asset.state).toBe("DELETING");

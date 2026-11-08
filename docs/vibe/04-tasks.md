@@ -1450,9 +1450,21 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/modules/game-engine/game.service.spec.ts` double next, skip/submit, kick last required, partial success, end empty lobby dan retry after freeze crash.
 
+### - [x] TASK-081A: List retired allocations awaiting PIN and media release
+- **Traceability**: `US-12`, `US-16`, [SA §6.2](03-system-analysis.md#62-room-allocation-leases-and-lifetime); prerequisite discovered while implementing TASK-081 (the scheduler must retry conditional release of CLOSED/LOST allocations after retention, including after a restart).
+- **Depends On**: `TASK-079A`
+- **Target Files**:
+  - `MODIFY` `packages/database/src/repositories/runtime.repository.ts`
+  - `MODIFY` `tests/contracts/runtime.repository.spec.ts`
+- **Implementation Specs**:
+  - Add bounded `retired(before, limit)` returning CLOSED/LOST allocations whose `last_heartbeat_at < before`, oldest first (≤100), parameterized. Existing behaviour unchanged; documented.
+- **Definition of Done (Verification)**:
+  - Database lint/typecheck/build PASS; `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/runtime.repository.spec.ts` PASS on SQLite/PostgreSQL/MySQL.
+- **Commit Message**: `TASK-081A: List retired allocations awaiting PIN and media release`
+
 ### - [ ] TASK-081: Implementasikan timer lease dan retention room
 - **Traceability**: `US-10`, `US-12`, `US-14`, `US-16`, [SA §6.2](03-system-analysis.md#62-room-allocation-leases-and-lifetime)
-- **Depends On**: `TASK-080`
+- **Depends On**: `TASK-080`, `TASK-081A`
 - **Target Files**:
   - `CREATE` `apps/api/src/modules/game-engine/room-scheduler.ts`
   - `CREATE` `apps/api/src/modules/game-engine/room-scheduler.spec.ts`
