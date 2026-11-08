@@ -1351,7 +1351,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:integration --runInBand --runTestsByPath tests/integration/system.spec.ts` all 7 method/path rows, role denial, stale metrics/partial cleanup, no credentials in public health.
 
-### - [ ] TASK-075: Implementasikan scoring dan ranking deterministik
+### - [x] TASK-075: Implementasikan scoring dan ranking deterministik
 - **Traceability**: `US-10`, `US-11`, `US-13`, [SA §5.5](03-system-analysis.md#55-transisi-timing-scoring-ranking)
 - **Depends On**: `TASK-061`, `TASK-046`
 - **Target Files**:
