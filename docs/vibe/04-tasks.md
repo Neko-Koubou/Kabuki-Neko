@@ -1569,9 +1569,20 @@ flowchart LR
 
 ## Phase 4: Frontend Design Tokens, Base UI & State Layer
 
+### - [x] TASK-087A: Aktifkan pipeline PostCSS Tailwind 4 untuk web
+- **Traceability**: `US-18`, [Design §2](02-design-spec.md#2-design-tokens-dan-tema), [00 §2](00-project-context.md#2-tech-stack-matrix)
+- **Depends On**: `TASK-010`
+- **Target Files**:
+  - `CREATE` `apps/web/postcss.config.mjs`
+- **Implementation Specs**:
+  - Koreksi 2026-11-08: manifest web sudah mendeklarasikan `tailwindcss` 4.3.3 dan `@tailwindcss/postcss`, tetapi tidak ada task yang membuat konfigurasi PostCSS, sehingga `@import "tailwindcss"`/`@theme` pada TASK-087 tidak akan diproses oleh Next.
+  - Daftarkan hanya plugin `@tailwindcss/postcss` (tanpa autoprefixer/plugin lain); tidak mengubah dependency atau lockfile.
+- **Definition of Done (Verification)**:
+  - `pnpm --filter @kabuki-neko/web build` lulus dengan konfigurasi baru; CSS hasil build memuat utility Tailwind setelah TASK-087 mengimpor `tailwindcss`.
+
 ### - [ ] TASK-087: Terapkan design tokens dan preferensi tema
 - **Traceability**: `US-18`, `US-21`, [SA §8.3](03-system-analysis.md#83-budget-qr-font-dan-accessible-media), [Design §2](02-design-spec.md#2-design-tokens-dan-tema)
-- **Depends On**: `TASK-010`, `TASK-014`, `TASK-012`
+- **Depends On**: `TASK-010`, `TASK-014`, `TASK-012`, `TASK-087A`
 - **Target Files**:
   - `MODIFY` `apps/web/src/app/globals.css`
   - `CREATE` `apps/web/src/providers/theme-provider.tsx`
