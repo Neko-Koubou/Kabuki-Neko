@@ -474,3 +474,10 @@
 - Files: `package.json`, `packages/tsconfig/package.json`, `pnpm-lock.yaml`, `docs/vibe/03-system-analysis.md`; task checklist/log.
 - Root and `@kabuki-neko/tsconfig` `engines.node` raised to `>=26.13.0` (`.node-version` stays 26.13.0, pnpm 10.34.9). Root `@types/node` pinned exact to 26.6.6 (latest 26.x, published 2026-10-28). Root `better-sqlite3` 13.0.3 → 12.11.1 to match `packages/database` and the TypeORM 0.3.31 peer range. SA §1.1 runtime row/rationale and SA §10.2 Docker image now state Node 26.
 - Verification PASS: `pnpm install` then `pnpm install --frozen-lockfile` (lockfile SHA-256 `63a17582…4192a86` unchanged); `node --version` v26.13.0; `pnpm -r ls better-sqlite3 --depth 0` only 12.11.1; `better-sqlite3` opens `:memory:` from `packages/database` without ABI error; `pnpm build` 4/4, `pnpm typecheck` 6/6, `pnpm lint` 6/6; API Jest 15 suites/119 tests; contracts `migration-sqlite|migration-runner|database-types` 3 suites/8 tests.
+
+## TASK-001C — 2026-11-08T09:13:43+07:00
+
+- Files: `packages/shared/package.json`, `packages/database/package.json`, `pnpm-lock.yaml`; task checklist/log.
+- `@types/node` in shared and database pinned exact to 26.6.6 (same as root, TASK-001A); database `better-sqlite3` stays 12.11.1.
+- Ordering note: executed before TASK-001B. Both depend only on TASK-001A, but bumping api/web first left `typeorm` resolved under two peer variants (`@types/node` 24 for database, 26 for api), which broke three `database.module.spec.ts` spies (`DataSource` from a different module instance). With database on 26 first, TASK-001B can complete the single-variant state; the workspace-wide "single `@types/node` 26.x" check is therefore asserted at the end of TASK-001B (now: root/shared/database 26.6.6, api/web still 24.19.2).
+- Verification PASS: `pnpm install` then `pnpm install --frozen-lockfile` (lockfile SHA-256 `c50f74ab…5a192c9` unchanged); shared typecheck/lint/build and Vitest 11 files/99 tests; shared `tsc --noEmit --incremental false`; database typecheck/lint/build; contracts `migration-sqlite|migration-runner|database-types` 3 suites/8 tests.

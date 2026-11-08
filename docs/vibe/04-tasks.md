@@ -110,7 +110,7 @@ flowchart LR
   - `pnpm install --frozen-lockfile` stabil; `pnpm --filter @kabuki-neko/api typecheck`, `lint`, `build`, `test` PASS; `pnpm --filter @kabuki-neko/web typecheck`, `lint`, `build` PASS.
 - **Commit Message**: `TASK-001B: Align api and web Node type definitions with Node 26`
 
-### - [ ] TASK-001C: Selaraskan tipe Node 26 pada paket shared dan database
+### - [x] TASK-001C: Selaraskan tipe Node 26 pada paket shared dan database
 - **Traceability**: `US-16`, `US-20`, [SA §1.1](03-system-analysis.md#11-stack-dan-versi-baseline); lanjutan TASK-001A.
 - **Depends On**: `TASK-001A`
 - **Target Files**:
