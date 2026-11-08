@@ -14,6 +14,13 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
   transpilePackages: ["@kabuki-neko/shared"],
+  /**
+   * `/dashboard` → `/dashboard/quizzes` (SA §1.2) as a 307 before any rendering, so the protected
+   * layout never streams for the bare dashboard URL; the page-level redirect remains as a fallback.
+   */
+  async redirects() {
+    return [{ source: "/dashboard", destination: "/dashboard/quizzes", permanent: false }];
+  },
 };
 
 export default nextConfig;

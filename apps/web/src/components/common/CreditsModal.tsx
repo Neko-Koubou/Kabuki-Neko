@@ -324,16 +324,19 @@ export function CreditsModal({ open, onClose, loadCredits }: CreditsModalProps) 
 }
 
 /** Footer/admin trigger that opens the credits dialog (focus returns here on close). */
-export function CreditsButton({ loadCredits }: { loadCredits?: () => Promise<string> }) {
+export function CreditsButton({
+  loadCredits,
+  className = "min-h-11 rounded-md px-2 text-label text-primary underline hover:bg-subtle",
+}: {
+  loadCredits?: () => Promise<string>;
+  /** Trigger styling, so footers can match their link style. */
+  className?: string;
+}) {
   const { t } = useLocale();
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="min-h-11 rounded-md px-2 text-label text-primary underline hover:bg-subtle"
-      >
+      <button type="button" onClick={() => setOpen(true)} className={className}>
         {t("about.audio.credits")}
       </button>
       <CreditsModal

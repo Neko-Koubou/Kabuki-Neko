@@ -2232,7 +2232,7 @@ flowchart LR
 
 ## Phase 5: Feature Screens, API Integration & 5 UI States
 
-### - [ ] TASK-132: Bangun public dan dashboard navigation shells
+### - [x] TASK-132: Bangun public dan dashboard navigation shells
 - **Traceability**: `US-01`, `US-03`, `US-15`, `US-18`, `US-21`, [SA §1.2](03-system-analysis.md#12-pemetaan-modul-dan-file), [Design §1.1](02-design-spec.md#11-pola-navigasi-dan-izin)
 - **Depends On**: `TASK-131`, `TASK-126`, `TASK-130C`
 - **Target Files**:

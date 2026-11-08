@@ -3,8 +3,10 @@
  * then `Accept-Language`, then the instance default, then English — and renders `<html lang dir>`
  * plus the initial shell catalog, so the client locale provider hydrates with identical text.
  * The layout is therefore dynamic (it varies by cookie and header). A missing or invalid locale
- * bundle never breaks the page: the provider then renders the safe fallback text. The auth
- * provider (inside the locale provider) holds the in-memory session for the public API URL.
+ * bundle never breaks the page: the provider then renders the safe fallback text. The theme
+ * provider applies the saved system/light/dark preference to <html>, and the auth provider holds
+ * the in-memory session for the public API URL. All three live here, above every route group, so
+ * moving between public, dashboard and live routes never remounts them.
  */
 import type { Metadata } from "next";
 import { headers } from "next/headers";
@@ -12,6 +14,7 @@ import type { ReactNode } from "react";
 import { loadInitialLocale } from "@/lib/i18n/locale.server";
 import { AuthProvider } from "@/providers/auth-provider";
 import { LocaleProvider } from "@/providers/locale-provider";
+import { ThemeProvider } from "@/providers/theme-provider";
 import "./globals.css";
 
 export const metadata: Metadata = { title: "Kabuki Neko" };
@@ -37,7 +40,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     >
       <body>
         <LocaleProvider initial={initial}>
-          <AuthProvider apiBaseUrl={apiBaseUrl()}>{children}</AuthProvider>
+          <ThemeProvider>
+            <AuthProvider apiBaseUrl={apiBaseUrl()}>{children}</AuthProvider>
+          </ThemeProvider>
         </LocaleProvider>
       </body>
     </html>

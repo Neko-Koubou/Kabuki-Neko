@@ -1067,3 +1067,39 @@
     - A screenshot of the rendered QR was fed as a Y4M fake camera into M02. Native BarcodeDetector was absent, so the lazy ZXing path ran. Result: `PIN: 012345` with status "QR code recognized…", `video.srcObject` null, and no console errors.
     - With the fake camera pattern the live preview showed. "Stop camera" changed the track from `live` to `ended`.
     - With no camera, the alert "No camera found. Enter the PIN instead." appeared, and the manual entry callback fired.
+
+## TASK-132 — 2026-11-08T15:22:57+07:00
+
+- **Files**:
+  - `apps/web/src/components/ui/public-shell.tsx` (CREATE):
+    - `usePublicConfig`: `/system/public-config`, abortable, with retry.
+    - `SkipLink`, `monogramOf`.
+    - `BrandMark`: square self-hosted mark plus the instance name, which wraps. A logo failure before or after hydration falls back to a monogram.
+    - `ThemeMenu`: system/light/dark via the existing ThemeProvider.
+    - `SiteFooter`: attribution, About, code license, third-party notices, language guide and the music credits `CreditsButton`.
+    - `displayName`.
+    - `PublicShell`: skip link; header with logo → `/`, Join a game → `/join`, Sign in → `/login`, LocalePicker and ThemeMenu; `main#main-content`; footer; error banner with Try again while static content stays usable.
+  - `apps/web/src/components/ui/dashboard-shell.tsx` (CREATE, supporting). Next.js layout files may only export the layout, so the testable shell lives in a component.
+    - Exports `DASHBOARD_NAV`, `navItemsFor` (creator: Quizzes/Media/Reports/About; superadmin adds Settings/Users), `isActivePath`, `loginHref` (safe `returnTo`) and `DashboardShell`.
+    - `RequireAuth` shows only "Loading…" until the session check ends.
+    - Anonymous visitors are sent with `router.replace` to `/login?returnTo=…`.
+    - On reauth the page stays mounted but inert, with a focused "Sign in again" alert.
+    - Sidebar: 224 px sticky on desktop, a disclosure Menu on mobile. It closes on Escape (focus returns to the button) and on navigation; `aria-current` marks the active page; About and the credits live in the sidebar.
+    - Header: LocalePicker and a profile menu (theme and Sign out → `/login`).
+  - `apps/web/src/app/(dashboard)/dashboard/layout.tsx` (CREATE): `DashboardShell` with noindex metadata.
+  - `apps/web/src/app/(dashboard)/dashboard/page.tsx` (CREATE): server `redirect("/dashboard/quizzes")` as a fallback.
+  - `apps/web/src/components/ui/shells.spec.tsx` (CREATE): 10 tests.
+  - Supporting changes:
+    - `apps/web/src/app/layout.tsx`: mount `ThemeProvider` between the locale and auth providers, so the shells' theme controls work and no route group remounts providers.
+    - `apps/web/next.config.ts`: `redirects()` returns a 307 for `/dashboard` → `/dashboard/quizzes` before rendering. A page-level redirect inside the protected layout would only fire after the client-side auth check.
+    - `apps/web/src/components/common/CreditsModal.tsx`: optional `className` on `CreditsButton`, so the footer trigger matches the footer links.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/web test -- src/components/ui/shells.spec.tsx`: 10/10, three repeated runs stable. Covers landmarks and skip link; header and legal footer; loading → ideal instance name; empty name → "Kabuki Neko"; missing logo → monogram; long wrapping names; error banner with retry; theme change without remount; credits from the footer (hostile markdown never becomes a script or link; Escape returns focus); no protected flash during the session check; creator vs superadmin navigation; a creator directly opening an admin URL; anonymous redirect with an encoded safe `returnTo`; mobile menu toggle/Escape/navigation close; profile menu theme and sign out; inert page with a focused sign-in prompt after revocation.
+  - Full web suite: 233/233 across 22 files. Lint, typecheck, `prettier --check` and build all pass.
+  - Chromium against `next start` with the API faked through Playwright routes and temporary probe pages (since removed):
+    - `/dashboard` returns HTTP 307 to `/dashboard/quizzes`.
+    - Superadmin desktop shows the sidebar with Settings/Users.
+    - On a 360 px creator view, a long instance name and a long user name wrap.
+    - The dark mobile menu opens.
+    - Public desktop renders; on dark mobile the 503 shows the error banner.
+    - An anonymous visitor lands on `/login?returnTo=%2Fdashboard%2Fquizzes` without the library flashing.
