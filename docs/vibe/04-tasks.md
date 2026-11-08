@@ -1233,7 +1233,7 @@ flowchart LR
   - Database lint/typecheck/build PASS; `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/media.repository.spec.ts` PASS on SQLite/PostgreSQL/MySQL covering composed reserve rollback, foreign manager rejection, paging/filter/literal search, stale revision and wrong-owner accessibility denial, stale upload/deletion selection.
 - **Commit Message**: `TASK-067A: Complete media repository operations for uploads, library and janitor`
 
-### - [ ] TASK-067: Implementasikan upload, library dan metadata media
+### - [x] TASK-067: Implementasikan upload, library dan metadata media
 - **Traceability**: `US-06`, [SA §7.1](03-system-analysis.md#71-storage-pipeline-dan-cleanup)
 - **Depends On**: `TASK-066`, `TASK-037`, `TASK-054`, `TASK-067A`
 - **Target Files**:
