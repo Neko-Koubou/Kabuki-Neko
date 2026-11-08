@@ -1594,7 +1594,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/providers/theme-provider.spec.tsx` storage denied/system change preserve state; assertion green/white solid and yellow/ink contrast pair exact.
 
-### - [ ] TASK-088: Lengkapi katalog en: manifest, common, auth
+### - [x] TASK-088: Lengkapi katalog en: manifest, common, auth
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`
 - **Target Files**:
