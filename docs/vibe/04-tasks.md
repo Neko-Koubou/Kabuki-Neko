@@ -1258,7 +1258,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/modules/media/media-gc.service.spec.ts` in-use/duplicate/active pins preserved, partial200 vs total503, freedBytes confirmed only.
 
-### - [ ] TASK-069: Expose media REST dan worker janitor
+### - [x] TASK-069: Expose media REST dan worker janitor
 - **Traceability**: `US-06`, `US-15`, [SA §4.4](03-system-analysis.md#44-media-system-et-locales)
 - **Depends On**: `TASK-068`, `TASK-063`
 - **Target Files**:

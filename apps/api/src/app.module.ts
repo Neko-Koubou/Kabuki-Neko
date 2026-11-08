@@ -1,3 +1,4 @@
+import { MediaModule } from "./modules/media/media.module";
 import { QuizzesModule } from "./modules/quizzes/quizzes.module";
 import { UsersModule } from "./modules/users/users.module";
 import { AuthModule } from "./modules/auth/auth.module";
@@ -27,6 +28,7 @@ import { SecretsService } from "./config/secrets.service";
 // eslint-disable-next-line @typescript-eslint/no-extraneous-class -- Nest modules are decorator metadata containers.
 export class RuntimeConfigModule {}
 
+/** Root module: runtime config, persistence/storage/state providers and the feature modules. */
 @Module({
   imports: [
     RuntimeConfigModule,
@@ -36,6 +38,7 @@ export class RuntimeConfigModule {}
     AuthModule,
     UsersModule,
     QuizzesModule,
+    MediaModule,
   ],
 })
 // eslint-disable-next-line @typescript-eslint/no-extraneous-class -- Nest modules are decorator metadata containers.
