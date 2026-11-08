@@ -2216,7 +2216,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Component tests script/link injection, keyboard/mobile, loading/empty/ideal/partial/error serta credit source links.
 
-### - [ ] TASK-131: Bangun QR generator dan scanner aman
+### - [x] TASK-131: Bangun QR generator dan scanner aman
 - **Traceability**: `US-07`, `US-08`, `US-18`, [SA §8.3](03-system-analysis.md#83-budget-qr-font-dan-accessible-media), [Design §4.9](02-design-spec.md#49-dialog--m01m12)
 - **Depends On**: `TASK-130`, `TASK-119`, `TASK-130C`
 - **Target Files**:
