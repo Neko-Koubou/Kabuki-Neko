@@ -1425,7 +1425,7 @@ flowchart LR
   - Database lint/typecheck/build PASS; `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/runtime.repository.spec.ts` PASS on SQLite/PostgreSQL/MySQL.
 - **Commit Message**: `TASK-079A: Look up allocations by PIN and list active rooms for scheduling`
 
-### - [ ] TASK-079: Implementasikan join, nickname dan session recovery
+### - [x] TASK-079: Implementasikan join, nickname dan session recovery
 - **Traceability**: `US-08`, `US-09`, `US-12`, [SA §5.2](03-system-analysis.md#52-semua-client-to-server-methods)
 - **Depends On**: `TASK-078`, `TASK-079A`
 - **Target Files**:
