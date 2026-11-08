@@ -196,6 +196,26 @@ export class RuntimeRepository {
   find(sessionId: string): Promise<Allocation | null> {
     return this.db.getRepository<Allocation>("room_allocations").findOneBy({ id: sessionId });
   }
+  /** The allocation currently holding `pin` (PIN uniqueness is a SQL constraint), or null. */
+  findByPin(pin: string): Promise<Allocation | null> {
+    const parsed = pinCodeSchema.safeParse(pin);
+    if (!parsed.success) return Promise.resolve(null);
+    return this.db
+      .getRepository<Allocation>("room_allocations")
+      .findOneBy({ pin_code: parsed.data });
+  }
+  /** ACTIVE/FINALIZING allocations after `afterId` in id order (keyset paging, ≤ 500 rows). */
+  active(afterId: string | null = null, limit = 500): Promise<Allocation[]> {
+    const query = this.db
+      .getRepository<Allocation>("room_allocations")
+      .createQueryBuilder("r")
+      .where("r.status IN ('ACTIVE','FINALIZING')");
+    if (afterId) query.andWhere("r.id>:afterId", { afterId });
+    return query
+      .orderBy("r.id", "ASC")
+      .take(Math.max(1, Math.min(limit, 500)))
+      .getMany();
+  }
   /** CREATING allocations created before `before` (crashed creates), oldest first, bounded. */
   staleCreating(before: number, limit = 100): Promise<Allocation[]> {
     return this.db

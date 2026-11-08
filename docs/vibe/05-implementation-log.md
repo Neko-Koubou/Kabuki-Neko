@@ -623,3 +623,9 @@
 - Files: `packages/database/src/repositories/runtime.repository.ts`, `tests/contracts/runtime.repository.spec.ts`; task checklist (corrective task inserted before TASK-078, which now depends on it)/log.
 - Added `find(sessionId)` and bounded `staleCreating(before, limit≤100)` (CREATING rows with `created_at < before`, oldest first, parameterized); exported the `Allocation` row type; documented the module. Existing reserve/activate/release behaviour unchanged. Also replaced a pre-existing non-null assertion in the contract test with an explicit check (ESLint `no-non-null-assertion`).
 - Verification PASS: database lint/typecheck/build; `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/runtime.repository.spec.ts` 3 tests on SQLite/PostgreSQL/MySQL (find existing/unknown, stale boundary exclusive at created_at, creation snapshot round-trip, activated rows no longer stale); ESLint on the spec PASS.
+
+## TASK-079A — 2026-11-08T10:30:15+07:00
+
+- Files: `packages/database/src/repositories/runtime.repository.ts`, `tests/contracts/runtime.repository.spec.ts`; task checklist (corrective task inserted before TASK-079, which now depends on it)/log.
+- Added `findByPin(pin)` (schema-validated PIN, null for malformed/unknown; PIN uniqueness enforced by SQL) and keyset-paged `active(afterId, limit≤500)` returning ACTIVE/FINALIZING allocations in id order for the scheduler scan. Parameterized queries; existing behaviour unchanged.
+- Verification PASS: database lint/typecheck/build; ESLint on the spec; `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/runtime.repository.spec.ts` 3 tests on SQLite/PostgreSQL/MySQL (PIN hit/miss/malformed, active listing and keyset continuation, LOST excluded).

@@ -100,8 +100,15 @@ it.each<DatabaseDriver>(["sqlite", "postgres", "mysql"])(
         expect(await repo.release(first.id, first.pin_code, 4)).toBe(false);
         await repo.activate(replacement.id, 5);
         expect(await repo.staleCreating(1_000_000)).toEqual([]);
+        // TASK-079A: live PIN lookup and keyset-paged active scan.
+        expect((await repo.findByPin(replacement.pin_code))?.id).toBe(replacement.id);
+        expect(await repo.findByPin("999999")).toBeNull();
+        expect(await repo.findByPin("not-a-pin")).toBeNull();
+        expect((await repo.active()).map((row) => row.id)).toEqual([replacement.id]);
+        expect(await repo.active(replacement.id)).toEqual([]);
         expect(await repo.heartbeat(replacement.id, 6)).toBe(true);
         expect(await repo.transition(replacement.id, "ACTIVE", "LOST", 7)).toBe(true);
+        expect(await repo.active()).toEqual([]);
         expect(await repo.release(replacement.id, replacement.pin_code, 8)).toBe(false);
         expect(await repo.release(replacement.id, replacement.pin_code, 3600007)).toBe(true);
         expect((await media.claimDelete(assetId, hostId, 2, 3600008)).asset.state).toBe("DELETING");

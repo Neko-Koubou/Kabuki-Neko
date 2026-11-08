@@ -1413,9 +1413,21 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/modules/game-engine/room-registry.service.spec.ts` collision32 retries, capacity fail, crash each boundary and double create across instances.
 
+### - [x] TASK-079A: Look up allocations by PIN and list active rooms for scheduling
+- **Traceability**: `US-08`, `US-12`, [SA §5.2](03-system-analysis.md#52-semua-client-to-server-methods), [SA §6.2](03-system-analysis.md#62-room-allocation-leases-and-lifetime); prerequisite discovered while planning TASK-079/TASK-081 (PIN check/join must resolve the session of a live PIN; the scheduler scans ACTIVE allocations each second).
+- **Depends On**: `TASK-078A`
+- **Target Files**:
+  - `MODIFY` `packages/database/src/repositories/runtime.repository.ts`
+  - `MODIFY` `tests/contracts/runtime.repository.spec.ts`
+- **Implementation Specs**:
+  - Add `findByPin(pin)` (validated PIN, any non-released status) and keyset-paged `active(afterId, limit)` (ACTIVE/FINALIZING ordered by id, ≤500) using parameterized queries. Existing behaviour unchanged; document members.
+- **Definition of Done (Verification)**:
+  - Database lint/typecheck/build PASS; `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/runtime.repository.spec.ts` PASS on SQLite/PostgreSQL/MySQL.
+- **Commit Message**: `TASK-079A: Look up allocations by PIN and list active rooms for scheduling`
+
 ### - [ ] TASK-079: Implementasikan join, nickname dan session recovery
 - **Traceability**: `US-08`, `US-09`, `US-12`, [SA §5.2](03-system-analysis.md#52-semua-client-to-server-methods)
-- **Depends On**: `TASK-078`
+- **Depends On**: `TASK-078`, `TASK-079A`
 - **Target Files**:
   - `CREATE` `apps/api/src/modules/game-engine/recovery.service.ts`
   - `CREATE` `apps/api/src/modules/game-engine/friendly-names.ts`
