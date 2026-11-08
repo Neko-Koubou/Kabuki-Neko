@@ -1438,7 +1438,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/modules/game-engine/recovery.service.spec.ts` lost ACK no duplicate slot, same-name race, friendly bypass denied, cross-room token and stale generation rejected.
 
-### - [ ] TASK-080: Implementasikan state machine dan kontrol host
+### - [x] TASK-080: Implementasikan state machine dan kontrol host
 - **Traceability**: `US-07`, `US-09`, `US-10`, `US-11`, `US-13`, [SA §5.5](03-system-analysis.md#55-transisi-timing-scoring-ranking)
 - **Depends On**: `TASK-079`, `TASK-075`
 - **Target Files**:
