@@ -85,7 +85,7 @@ tests/
   contracts/                # driver/adapter contract tests (SQLite/PG/MySQL/Redis/S3, state parity, locale)
   integration/              # HTTP + Socket.io integration terhadap API yang dibuild
                             # (users, quizzes, quiz-transfer, media, storage-serving, system, game-gateway)
-  e2e/                      # Playwright (masih kosong)
+  (e2e/ belum ada)          # Playwright — dibuat oleh task E2E
   helpers/runtime.ts        # runtime terisolasi + katalog sintetis + global teardown
 audio-assets/kabuki-neko-audio/  # sumber audio (20 MP3 + CREDITS.md)
 docs/vibe/                  # artefak pipeline 00–07
