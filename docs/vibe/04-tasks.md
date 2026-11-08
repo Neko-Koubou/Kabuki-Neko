@@ -2061,7 +2061,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/ui/collection-primitives.spec.tsx` pagination, keyboard, empty/loading/stale/error and long CJK content.
 
-### - [ ] TASK-122: Bangun media preview dan progressive reveal
+### - [x] TASK-122: Bangun media preview dan progressive reveal
 - **Traceability**: `US-06`, `US-09`, `US-18`, [SA §7.1](03-system-analysis.md#71-storage-pipeline-dan-cleanup), [Design §7.2](02-design-spec.md#72-waktu-media-dan-alternatif-yang-perlu-disediakan)
 - **Depends On**: `TASK-121`, `TASK-017`
 - **Target Files**:
