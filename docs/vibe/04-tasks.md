@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 83 task selesai, 122 task Pending**.
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 83 task selesai, 125 task Pending** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -75,6 +75,54 @@ flowchart LR
   - Deklarasikan script build/typecheck/lint/test via Turbo; integration/contracts via dua config Jest root, E2E via Playwright, locales:validate/build/template, benchmark:game, deploy:scale dan db:migrate. Script boleh menunggu file task berikut; jangan memakai placeholder sukses/no-op. Tambahkan test:performance sebagai vitest run tests/performance untuk kontrak alat ukur.
 - **Definition of Done (Verification)**:
   - `pnpm install --frozen-lockfile`; `node --version` cocok `.node-version`, `pnpm --version` cocok packageManager, dan install kedua tidak mengubah lockfile.
+
+### - [ ] TASK-001A: Tetapkan Node 26 sebagai baseline runtime root
+- **Traceability**: `US-16`, `US-20`, [SA §1.1](03-system-analysis.md#11-stack-dan-versi-baseline), [SA §10.2](03-system-analysis.md#102-environment-tambahan-dan-compose); keputusan pengguna 2026-11-08 setelah `/vibe-init` menemukan drift: `.node-version` 26.13.0 (commit `bcab1f4`) vs baseline SA Node 24 LTS, `@types/node` 24.19.2, dan dua versi `better-sqlite3` (root 13.0.3, database 12.11.1). Lihat [00-project-context §6.3](00-project-context.md#63-drift-dan-risiko-yang-terdeteksi-saat-inspeksi).
+- **Depends On**: `TASK-001`
+- **Target Files**:
+  - `MODIFY` `package.json`
+  - `MODIFY` `packages/tsconfig/package.json`
+  - `MODIFY` `pnpm-lock.yaml`
+  - `MODIFY` `docs/vibe/03-system-analysis.md`
+- **Implementation Specs**:
+  - Pertahankan `.node-version` = `26.13.0`. Ubah `engines.node` root dan `packages/tsconfig` menjadi `>=26.13.0` agar `engineStrict` mencegah instalasi dengan ABI native lain (penyebab binding `better-sqlite3` ABI 137 vs 147). `pnpm` tetap 10.34.9.
+  - Root `@types/node` dipin exact ke patch 26.x terbaru yang terverifikasi saat implementasi (jangan `latest`/range).
+  - Root devDependency `better-sqlite3` 13.0.3 → **12.11.1**, sama dengan `packages/database`: TypeORM 0.3.31 hanya menerima peer `^8 … ^12`, `engines` 12.11.1 mencakup `26.x`, dan tidak ada import langsung dari root. Jangan menaikkan paket database ke 13.x pada task ini.
+  - SA §1.1 baris Runtime/workspace dan paragraf alasan: ganti baseline Node 24 LTS menjadi Node **26** (pin 26.13.0) dengan catatan keputusan 2026-11-08; SA §10.2 image Docker `Node24` → `Node26`. Jangan mengubah bagian SA lain.
+- **Definition of Done (Verification)**:
+  - `pnpm install` lalu `pnpm install --frozen-lockfile` tidak mengubah lockfile; `node --version` = `.node-version`; `pnpm -r ls better-sqlite3 --depth 0` hanya menampilkan 12.11.1.
+  - Bila `node_modules` pernah dibangun dengan Node lain: `pnpm rebuild better-sqlite3`, lalu `node -e` membuka database `:memory:` dari `packages/database` tanpa error ABI.
+  - `pnpm build`, `pnpm typecheck`, `pnpm lint` PASS; `pnpm --filter @kabuki-neko/api test` PASS; `pnpm test:contracts --runInBand --testPathPatterns='migration-sqlite|migration-runner|database-types'` PASS.
+- **Commit Message**: `TASK-001A: Adopt Node 26 as the root runtime baseline`
+
+### - [ ] TASK-001B: Selaraskan tipe Node 26 pada aplikasi api dan web
+- **Traceability**: `US-16`, `US-20`, [SA §1.1](03-system-analysis.md#11-stack-dan-versi-baseline); lanjutan TASK-001A.
+- **Depends On**: `TASK-001A`
+- **Target Files**:
+  - `MODIFY` `apps/api/package.json`
+  - `MODIFY` `apps/web/package.json`
+  - `MODIFY` `apps/web/next.config.ts`
+  - `MODIFY` `pnpm-lock.yaml`
+- **Implementation Specs**:
+  - `@types/node` di api dan web dipin exact ke versi 26.x yang sama dengan root (TASK-001A).
+  - `apps/web/next.config.ts` mendeklarasikan global `URLPatternInput`/`URLPatternOptions` karena tipe Node 24 belum menyediakannya. Bila tipe Node 26 sudah menyediakannya (deklarasi ganda/konflik saat typecheck), hapus blok `declare global`; bila belum, pertahankan dan perbarui komentar versi. Jangan mengubah opsi `nextConfig`.
+- **Definition of Done (Verification)**:
+  - `pnpm install --frozen-lockfile` stabil; `pnpm --filter @kabuki-neko/api typecheck`, `lint`, `build`, `test` PASS; `pnpm --filter @kabuki-neko/web typecheck`, `lint`, `build` PASS.
+- **Commit Message**: `TASK-001B: Align api and web Node type definitions with Node 26`
+
+### - [ ] TASK-001C: Selaraskan tipe Node 26 pada paket shared dan database
+- **Traceability**: `US-16`, `US-20`, [SA §1.1](03-system-analysis.md#11-stack-dan-versi-baseline); lanjutan TASK-001A.
+- **Depends On**: `TASK-001A`
+- **Target Files**:
+  - `MODIFY` `packages/shared/package.json`
+  - `MODIFY` `packages/database/package.json`
+  - `MODIFY` `pnpm-lock.yaml`
+- **Implementation Specs**:
+  - `@types/node` di shared dan database dipin exact ke versi 26.x yang sama dengan root. `better-sqlite3` database tetap 12.11.1.
+  - Setelah task ini, `pnpm -r ls @types/node --depth 0` hanya menampilkan satu versi 26.x di seluruh workspace.
+- **Definition of Done (Verification)**:
+  - `pnpm install --frozen-lockfile` stabil; `pnpm --filter @kabuki-neko/shared typecheck`, `lint`, `build`, `test` PASS; `pnpm --filter @kabuki-neko/database typecheck`, `lint`, `build` PASS; `pnpm test:contracts --runInBand --testPathPatterns='migration-sqlite|migration-runner|database-types'` PASS.
+- **Commit Message**: `TASK-001C: Align shared and database Node type definitions with Node 26`
 
 ### - [x] TASK-002: Tetapkan pipeline build dan lint
 - **Traceability**: `US-16`, `US-20`, [SA §1.2](03-system-analysis.md#12-pemetaan-modul-dan-file)
