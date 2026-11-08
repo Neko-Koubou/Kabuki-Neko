@@ -22,6 +22,9 @@ import {
 } from "@kabuki-neko/shared/schemas/locale.schema";
 import { FALLBACK_LOCALE } from "./resolve";
 
+/** Namespaces every page needs in its first render: shell labels and accessibility text. */
+export const SHELL_NAMESPACES: readonly LocaleNamespace[] = ["common", "accessibility"];
+
 /** A compiled message: an ICU MessageFormat AST. */
 export type MessageAst = MessageFormatElement[];
 /** Messages of one namespace, keyed by the key inside the namespace (`actions.apply`). */
@@ -234,7 +237,11 @@ function copyAst(value: unknown, depth: number, budget: { nodes: number }): Mess
 
 /** Parses a namespace file's bytes into validated messages; throws on any invalid content. */
 export function parseCatalog(bytes: Uint8Array): Map<string, MessageAst> {
-  const json: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  return messagesFrom(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)));
+}
+
+/** Validated messages from a parsed namespace object (`{ key: AST }`). */
+function messagesFrom(json: unknown): Map<string, MessageAst> {
   if (!isRecord(json)) throw new Error("catalog is not an object");
   const messages = new Map<string, MessageAst>();
   for (const [key, value] of Object.entries(json)) {
@@ -242,6 +249,64 @@ export function parseCatalog(bytes: Uint8Array): Map<string, MessageAst> {
     messages.set(key, copyAst(value, 0, { nodes: MAX_AST_NODES }));
   }
   return messages;
+}
+
+/** Plain-JSON form of a {@link LocaleCatalog}, used to pass the SSR catalog to the client. */
+export interface SerializedCatalog {
+  tag: string;
+  direction: "ltr" | "rtl";
+  buildId: string;
+  namespaces: Partial<Record<LocaleNamespace, Record<string, MessageAst>>>;
+  fallback: Partial<Record<LocaleNamespace, Record<string, MessageAst>>>;
+}
+
+/**
+ * Converts a loaded catalog into plain JSON (server → client props). The JSON round trip turns the
+ * null-prototype option maps into ordinary objects, which React Server Components require; the
+ * client rebuilds and re-validates them in {@link deserializeCatalog}.
+ */
+export function serializeCatalog(catalog: LocaleCatalog): SerializedCatalog {
+  const plain = (maps: LocaleCatalog["namespaces"]) =>
+    JSON.parse(
+      JSON.stringify(
+        Object.fromEntries(
+          [...maps].map(([name, messages]) => [name, Object.fromEntries(messages)]),
+        ),
+      ),
+    ) as SerializedCatalog["namespaces"];
+  return {
+    tag: catalog.tag,
+    direction: catalog.direction,
+    buildId: catalog.buildId,
+    namespaces: plain(catalog.namespaces),
+    fallback: plain(catalog.fallback),
+  };
+}
+
+/**
+ * Rebuilds a catalog from its plain JSON form, re-validating every AST like a fetched file.
+ * Throws {@link CatalogLoadError} INVALID_CATALOG on any malformed content.
+ */
+export function deserializeCatalog(serialized: SerializedCatalog): LocaleCatalog {
+  try {
+    const maps = (plain: SerializedCatalog["namespaces"]) => {
+      const result = new Map<LocaleNamespace, NamespaceMessages>();
+      for (const name of LOCALE_NAMESPACES)
+        if (plain[name] !== undefined) result.set(name, messagesFrom(plain[name]));
+      return result;
+    };
+    if (serialized.direction !== "ltr" && serialized.direction !== "rtl")
+      throw new Error("invalid direction");
+    return {
+      tag: serialized.tag,
+      direction: serialized.direction,
+      buildId: serialized.buildId,
+      namespaces: maps(serialized.namespaces),
+      fallback: maps(serialized.fallback),
+    };
+  } catch {
+    throw new CatalogLoadError("INVALID_CATALOG", serialized.tag);
+  }
 }
 
 /** Joins a relative asset URL with an optional origin. */

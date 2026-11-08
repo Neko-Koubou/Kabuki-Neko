@@ -1993,7 +1993,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/lib/i18n/resolve.spec.ts` full SA browser match table, absent zh-Hant no false Simplified match, malformed/removed locale and failed namespace.
 
-### - [ ] TASK-117: Integrasikan locale SSR, hydration dan picker
+### - [x] TASK-117: Integrasikan locale SSR, hydration dan picker
 - **Traceability**: `US-21`, [SA §8.2](03-system-analysis.md#82-install-matching-dan-hydration), [Design §8.1](02-design-spec.md#81-bahasa-awal-dan-pemilih-bahasa)
 - **Depends On**: `TASK-116`, `TASK-115`
 - **Target Files**:
