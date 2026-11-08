@@ -1220,9 +1220,22 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/modules/media/media-processor.spec.ts` generated image/audio/video fixtures, exact size boundaries, no upscale and ffprobe timeout/protocol abuse.
 
+### - [x] TASK-067A: Complete media repository operations for uploads, library and janitor
+- **Traceability**: `US-06`, `US-15`, [SA §7.1](03-system-analysis.md#71-storage-pipeline-dan-cleanup), [SA §4.4](03-system-analysis.md#44-media-system-et-locales); prerequisite discovered while implementing TASK-067 (TASK-037 repository only exposed reserve/finish/delete/cleanup on its own connection).
+- **Depends On**: `TASK-037`
+- **Target Files**:
+  - `MODIFY` `packages/database/src/repositories/media.repository.ts`
+  - `MODIFY` `tests/contracts/media.repository.spec.ts`
+- **Implementation Specs**:
+  - Compose `reserve`/`finishUpload` with an active operation transaction manager of the same database (reject foreign/inactive managers); add `find`, owner-scoped READY paging with type/literal search/inUse filters and per-row reference state, `referenced(ids)`, revision-checked owner accessibility update (READY only), `failUpload` (UPLOADING→FAILED), bounded `failStaleUploads(before)` and `staleDeletions(before)` for the janitor.
+  - Keep existing semantics/locks unchanged; document every exported member.
+- **Definition of Done (Verification)**:
+  - Database lint/typecheck/build PASS; `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/media.repository.spec.ts` PASS on SQLite/PostgreSQL/MySQL covering composed reserve rollback, foreign manager rejection, paging/filter/literal search, stale revision and wrong-owner accessibility denial, stale upload/deletion selection.
+- **Commit Message**: `TASK-067A: Complete media repository operations for uploads, library and janitor`
+
 ### - [ ] TASK-067: Implementasikan upload, library dan metadata media
 - **Traceability**: `US-06`, [SA §7.1](03-system-analysis.md#71-storage-pipeline-dan-cleanup)
-- **Depends On**: `TASK-066`, `TASK-037`, `TASK-054`
+- **Depends On**: `TASK-066`, `TASK-037`, `TASK-054`, `TASK-067A`
 - **Target Files**:
   - `CREATE` `apps/api/src/modules/media/media.service.ts`
   - `CREATE` `apps/api/src/modules/media/media-reference.service.ts`
