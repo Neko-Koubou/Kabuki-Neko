@@ -783,3 +783,9 @@
 - Manifest: `schemaVersion` 1, `locale` `ja`, `nativeName` "日本語", `direction` `ltr`, `packageVersion` 1.0.0, `catalogVersion` "1", credits "Kabuki Neko contributors".
 - Natural Japanese: concise noun labels for buttons/navigation, polite です/ます sentences for notices and confirmations, full-width punctuation (：、（）), consistent terms (クイズ, ルーム, PIN, ホスト, プレイヤー, ログイン/ログアウト, アップロード/ダウンロード, 招待コード, インスタンス, クリエイター). Japanese has only the CLDR `other` plural, so counts use `=0` + `other` (`{count, plural, =0 {結果はありません} other {#件の結果}}`); pagination `{page, number} / {totalPages, number} ページ`; dates/times via ICU with the visible timezone; safe auth wording. Creator content and identifiers are not translated.
 - Verification PASS: `pnpm locales:validate --locale ja --namespaces common,auth` → coverage 100.0%, 0 errors, 0 warnings. Review: 236 messages formatted with `intl-messageformat` (locale `ja`) — 0 problems. Prettier PASS.
+
+## TASK-097 — 2026-11-08T12:40:17+07:00
+
+- Files: `packages/shared/locales/ja/quizzes.json` (91), `studio.json` (91), `media.json` (81); task checklist/log.
+- Natural Japanese with the TASK-096 conventions (concise labels, polite sentences, full-width punctuation) and consistent terms (クイズ, 下書き, スライド, 問題/問題文, 選択肢, 解説, 主催, BGM, メディアライブラリ, 字幕, 文字起こし, 代替テキスト); question types 単一選択/複数選択/○×問題/記述式/並べ替えパズル/アンケート. Plurals use `other` (+ `=0`): `{count, plural, =0 {問題はありません} other {#問}}`, `{seconds, plural, other {#秒}}`; placeholders kept (`{row, number}行目、{column}列`, `スライド {position, number} / {total, number}`, `{savedAt, time, short} に保存`, `{percent, number}%`, `{limit, number} MiB`). Creator content is never translated.
+- Verification PASS: `pnpm locales:validate --locale ja --namespaces quizzes,studio,media` → coverage 100.0%, 0 errors, 0 warnings. Review: 263 messages formatted with `intl-messageformat` (locale `ja`) — 0 problems. Prettier PASS.
