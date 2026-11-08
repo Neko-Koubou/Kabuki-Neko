@@ -2034,7 +2034,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/ui/dialog-primitives.spec.tsx` Tab/ShiftTab/Escape/return focus and close during pending preserves request state; five-state variants.
 
-### - [ ] TASK-120: Bangun status notice, skeleton dan badge
+### - [x] TASK-120: Bangun status notice, skeleton dan badge
 - **Traceability**: `US-18`, `US-21`, [SA §8.3](03-system-analysis.md#83-budget-qr-font-dan-accessible-media), [Design §6.3](02-design-spec.md#63-semua-base-components)
 - **Depends On**: `TASK-119`
 - **Target Files**:
