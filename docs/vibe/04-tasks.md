@@ -2126,7 +2126,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/stores/studio.store.spec.ts` last slide delete, reorder stable IDs, save failure/conflict and locale-independent dirty draft.
 
-### - [ ] TASK-127: Bangun game store dengan snapshot dan event fencing
+### - [x] TASK-127: Bangun game store dengan snapshot dan event fencing
 - **Traceability**: `US-09`, `US-10`, `US-12`, `US-13`, [SA §5.1](03-system-analysis.md#51-transport-envelopes-scopes)
 - **Depends On**: `TASK-022`, `TASK-125`
 - **Target Files**:
