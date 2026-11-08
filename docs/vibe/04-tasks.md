@@ -1208,7 +1208,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:integration --runInBand --runTestsByPath tests/integration/quiz-transfer.spec.ts` roundtrip all 6, missing media no partial rows, lost ACK/dedup and source owner matrix.
 
-### - [ ] TASK-066: Validasi dan proses bytes media
+### - [x] TASK-066: Validasi dan proses bytes media
 - **Traceability**: `US-06`, `US-18`, [SA §7.1](03-system-analysis.md#71-storage-pipeline-dan-cleanup)
 - **Depends On**: `TASK-045`, `TASK-017`
 - **Target Files**:
