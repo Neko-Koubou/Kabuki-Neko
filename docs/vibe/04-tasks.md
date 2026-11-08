@@ -2087,7 +2087,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/ui/avatar-illustration.spec.tsx` six styles deterministic, invalid seed/style fallback and accessible decorative/informative modes.
 
-### - [ ] TASK-124: Bangun HTTP client dan reconciliation browser
+### - [x] TASK-124: Bangun HTTP client dan reconciliation browser
 - **Traceability**: `US-01`, `US-03`, `US-05`, `US-06`, `US-15`, `US-21`, [SA §6.4](03-system-analysis.md#64-cache-dan-client-state)
 - **Depends On**: `TASK-058`, `TASK-065`, `TASK-069`, `TASK-117`
 - **Target Files**:
