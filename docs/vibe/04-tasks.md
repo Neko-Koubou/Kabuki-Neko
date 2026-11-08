@@ -1310,7 +1310,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/locale-build.spec.ts` hash determinism, invalid package preserves prior bundle, template ZIP/manifest correct; full build waits six catalogs phase4.
 
-### - [ ] TASK-072: Implementasikan settings, health dan cache
+### - [x] TASK-072: Implementasikan settings, health dan cache
 - **Traceability**: `US-15`, `US-16`, `US-20`, `US-21`, [SA §6.4](03-system-analysis.md#64-cache-dan-client-state)
 - **Depends On**: `TASK-069`, `TASK-060`, `TASK-071`
 - **Target Files**:
