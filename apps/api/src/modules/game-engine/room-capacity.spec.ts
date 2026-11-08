@@ -6,7 +6,6 @@
  */
 import { randomUUID } from "node:crypto";
 import { ROOM_LIMITS } from "@kabuki-neko/shared/constants/limits";
-import { emptyAccessibility } from "@kabuki-neko/shared/schemas/media.schema";
 import type { QuizSnapshot } from "../../providers/state/game-state.interface";
 import {
   answerBound,
