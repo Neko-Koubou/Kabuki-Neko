@@ -2074,7 +2074,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/ui/media-preview.spec.tsx` rejected URL, cue/clip boundaries, unavailable asset and reveal progression no frame-count drift.
 
-### - [ ] TASK-123: Bangun DiceBear avatar deterministik
+### - [x] TASK-123: Bangun DiceBear avatar deterministik
 - **Traceability**: `US-08`, `US-18`, [SA §8.3](03-system-analysis.md#83-budget-qr-font-dan-accessible-media), [Design §5.1](02-design-spec.md#51-reusable-base-components)
 - **Depends On**: `TASK-122`, `TASK-113`
 - **Target Files**:
