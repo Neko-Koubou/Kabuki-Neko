@@ -121,6 +121,17 @@ export interface IGameStateStore {
     generation: number,
     connected: boolean,
   ): Promise<boolean>;
+  /**
+   * LOBBY-only avatar change for the bound player connection (`player:update_avatar`). Unknown
+   * player → INVALID_SESSION_TOKEN, kicked → PLAYER_KICKED, stale generation → SESSION_REPLACED,
+   * other phases → INVALID_PHASE. Returns the new room revision.
+   */
+  updateAvatar(
+    identity: RoomIdentity,
+    playerId: string,
+    generation: number,
+    avatar: { style: string; seed: string },
+  ): Promise<number>;
   acquireLease(identity: RoomIdentity, ownerId: string, ttlMs: number): Promise<Lease | null>;
   renewLease(identity: RoomIdentity, lease: Lease, ttlMs: number): Promise<boolean>;
   releaseLease(identity: RoomIdentity, lease: Lease): Promise<boolean>;

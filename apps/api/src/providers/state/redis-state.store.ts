@@ -6,7 +6,7 @@ import type { Redis, Cluster } from "ioredis";
 import { z } from "zod";
 import { ERROR_CODES } from "@kabuki-neko/shared/errors";
 import { clientContracts } from "@kabuki-neko/shared/socket-events";
-import { uuidSchema } from "@kabuki-neko/shared/schemas/users.schema";
+import { avatarSchema, uuidSchema } from "@kabuki-neko/shared/schemas/users.schema";
 import { answerSchemaForQuestion } from "@kabuki-neko/shared/schemas/question.schema";
 import {
   finalizeStatusSchema,
@@ -387,6 +387,27 @@ export class RedisStateStore implements IGameStateStore {
           connected,
         })
       ).result,
+    );
+  }
+  /** Atomic LOBBY avatar update evaluated by the same-slot `mutate-room` script. */
+  async updateAvatar(
+    identity: RoomIdentity,
+    playerId: string,
+    generation: number,
+    avatar: { style: string; seed: string },
+  ) {
+    const parsed = avatarSchema.safeParse(avatar);
+    if (!parsed.success) return fail("INVALID_FORMAT");
+    return decode(
+      z.number().int().positive(),
+      (
+        await this.run("mutate-room", identity, {
+          kind: "avatar",
+          playerId,
+          generation,
+          avatar: parsed.data,
+        })
+      ).revision,
     );
   }
   async transitionPhase(

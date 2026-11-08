@@ -67,6 +67,16 @@ if op.kind == 'presence' then
   if not op.connected then p.connectionId = cjson.null end
   write(true); return cjson.encode({result=true, revision=s.revision})
 end
+if op.kind == 'avatar' then
+  local p = s.players[op.playerId]
+  if not p then return err('INVALID_SESSION_TOKEN') end
+  if p.kickedAt ~= cjson.null then return err('PLAYER_KICKED') end
+  if p.connectionGeneration ~= op.generation then return err('SESSION_REPLACED') end
+  if s.phase ~= 'LOBBY' then return err('INVALID_PHASE') end
+  p.avatar = {style=op.avatar.style, seed=op.avatar.seed}
+  s.lobbyActiveAt = now
+  write(true); return cjson.encode({result=true, revision=s.revision})
+end
 if op.kind == 'ticket' then
   if s.phase ~= 'LOBBY' then return err('GAME_IN_PROGRESS') end
   if s.isLocked then return err('ROOM_LOCKED') end

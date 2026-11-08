@@ -1,3 +1,4 @@
+import { avatarSchema } from "@kabuki-neko/shared/schemas/users.schema";
 import { createHash } from "node:crypto";
 import { GAME_TIMING, type GamePhase } from "@kabuki-neko/shared/constants/game";
 import { answerSchemaForQuestion } from "@kabuki-neko/shared/schemas/question.schema";
@@ -274,6 +275,23 @@ export class MemoryStateStore implements IGameStateStore {
     entry.state = s;
     if (receipt) entry.receipts.set(input.requestId, receipt);
     return { player: copy(player), token, generation: player.connectionGeneration, snapshot };
+  }
+  /** Atomic LOBBY avatar update for the bound connection; see the interface contract. */
+  async updateAvatar(
+    identity: RoomIdentity,
+    playerId: string,
+    generation: number,
+    avatar: { style: string; seed: string },
+  ): Promise<number> {
+    const s = this.entry(identity).state;
+    const parsed = avatarSchema.safeParse(avatar);
+    if (!parsed.success) return fail("INVALID_FORMAT");
+    const player = this.player(s, playerId, generation);
+    if (s.phase !== "LOBBY") return fail("INVALID_PHASE");
+    player.avatar = parsed.data;
+    s.lobbyActiveAt = this.clock();
+    this.changed(s);
+    return s.revision;
   }
   async setPresence(
     identity: RoomIdentity,

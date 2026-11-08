@@ -1474,9 +1474,23 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/modules/game-engine/room-scheduler.spec.ts` fake clock exact boundaries, two owners, host disconnect no pause, stale cleanup and pending retention.
 
+### - [x] TASK-082A: Add atomic lobby avatar updates to both state stores
+- **Traceability**: `US-08`, `BR-03`, [SA §5.2](03-system-analysis.md#52-semua-client-to-server-methods) `player:update_avatar`; prerequisite discovered while implementing TASK-082 (the state-store contract had no avatar mutation).
+- **Depends On**: `TASK-050`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/providers/state/game-state.interface.ts`
+  - `MODIFY` `apps/api/src/providers/state/memory-state.store.ts`
+  - `MODIFY` `apps/api/src/providers/state/redis-state.store.ts`
+  - `MODIFY` `apps/api/src/providers/state/lua/mutate-room.lua`
+- **Implementation Specs**:
+  - `updateAvatar(identity, playerId, generation, avatar)` atomically validates the bound player (unknown → INVALID_SESSION_TOKEN, kicked → PLAYER_KICKED, stale generation → SESSION_REPLACED), LOBBY only (INVALID_PHASE), schema-valid avatar (one of six styles), then bumps revision/publicRevision and returns the new revision. Identical semantics in memory (critical section) and Redis (Lua op in the same-slot script).
+- **Definition of Done (Verification)**:
+  - API lint/typecheck/build PASS; existing memory store and private-state unit tests PASS; `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/state-parity.spec.ts` (memory + real Redis) PASS with the avatar scenario exercised by an ad-hoc parity script recorded in the log.
+- **Commit Message**: `TASK-082A: Add atomic lobby avatar updates to both state stores`
+
 ### - [ ] TASK-082: Expose Socket.io transport dan seluruh events
 - **Traceability**: `US-07`, `US-08`, `US-09`, `US-10`, `US-12`, `US-13`, `US-16`, [SA §5.1](03-system-analysis.md#51-transport-envelopes-scopes)
-- **Depends On**: `TASK-081`, `TASK-052`
+- **Depends On**: `TASK-081`, `TASK-052`, `TASK-082A`
 - **Target Files**:
   - `CREATE` `apps/api/src/modules/game-engine/game.gateway.ts`
   - `CREATE` `apps/api/src/modules/game-engine/game-engine.module.ts`
