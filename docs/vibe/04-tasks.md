@@ -1246,7 +1246,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/modules/media/media.service.spec.ts` crash after put, storage failure/compensation, stale metadata revision and wrong owner denial.
 
-### - [ ] TASK-068: Implementasikan penghapusan aman dan orphan cleanup
+### - [x] TASK-068: Implementasikan penghapusan aman dan orphan cleanup
 - **Traceability**: `US-06`, `US-15`, [SA §7.1](03-system-analysis.md#71-storage-pipeline-dan-cleanup)
 - **Depends On**: `TASK-067`
 - **Target Files**:
