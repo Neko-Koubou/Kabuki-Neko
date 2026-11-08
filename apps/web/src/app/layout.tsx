@@ -3,16 +3,23 @@
  * then `Accept-Language`, then the instance default, then English — and renders `<html lang dir>`
  * plus the initial shell catalog, so the client locale provider hydrates with identical text.
  * The layout is therefore dynamic (it varies by cookie and header). A missing or invalid locale
- * bundle never breaks the page: the provider then renders the safe fallback text.
+ * bundle never breaks the page: the provider then renders the safe fallback text. The auth
+ * provider (inside the locale provider) holds the in-memory session for the public API URL.
  */
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import type { ReactNode } from "react";
 import { loadInitialLocale } from "@/lib/i18n/locale.server";
+import { AuthProvider } from "@/providers/auth-provider";
 import { LocaleProvider } from "@/providers/locale-provider";
 import "./globals.css";
 
 export const metadata: Metadata = { title: "Kabuki Neko" };
+
+/** Public REST API base (`NEXT_PUBLIC_API_URL` + `/api/v1`), as the browser must reach it. */
+function apiBaseUrl(): string {
+  return new URL("/api/v1", process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").toString();
+}
 
 /** Server-rendered document shell with the request locale. */
 export default async function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
@@ -29,7 +36,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       suppressHydrationWarning
     >
       <body>
-        <LocaleProvider initial={initial}>{children}</LocaleProvider>
+        <LocaleProvider initial={initial}>
+          <AuthProvider apiBaseUrl={apiBaseUrl()}>{children}</AuthProvider>
+        </LocaleProvider>
       </body>
     </html>
   );

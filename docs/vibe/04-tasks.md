@@ -2099,7 +2099,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/lib/api-client.spec.ts` out-of-order list,409/429 retry metadata, uncertain upload/import/create and no secret URL.
 
-### - [ ] TASK-125: Bangun auth provider dan koordinasi refresh tab
+### - [x] TASK-125: Bangun auth provider dan koordinasi refresh tab
 - **Traceability**: `US-01`, `US-02`, [SA §4.2](03-system-analysis.md#42-setup-auth-users-dan-undangan)
 - **Depends On**: `TASK-124`
 - **Target Files**:
