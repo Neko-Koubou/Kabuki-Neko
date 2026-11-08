@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "pnpm@10.34.9",
   "engines": {
-    "node": ">=24.22.1",
+    "node": ">=26.13.0",
     "pnpm": ">=10.34.9"
   },
   "scripts": {
@@ -34,11 +34,11 @@
     "@testcontainers/redis": "12.2.1",
     "@types/better-sqlite3": "9.6.0",
     "@types/jest": "30.0.0",
-    "@types/node": "24.19.2",
+    "@types/node": "26.6.6",
     "@types/pg": "8.23.1",
     "@types/supertest": "7.2.1",
     "axe-core": "4.14.0",
-    "better-sqlite3": "13.0.3",
+    "better-sqlite3": "12.11.1",
     "eslint": "10.13.0",
     "eslint-config-prettier": "10.1.8",
     "fflate": "0.8.3",

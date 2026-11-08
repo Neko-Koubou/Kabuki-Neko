@@ -468,3 +468,9 @@
 - Files: quizzes repository/contract and quiz import parser; task checklist/log.
 - Added transactional PRIVATE draft insertion with fresh graph IDs and locked owned READY media checks. Exposed bounded structural parsing for precise media resolution before import validation.
 - Verification: database lint/typecheck/build and API lint/typecheck PASS; 3 real SQLite/PostgreSQL/MySQL contracts and 5 transfer unit tests PASS. Initial container run lacked socket access; full rerun through sudo passed. Tests cover graph/receipt rollback, foreign media rejection, active-manager requirement and successful import persistence.
+
+## TASK-001A — 2026-11-08T09:08:52+07:00
+
+- Files: `package.json`, `packages/tsconfig/package.json`, `pnpm-lock.yaml`, `docs/vibe/03-system-analysis.md`; task checklist/log.
+- Root and `@kabuki-neko/tsconfig` `engines.node` raised to `>=26.13.0` (`.node-version` stays 26.13.0, pnpm 10.34.9). Root `@types/node` pinned exact to 26.6.6 (latest 26.x, published 2026-10-28). Root `better-sqlite3` 13.0.3 → 12.11.1 to match `packages/database` and the TypeORM 0.3.31 peer range. SA §1.1 runtime row/rationale and SA §10.2 Docker image now state Node 26.
+- Verification PASS: `pnpm install` then `pnpm install --frozen-lockfile` (lockfile SHA-256 `63a17582…4192a86` unchanged); `node --version` v26.13.0; `pnpm -r ls better-sqlite3 --depth 0` only 12.11.1; `better-sqlite3` opens `:memory:` from `packages/database` without ABI error; `pnpm build` 4/4, `pnpm typecheck` 6/6, `pnpm lint` 6/6; API Jest 15 suites/119 tests; contracts `migration-sqlite|migration-runner|database-types` 3 suites/8 tests.

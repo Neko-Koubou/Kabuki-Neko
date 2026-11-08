@@ -41,7 +41,7 @@ flowchart LR
 
 | Area | Keputusan |
 | --- | --- |
-| Runtime/workspace | Node.js **24 LTS**, pnpm **10**, Turborepo **2**, TypeScript strict **5**; patch/minor dipilih saat bootstrap, dipin persis dalam `.node-version`, `packageManager`, manifests dan lockfile setelah compatibility/security checks. Ini pilihan major baseline, bukan klaim semua patch terkini sudah diuji. |
+| Runtime/workspace | Node.js **26** (pin `26.13.0`, keputusan pengguna 2026-11-08), pnpm **10**, Turborepo **2**, TypeScript strict **5**; patch/minor dipilih saat bootstrap, dipin persis dalam `.node-version`, `packageManager`, manifests dan lockfile setelah compatibility/security checks; `engines.node >=26.13.0` mencegah binding native ABI lain. Ini pilihan major baseline, bukan klaim semua patch terkini sudah diuji. |
 | Web | Next.js **16** App Router (memenuhi 15+), React/React DOM **19**, Tailwind **4**, Shadcn source components, Framer Motion, Zustand, React Hook Form, Zod **4**. |
 | API | NestJS **11**, Express adapter, Socket.io/client **4**, TypeORM **0.3**, `better-sqlite3`, `pg`, `mysql2`. EntitySchema factory memilih tipe kolom per driver; `synchronize=false`. |
 | State/storage | ioredis **5**, `@socket.io/redis-adapter` **8**; Redis **7** baseline. AWS SDK **3**, Sharp, file-type. S3 SDK melayani storage asal setiap aset. |
@@ -49,7 +49,7 @@ flowchart LR
 | Media/interaction | Howler.js **2**, DiceBear core + enam collection imports dengan versi sama; dnd-kit, canvas-confetti lazy. `qrcode` untuk output, `@zxing/browser` lazy untuk scanner; native BarcodeDetector hanya fast path jika didukung. |
 | Verification | Vitest untuk shared/web, Jest + Supertest untuk API, Playwright untuk E2E, axe-core untuk bantuan audit a11y, ESLint + Prettier. Contract suite driver terpisah dari unit tests. |
 
-Node 24 dipilih dari jalur LTS resmi [Node releases](https://nodejs.org/en/about/previous-releases). Instalasi App Router mengikuti [Next.js installation](https://nextjs.org/docs/app/getting-started/installation). Dukungan SQLite dan migrasi TypeORM dirujuk pada [SQLite driver](https://typeorm.io/docs/drivers/sqlite/) dan [migration setup](https://typeorm.io/docs/migrations/setup/). Pemilihan ini tetap membutuhkan build dan driver tests pada bootstrap; jangan memasukkan `latest` ke manifest/image produksi.
+Node 26 ditetapkan pengguna pada 2026-11-08 (menggantikan baseline awal Node 24 LTS) setelah `.node-version` naik ke 26.13.0 dan binding `better-sqlite3` ABI 137 gagal dimuat di runtime ABI 147; seluruh paket memakai `@types/node` 26.x dan `better-sqlite3` 12.11.1 yang `engines`-nya mencakup `26.x`. Rujukan jalur rilis: [Node releases](https://nodejs.org/en/about/previous-releases). Instalasi App Router mengikuti [Next.js installation](https://nextjs.org/docs/app/getting-started/installation). Dukungan SQLite dan migrasi TypeORM dirujuk pada [SQLite driver](https://typeorm.io/docs/drivers/sqlite/) dan [migration setup](https://typeorm.io/docs/migrations/setup/). Pemilihan ini tetap membutuhkan build dan driver tests pada bootstrap; jangan memasukkan `latest` ke manifest/image produksi.
 
 ### 1.2. Pemetaan modul dan file
 
@@ -910,7 +910,7 @@ Compose profiles enable services; driver choice is supplied explicitly. Normativ
 
 Default persists `docker/data:/app/data` and `docker/uploads:/app/uploads` plus secrets; health waits for migrations and selected providers, web ready after API reachable. scale adds Postgres16-alpine, Redis7-alpine (AOF everysec), MinIO and mc init public-read bucket; API chooses postgres/redis/s3 from DEPLOYMENT_PROFILE=scale with explicit env overrides permitted/validated. PostgreSQL/Redis/MinIO named volumes survive recreate; no automatic default SQLite migration. Example MinIO credentials generated/persisted by operator/bootstrap secrets, not published PRD sample values; browser public URL points reachable host, not `minio:9000`. Storage public-read exposes known URLs per PRD, never bucket listing/write permission. Development HTTP acceptable, production TLS proxy documented.
 
-API Docker Debian slim Node24 multi-stage (native build deps only build stage, ffprobe runtime), nonroot, writable only data/uploads/tmp, healthcheck `/system/health`. Web Next standalone same Node, immutable catalogs/assets. Build license/notices copy step must fail on missing files. Shared deploy secrets required for horizontally scaled JWT; do not auto-generate different files per node. `DB_AUTO_MIGRATE=true` one migration leader; other instances wait schema-ready with bounded60s timeout then fail explicit.
+API Docker Debian slim Node26 multi-stage (native build deps only build stage, ffprobe runtime), nonroot, writable only data/uploads/tmp, healthcheck `/system/health`. Web Next standalone same Node, immutable catalogs/assets. Build license/notices copy step must fail on missing files. Shared deploy secrets required for horizontally scaled JWT; do not auto-generate different files per node. `DB_AUTO_MIGRATE=true` one migration leader; other instances wait schema-ready with bounded60s timeout then fail explicit.
 
 ### 10.3. Recovery/retention and known limits
 

@@ -76,7 +76,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm install --frozen-lockfile`; `node --version` cocok `.node-version`, `pnpm --version` cocok packageManager, dan install kedua tidak mengubah lockfile.
 
-### - [ ] TASK-001A: Tetapkan Node 26 sebagai baseline runtime root
+### - [x] TASK-001A: Tetapkan Node 26 sebagai baseline runtime root
 - **Traceability**: `US-16`, `US-20`, [SA §1.1](03-system-analysis.md#11-stack-dan-versi-baseline), [SA §10.2](03-system-analysis.md#102-environment-tambahan-dan-compose); keputusan pengguna 2026-11-08 setelah `/vibe-init` menemukan drift: `.node-version` 26.13.0 (commit `bcab1f4`) vs baseline SA Node 24 LTS, `@types/node` 24.19.2, dan dua versi `better-sqlite3` (root 13.0.3, database 12.11.1). Lihat [00-project-context §6.3](00-project-context.md#63-drift-dan-risiko-yang-terdeteksi-saat-inspeksi).
 - **Depends On**: `TASK-001`
 - **Target Files**:
