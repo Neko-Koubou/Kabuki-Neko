@@ -1194,7 +1194,7 @@ flowchart LR
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/common/request-context.middleware.spec.ts` covers a multipart body read after an async delay (all bytes received), chunked overflow 413, non-allowlisted multipart 415 and missing boundary 400; API lint/typecheck PASS.
 - **Commit Message**: `TASK-064B: Keep multipart request streams paused until route parsers consume them`
 
-### - [ ] TASK-065: Hubungkan transaksi import dan download templates
+### - [x] TASK-065: Hubungkan transaksi import dan download templates
 - **Traceability**: `US-05`, [SA §4.3](03-system-analysis.md#43-kuis-dan-importexport)
 - **Depends On**: `TASK-064`, `TASK-064A`, `TASK-064B`
 - **Target Files**:

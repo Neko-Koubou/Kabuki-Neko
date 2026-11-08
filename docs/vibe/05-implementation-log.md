@@ -489,11 +489,14 @@
 - `apps/web/next.config.ts`: the `declare global` block for `URLPatternInput`/`URLPatternOptions` is still required — Node 26 types expose `URLPattern`, `URLPatternInit` and `URLPatternResult` globally, but the input/options aliases stay scoped to `"node:url"`; Next 16.4 `spec-extension/url-pattern.d.ts` references them globally. Removing the block passed the incremental `tsc` (stale `.tsbuildinfo`) but failed with `--incremental false` (TS2304/TS2552), so the block stays and its comment now names Node 26. `nextConfig` options unchanged.
 - Verification PASS: `pnpm install --frozen-lockfile` stable (SHA-256 `5b1fb5eb…dfe550`); `pnpm -r ls @types/node --depth 0` → only 26.6.6 (5 packages); api typecheck/lint/build and Jest 15 suites/119 tests; web typecheck/lint/build plus `tsc --noEmit --incremental false`.
 
-## TASK-065: Hubungkan transaksi import dan download templates — IN PROGRESS
-- **Started**: 2026-11-08T09:18:57+07:00
-- **Plan**: `apps/api/src/modules/quizzes/quizzes.controller.ts`, `apps/api/src/modules/quizzes/quizzes.service.ts`, `apps/api/src/modules/quizzes/quizzes.module.ts`, `tests/integration/quiz-transfer.spec.ts`
-- **Done so far**: service export/template/import, controller routes with bounded multer parser, module doc comment, integration spec written (uncommitted).
-- **Verification**: integration run FAILED — every multipart import returned 422 `file REQUIRED`: the requestContext byte counter put the request into flowing mode before multer ran. Paused (marker reset to `[ ]`) until corrective TASK-064B lands.
+## TASK-065 — 2026-11-08T09:27:25+07:00
+
+- Files: `apps/api/src/modules/quizzes/quizzes.controller.ts`, `quizzes.service.ts`, `quizzes.module.ts`, `tests/integration/quiz-transfer.spec.ts`; task checklist/log.
+- Routes: `GET /quizzes/import-template?format=json|csv` (READ; declared before `:id`), `GET /quizzes/:id/export?format=json` (EXPORT; owner or PUBLIC viewer via the authorized read), `POST /quizzes/import` (UPLOAD; multipart `file` + optional `mediaMap`). Downloads use server-generated ASCII filenames (`<uuid>.kabukineko.json`, `kabukineko-import-template.{json,csv}`), never titles or uploaded names.
+- Import: in-memory multer parser (1 file ≤5 MiB, 1 field ≤256 KiB, 2 parts); extension selects JSON/CSV and the client MIME must corroborate it (415 otherwise); `mediaMap` JSON validated (422). The document is parsed and bounded first, then one `quiz.import` operation transaction (request hash includes the file SHA-256) looks up only referenced media with the transaction manager, runs full import validation, inserts the PRIVATE draft (`importDraft`) and returns `QuizDetail` plus the `IMPORTED_AS_PRIVATE` notice. Any failure rolls back the receipt and every row.
+- Template: one playable quiz covering all six types (puzzle order 2,0,3,1; two TYPE_ANSWER keys; POLL ×0) as pretty JSON or the exact 17-header CRLF CSV produced by a documented RFC4180 serializer.
+- Blocker resolved: first integration run showed every multipart import missing its file; fixed by corrective TASK-064B (request stream paused for the route parser).
+- Verification PASS: `pnpm test:integration --runInBand --runTestsByPath tests/integration/quiz-transfer.spec.ts` 6 tests — templates (401/422/headers), JSON+CSV template import and export roundtrip of all six types, missing media 422 at `questions.0.mediaRef`/`rows.2.media_ref` with unchanged SQLite quiz/question/option/receipt counts and key reuse after rollback, malformed/unsupported/oversize errors (400/415/422/413), lost-ACK lookup + same-key replay without new rows + 409 conflict + deleted-resource replay 404, owner/PUBLIC/foreign export matrix with `IMPORTED_AS_PRIVATE`. Regression: `quizzes.spec.ts` PASS; API lint/typecheck PASS; API Jest 16 suites/122 tests PASS; Prettier/ESLint on the new spec PASS.
 
 ## TASK-064B — 2026-11-08T09:26:19+07:00
 
