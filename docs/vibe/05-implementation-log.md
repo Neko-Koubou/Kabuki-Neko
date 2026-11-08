@@ -801,3 +801,10 @@
 - Files: `packages/shared/locales/ja/admin.json` (98), `validation.json` (95), `accessibility.json` (26), `about.json` (47); task checklist/log.
 - Natural Japanese for every key: admin health/settings/storage/invitations/users and their five states (plural `cleanupResult` with `=0`/`other`, one-time invite code, unknown outcome → check the list), safe explanations for all 95 domain error codes (no SQL/credentials/stack/hidden-resource details; `約{retryAfterMs, number}ミリ秒`, revision conflict with both revisions), accessibility labels (`選択肢{label}、{shape}：{text}`, creator text untouched; keyboard and puzzle instructions; shared deadline), and about/credits/license/language-guide copy (translated summary is not authoritative; legal text never invented).
 - Verification PASS: `pnpm locales:validate --locale ja --namespaces admin,validation,accessibility,about` and the full `pnpm locales:validate --locale ja` (12 namespaces, 1102 messages) → coverage 100.0%, 0 errors, 0 warnings. Review: 266 messages formatted with `intl-messageformat` (locale `ja`) — 0 problems. Prettier PASS. The Japanese package is now complete.
+
+## TASK-100 — 2026-11-08T12:43:38+07:00
+
+- Files: `packages/shared/locales/zh-Hans/manifest.json`, `common.json` (184), `auth.json` (52); task checklist/log.
+- Manifest: `schemaVersion` 1, `locale` `zh-Hans`, `nativeName` "简体中文", `direction` `ltr`, `packageVersion` 1.0.0, `catalogVersion` "1", credits "Kabuki Neko contributors".
+- Natural Simplified Chinese with full-width punctuation (，。：（）“”) and consistent terms (测验, 房间, PIN, 主持人, 玩家, 登录/退出登录, 上传/下载, 邀请码, 实例, 创作者, 幻灯片), friendly "你" address. Chinese has only the CLDR `other` plural, so counts use `=0` + `other` (`{count, plural, =0 {没有结果} other {# 个结果}}`); pagination `第 {page, number} 页，共 {totalPages, number} 页`; dates/times via ICU with the visible timezone; safe auth wording. Creator content and identifiers are not translated.
+- Verification PASS: `pnpm locales:validate --locale zh-Hans --namespaces common,auth` → coverage 100.0%, 0 errors, 0 warnings. Review: 236 messages formatted with `intl-messageformat` (locale `zh-Hans`) — 0 problems. Prettier PASS.
