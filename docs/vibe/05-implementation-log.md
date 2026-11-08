@@ -814,3 +814,9 @@
 - Files: `packages/shared/locales/zh-Hans/quizzes.json` (91), `studio.json` (91), `media.json` (81); task checklist/log.
 - Natural Simplified Chinese with the TASK-100 conventions and terms (测验, 草稿, 幻灯片, 题目, 选项, 解析, 主持, 背景音乐, 媒体库, 字幕, 文字稿, 替代文本); question types 单选题/多选题/判断题/填空题/排序题/投票. Plurals use `other` (+ `=0`): `{count, plural, =0 {暂无题目} other {# 道题}}`, `{seconds, plural, other {# 秒}}`; placeholders kept (`第 {row, number} 行，{column} 列`, `第 {position, number} 张幻灯片，共 {total, number} 张`, `保存于 {savedAt, time, short}`, `{percent, number}%`, `{limit, number} MiB`). Creator content is never translated.
 - Verification PASS: `pnpm locales:validate --locale zh-Hans --namespaces quizzes,studio,media` → coverage 100.0%, 0 errors, 0 warnings. Review: 263 messages formatted with `intl-messageformat` (locale `zh-Hans`) — 0 problems. Prettier PASS.
+
+## TASK-102 — 2026-11-08T12:45:42+07:00
+
+- Files: `packages/shared/locales/zh-Hans/host.json` (123), `player.json` (126), `reports.json` (88); task checklist/log.
+- Natural Simplified Chinese with the established conventions and terms (主持人, 玩家, 房间, 大厅, 排行榜, 领奖台, 解析, 投票, 连续答对/连胜奖励, 报告, 正确率; 投影模式/直播模式). Plurals/ordinals use `other`: `第 {rank, selectordinal, other {#}} 名`, `{seconds, plural, =0 {时间已到} other {剩余 # 秒}}`, `{points, plural, other {+# 分}}`, `第 {index, number} 题，共 {total, number} 题`, fractional accuracy `{numerator, number} / {denominator, plural, …}`, 毫秒 and the visible timezone. Player copy keeps the immediate-send warning for single choice and that other-site QR codes are never opened.
+- Verification PASS: `pnpm locales:validate --locale zh-Hans --namespaces host,player,reports` → coverage 100.0%, 0 errors, 0 warnings. Review: 337 messages formatted with `intl-messageformat` (locale `zh-Hans`) — 0 problems. Prettier PASS.

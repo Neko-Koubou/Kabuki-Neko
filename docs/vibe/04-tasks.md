@@ -1779,7 +1779,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale zh-Hans --namespaces quizzes,studio,media` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-102: Lengkapi katalog zh-Hans: host, player, reports
+### - [x] TASK-102: Lengkapi katalog zh-Hans: host, player, reports
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`, `TASK-101`, `TASK-090`
 - **Target Files**:
