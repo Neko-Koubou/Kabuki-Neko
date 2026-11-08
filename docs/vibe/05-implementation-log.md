@@ -703,3 +703,9 @@
 - `report-csv.ts`: BOM + exact 18 English columns, CRLF, ISO UTC, dot decimals (accuracy 6, average 3, fractional numerator 6), booleans `true`/`false`, empty unavailable values, every text RFC 4180 quoted with an apostrophe guard for `=`/`+`/`-`/`@` after optional whitespace or a leading TAB/CR/LF, other control characters replaced by U+FFFD, fixed ASCII filename from the session UUID.
 - Known drift (outside the target files): `score-calculator.ts` increments `correctCount` for any `isCorrect` outcome including ×0 questions, while SA §4.5 counts only scored questions; reports mirror the stored value. Needs a corrective engine task (scoring.spec + CSV expectation).
 - Verification PASS: `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/modules/reports/reports.service.spec.ts` 6 tests, run 3× (real 5-question game with a kicked player: session 2.5/5, Q0 1/3 with option counts, Q1 partial 1.5/2, POLL and ×0 null, UNPLAYED zeros, players 0.75/0.5/kicked 0 of 1, nickname search; answer statuses incl. pagination and foreign player 404; hardest ties and denominator-0 null; CSV header/BOM/order/escaping, `'=HYPERLINK`, `'@Ann`, `'-Ben`, kicked row with empty rank/average, all injection vectors and control replacement; pending 409 / failed 503 / manual retry / ready, other host and deactivated host 404 everywhere; enqueue outage → status failed, retry 503 then pending, lobby 404, LOST and audited loss → lost). API lint/typecheck/Prettier PASS; API Jest 31 suites/226 tests PASS.
+
+## TASK-086: Expose laporan REST dan status push — IN PROGRESS
+- **Started**: 2026-11-08T11:49:24+07:00
+- **Plan**: reports.controller.ts, reports.module.ts (finalizer/worker lifecycle + engine callbacks + host status push), app.module.ts, tests/integration/reports.spec.ts
+- **Done so far**: none yet
+- **Verification**: pending

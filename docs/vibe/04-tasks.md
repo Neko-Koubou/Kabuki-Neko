@@ -1553,7 +1553,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/modules/reports/reports.service.spec.ts` denominator0 null, partial/unplayed/kicked, hardest ties, CSV =+-@/whitespace/control injection and inaccessible reports.
 
-### - [ ] TASK-086: Expose laporan REST dan status push
+### - [~] TASK-086: Expose laporan REST dan status push
 - **Traceability**: `US-14`, [SA §4.5](03-system-analysis.md#45-reports)
 - **Depends On**: `TASK-085`
 - **Target Files**:

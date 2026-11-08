@@ -1,6 +1,7 @@
 import { GameEngineModule } from "./modules/game-engine/game-engine.module";
 import { MediaModule } from "./modules/media/media.module";
 import { QuizzesModule } from "./modules/quizzes/quizzes.module";
+import { ReportsModule } from "./modules/reports/reports.module";
 import { SystemModule } from "./modules/system/system.module";
 import { UsersModule } from "./modules/users/users.module";
 import { AuthModule } from "./modules/auth/auth.module";
@@ -30,7 +31,10 @@ import { SecretsService } from "./config/secrets.service";
 // eslint-disable-next-line @typescript-eslint/no-extraneous-class -- Nest modules are decorator metadata containers.
 export class RuntimeConfigModule {}
 
-/** Root module: runtime config, persistence/storage/state providers and the feature modules. */
+/**
+ * Root module: runtime config, persistence/storage/state providers and the feature modules
+ * (reports last: it wires the finalization queue into the game engine).
+ */
 @Module({
   imports: [
     RuntimeConfigModule,
@@ -43,6 +47,7 @@ export class RuntimeConfigModule {}
     MediaModule,
     SystemModule,
     GameEngineModule,
+    ReportsModule,
   ],
 })
 // eslint-disable-next-line @typescript-eslint/no-extraneous-class -- Nest modules are decorator metadata containers.
