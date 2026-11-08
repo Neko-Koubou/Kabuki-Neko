@@ -789,3 +789,9 @@
 - Files: `packages/shared/locales/ja/quizzes.json` (91), `studio.json` (91), `media.json` (81); task checklist/log.
 - Natural Japanese with the TASK-096 conventions (concise labels, polite sentences, full-width punctuation) and consistent terms (クイズ, 下書き, スライド, 問題/問題文, 選択肢, 解説, 主催, BGM, メディアライブラリ, 字幕, 文字起こし, 代替テキスト); question types 単一選択/複数選択/○×問題/記述式/並べ替えパズル/アンケート. Plurals use `other` (+ `=0`): `{count, plural, =0 {問題はありません} other {#問}}`, `{seconds, plural, other {#秒}}`; placeholders kept (`{row, number}行目、{column}列`, `スライド {position, number} / {total, number}`, `{savedAt, time, short} に保存`, `{percent, number}%`, `{limit, number} MiB`). Creator content is never translated.
 - Verification PASS: `pnpm locales:validate --locale ja --namespaces quizzes,studio,media` → coverage 100.0%, 0 errors, 0 warnings. Review: 263 messages formatted with `intl-messageformat` (locale `ja`) — 0 problems. Prettier PASS.
+
+## TASK-098 — 2026-11-08T12:41:36+07:00
+
+- Files: `packages/shared/locales/ja/host.json` (123), `player.json` (126), `reports.json` (88); task checklist/log.
+- Natural Japanese with the established conventions and terms (ホスト, プレイヤー, ルーム, ロビー, ランキング, 表彰台, 解説, アンケート, 連続正解, レポート, 正答率); honorific さん after player nicknames in announcements. Plurals/ordinals use `other`: `{rank, selectordinal, other {#位}}`, `{seconds, plural, =0 {時間切れ} other {残り#秒}}`, `{points, plural, other {+#ポイント}}`, `第{index, number}問 / 全{total, number}問`, fractional accuracy `{numerator, number} / {denominator, plural, …}`, ミリ秒 and the visible timezone. Review fix: the biggest-climber phrase uses `#ランクアップ` (not `#位アップ`, which reads as an absolute rank).
+- Verification PASS: `pnpm locales:validate --locale ja --namespaces host,player,reports` → coverage 100.0%, 0 errors, 0 warnings. Review: 337 messages formatted with `intl-messageformat` (locale `ja`) — 0 problems. Prettier PASS.
