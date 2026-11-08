@@ -13,6 +13,10 @@
  * report is durable (finalization ready) is released and its allocation CLOSED. A frozen report that
  * is not yet durable is never evicted (the store refuses to release it). Missing state means LOST.
  * CLOSED/LOST allocations are released conditionally after 1 h, retried every scan.
+ *
+ * Finalization recovery: the leader of a final room whose frozen report is not `ready` asks the
+ * game service to re-sync it with the durable queue at most every 5 s (re-enqueue after a database
+ * outage, mirror a READY job whose state update was lost), so such rooms are eventually released.
  */
 import {
   Inject,
@@ -35,6 +39,8 @@ import {
 import { GAME_CLOCK, GameService } from "./game.service";
 import { RoomRegistryService } from "./room-registry.service";
 
+/** Minimum interval between finalization re-syncs of one room by its leader. */
+export const FINALIZATION_SYNC_MS = 5_000;
 /** Phases after which no gameplay transition remains except PODIUM → FINISHED. */
 const FINAL = new Set<ActiveRoomState["phase"]>(["PODIUM", "FINISHED"]);
 
@@ -61,6 +67,7 @@ export class RoomScheduler implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly heartbeats = new Map<string, number>();
   private readonly pins = new Map<string, string>();
+  private readonly synced = new Map<string, number>();
   private interval: ReturnType<typeof setInterval> | undefined;
   private running: Promise<void> | undefined;
 
@@ -146,6 +153,7 @@ export class RoomScheduler implements OnApplicationBootstrap, OnModuleDestroy {
     this.leases.delete(sessionId);
     this.heartbeats.delete(sessionId);
     this.pins.delete(sessionId);
+    this.synced.delete(sessionId);
   }
   /** Arms a local timer for the exact next deadline (the 1 s scan repairs misses). */
   private arm(identity: RoomIdentity, state: Readonly<ActiveRoomState>) {
@@ -208,6 +216,15 @@ export class RoomScheduler implements OnApplicationBootstrap, OnModuleDestroy {
     if (!after) return this.lose(row, now);
     if (FINAL.has(after.phase) && after.frozenReport && row.status === "ACTIVE")
       await this.runtime.transition(row.id, "ACTIVE", "FINALIZING", now);
+    if (
+      FINAL.has(after.phase) &&
+      after.frozenReport &&
+      after.finalization?.status !== "ready" &&
+      now - (this.synced.get(row.id) ?? -Infinity) >= FINALIZATION_SYNC_MS
+    ) {
+      this.synced.set(row.id, now);
+      await this.game.syncFinalization(identity).catch(() => false);
+    }
     // FINISHED rooms are kept 1 h for recovery; a hard-expired room cannot transition any more and
     // is released as soon as its report is durable. Non-durable reports are never released.
     const retained =

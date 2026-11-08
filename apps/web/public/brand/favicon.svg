@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-labelledby="title">
+  <title id="title">Kabuki Neko</title>
+  <!-- Kabuki Neko favicon: original artwork for the project (Apache-2.0 with Commons Clause).
+       Bold cat head on a crimson tile so it stays recognizable at 16 px: two ears, face paint,
+       ink eyes and a gold crest. No text, scripts or external references. -->
+  <rect width="32" height="32" rx="7" fill="#D9381E"/>
+  <path d="M6 15 L7.5 4.5 L13 9 Z M26 15 L24.5 4.5 L19 9 Z" fill="#FFF8F0"/>
+  <ellipse cx="16" cy="18" rx="11" ry="9.5" fill="#FFF8F0"/>
+  <path d="M16 9.5 L18 12 L16 14.5 L14 12 Z" fill="#F59E0B"/>
+  <path d="M9.5 17.5 C10.5 15.8 12.6 15.6 13.6 16.8 C12.6 18 10.6 18.2 9.5 17.5 Z M22.5 17.5 C21.5 15.8 19.4 15.6 18.4 16.8 C19.4 18 21.4 18.2 22.5 17.5 Z" fill="#18181B"/>
+  <path d="M7 21 C8.5 17.5 10.5 15.5 13 14.6 M25 21 C23.5 17.5 21.5 15.5 19 14.6" fill="none" stroke="#D9381E" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="M15 21 L17 21 L16 22.3 Z" fill="#18181B"/>
+</svg>

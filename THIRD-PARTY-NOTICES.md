@@ -16,13 +16,161 @@ Source integrity:
 ## Distribution obligations and pending assets
 
 - Preserve upstream license/copyright/NOTICE files in distributions. This inventory is not a replacement for those texts. TASK-174/181 must verify the actual production bundles and target-platform native libraries.
-- DiceBear code and avatar artwork have separate terms, including CC-BY-4.0 for several collections. TASK-115/125 must retain artwork author attribution, source links, license links and modification disclosures for the six selected styles. Installing the aggregate collection does not grant a new license to its artwork.
+- DiceBear code and avatar artwork have separate terms, including CC-BY-4.0 for several collections. Attribution, source and license links for the six offered styles are in “DiceBear avatar artwork” below; the avatar component (TASK-123) must add any artwork modification it applies there. Installing the aggregate collection does not grant a new license to its artwork.
 - Sharp includes libvips under LGPL-3.0-or-later. Preserve its license/source and applicable relinking obligations; validate the actual Linux image contents at release.
 - MPL-2.0 packages (including axe and Lightning CSS) retain their file-level licensing requirements. CC-BY data such as caniuse-lite retains attribution requirements.
 - Test services are independent processes: PostgreSQL16, MySQL8, Redis7 and MinIO. MinIO test source is [official commit 9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a](https://github.com/minio/minio/tree/9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a), AGPL-3.0; the test image retains its LICENSE and source provenance. Production service images and Go/base-image inventories remain release checks.
-- Brand assets and Noto Sans have not been added yet; document author/source/OFL terms and checksums when introduced in TASK-113/115.
-- Local audio candidates under `audio-assets/kabuki-neko-audio/` have a supplied CREDITS.md and manifest, but per-file provenance and redistributability have not been independently verified. Some credit URLs are malformed and SFX credits currently reference only a library landing page. No audio has been packaged or relicensed by this task; TASK-114/115 must resolve these before distribution.
+- Brand assets were added in TASK-113 (see “Kabuki Neko brand assets” below). The self-hosted Noto Sans font (TASK-115) is under OFL-1.1; see “Noto Sans font” below, which includes the full license text that must accompany it.
+- Legal texts ship with the web app: `pnpm exec tsx scripts/package-assets.ts` verifies the assets and checksums listed in this file and copies `LICENSE` and this file byte-for-byte to `/legal/LICENSE.txt` and `/legal/THIRD-PARTY-NOTICES.txt`.
+- Audio assets: see “Audio assets (third-party, release-unverified)” below. Their distribution rights are not yet confirmed.
 - `pause@0.0.1` has no package.json license field, so pnpm reports Unknown. Its installed Readme.md includes the full MIT license and copyright (c) 2012 TJ Holowaychuk. The inventory below records this inspected MIT evidence.
+
+## Audio assets (third-party, release-unverified)
+
+The 20 supplied audio files in `audio-assets/kabuki-neko-audio/` (10 BGM, 10 SFX) and the 40 WebM/MP3 files generated from them by `pnpm audio:optimize` are **not** covered by the project LICENSE. Copyright stays with the individual composers/creators who publish them on OpenTracks (formerly DOVA-SYNDROME) under the [OpenTracks Audio Source Usage License](https://opentracks.com/en/help/articles/license/) plus any creator-specific conditions. Per-track titles, composers and source links are in the [audio credits](audio-assets/kabuki-neko-audio/CREDITS.md) (copied byte-for-byte to `/audio/CREDITS.md`), and per-file SHA-256, duration, outputs and verification evidence are in [`docs/audio-provenance.json`](docs/audio-provenance.json).
+
+Checked on 2026-11-08 against the official license page and each BGM source page:
+
+- Seven BGM tracks match their source page title and composer; `bgm-lobby-neko8bit` matches after correcting the supplied title typo (“ICat sonata” → “Cat sonata - 8bit”). Two malformed source links (`hhttps://`, `https://https://`), the stale license link and the SFX library link were repaired.
+- `bgm-lobby-matcha` (#13513) and `bgm-think-sprint` (#3300) do not match their source pages (title/composer); the asset owner must confirm the correct source. The ten SFX only have a general library link, with no per-file source or creator.
+- The OpenTracks license permits format conversion and editing, but asks tool apps/platforms to consult site management before embedding audio and licensing it to their users, and prohibits distributing the audio files themselves or using them where end users can easily access and copy the audio files.
+
+**Release status: release-unverified.** No written permission exists yet for embedding these files in a self-hostable platform, storing them in this repository, or serving them as downloadable files. Until that permission is obtained, or the assets are replaced by audio whose terms allow it, do not treat the audio as cleared for release or redistribution. This notice records evidence; it is not legal advice.
+
+## Kabuki Neko brand assets
+
+Original artwork created for this project in TASK-113 (2026-11-08). No third-party artwork, fonts, templates or generated stock images were used, and no external references are embedded. The files are part of the repository and are covered by the project LICENSE (Apache License 2.0 with Commons Clause; copyright holder label: Kabuki Neko contributors).
+
+| File                                | viewBox / intrinsic size | Purpose and accessibility                                                                                                                                                                                                                                                                              | SHA-256                                                            |
+| ----------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| `apps/web/public/brand/logo.svg`    | `0 0 400 96` (400×96)    | Informative logo: cat mark + “Kabuki Neko” wordmark, `role="img"` with `<title>`. Wordmark switches ink `#18181B` / `#FAFAFA` (and accent `#D9381E` / `#FF8A75`) with `prefers-color-scheme`; use at ≥ 32 px height so the wordmark stays legible. Text uses the app font stack with system fallbacks. | `209f0c42fd929aad2a297b34bf9835700b45304cd8739ffcc5010d67829fb1a5` |
+| `apps/web/public/brand/mascot.svg`  | `0 0 320 320` (320×320)  | Decorative kabuki cat mascot (crimson kumadori, gold crest, neutral friendly expression), `aria-hidden="true"`; never conveys information on its own.                                                                                                                                                  | `328cb58de046efe3c98744d5312824c16a97f3936cf232c15fb7ecab7e052e8d` |
+| `apps/web/public/brand/favicon.svg` | `0 0 32 32` (32×32)      | Favicon/app icon: bold cat head on a crimson tile, no text, recognizable at 16 px; `role="img"` with `<title>`.                                                                                                                                                                                        | `cfee39309787335adc54ba9bd8d83607fb78169a6121fb61b11aecea429989e7` |
+
+Verified 2026-11-08 in Chromium: each file decodes at 16, 32, 128 and 320 px on light (`#FAFAF9`) and dark (`#18181B`) canvases; contains no `script`, `foreignObject`, `image`, `use`, links, event attributes or `url()` references; the logo wordmark computes to `rgb(24, 24, 27)` in light and `rgb(250, 250, 250)` in dark color schemes. Palette: Kumadori Crimson `#D9381E`, Kabuki Gold `#F59E0B`, Sumi Ink `#18181B`, face paint `#FFF8F0`.
+
+## Noto Sans font
+
+The web app self-hosts one Noto Sans file. It is used unmodified (byte-identical to the file published upstream); subsetting and WOFF2 compression were done by Google Fonts/Fontsource. It is not sold on its own, no Reserved Font Name is declared in its copyright notice, and it remains under the SIL Open Font License 1.1 reproduced below.
+
+| File                                          | Upstream font                                                                                                                                                                  | Packaged from                                                                                                                                                                                                                                                                       | Coverage                                                                                                                                                             | Bytes  | SHA-256                                                            |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------ |
+| `apps/web/public/fonts/noto-sans-latin.woff2` | Noto Sans (Google Fonts v42, font version 2.015), Copyright 2022 The Noto Project Authors, [notofonts/latin-greek-cyrillic](https://github.com/notofonts/latin-greek-cyrillic) | [`@fontsource-variable/noto-sans@5.3.0`](https://www.npmjs.com/package/@fontsource-variable/noto-sans/v/5.3.0), file `files/noto-sans-latin-wght-normal.woff2`; tarball integrity `sha512-e3ZuxzY9AL2psXPZlhwhnYrHUHv6PMoyK9MQ7croF0CUgURLqu9EMjW7q2FgVLwij1tjLsIHQrnwQ8aUcg4BiA==` | Latin subset (232 code points: Basic Latin, Latin-1, Œœ, general punctuation, €, ™ and arrows); variable `wght` axis 100–900, used for weights 400, 600, 700 and 800 | 35,820 | `51ca196f49a33e79e7870ff88ebd2829a3f627a51e7d690986618f0e7ad2b52d` |
+
+Verified 2026-11-08: the npm tarball matches its registry integrity; the file decodes as WOFF2 with a `wght` 100–900 axis; every character used by the `en`, `id`, `es` and `fr` catalogs is mapped. `globals.css` declares it with `font-display: swap` and the upstream Latin `unicode-range`, so Japanese and Chinese text uses the system CJK font (`system-ui, sans-serif`) and no CJK font is shipped. The license below is the package `LICENSE` file, SHA-256 `54ec7b5a35310ad66f9f3091426f7028484cbf9ae1ab5da30122ee412a3009e1`.
+
+```text
+Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic) NotoSans-Italic[wdth,wght].ttf: Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
+
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded,
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+```
+
+## DiceBear avatar artwork
+
+Avatars are generated in the browser by `@dicebear/core@9.4.3` and `@dicebear/collection@9.4.3` (code: MIT, Copyright (c) 2024 Florian Körner). Only the six styles in `AVATAR_STYLES` (`packages/shared/src/constants/game.ts`) are offered. Each style's artwork has its own license, separate from the code, as stated in that package's `LICENSE` file:
+
+| Style        | Package                      | Artwork source                                                           | Designer                                                              | Artwork license                                                                  | Package `LICENSE` SHA-256                                          |
+| ------------ | ---------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `bottts`     | `@dicebear/bottts@9.4.3`     | [Bottts](https://bottts.com/)                                            | Pablo Stanley ([@pablostanley](https://twitter.com/pablostanley))     | “Free for personal and commercial use” ([bottts.com](https://bottts.com/))       | `acd6f6ef6023dfaea0bdb807c8fd2dba1fdd57bf0b4392e590a34783f172da65` |
+| `adventurer` | `@dicebear/adventurer@9.4.3` | [Adventurer](https://www.figma.com/community/file/1184595184137881796)   | Lisa Wischofsky ([lischi_art](https://www.instagram.com/lischi_art/)) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)                        | `70d3a4720b200e07345ebd0094abec1136a4929f7ddf44914ad12f5711068e3b` |
+| `fun-emoji`  | `@dicebear/fun-emoji@9.4.3`  | [Fun Emoji Set](https://www.figma.com/community/file/968125295144990435) | Davis Uche ([davedirect3](https://www.instagram.com/davedirect3/))    | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)                        | `e261c5aefb2c9809304478fc583922e20d0b45276730813d83fa0f6e1ff31a6a` |
+| `pixel-art`  | `@dicebear/pixel-art@9.4.3`  | [Pixel Art](https://www.figma.com/community/file/1198754108850888330)    | DiceBear ([dicebear.com](https://www.dicebear.com))                   | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)                    | `00c3ee5db6054cecade0208802a41ad1a0fb3d12c7ea152e104bac39cf1e8a2c` |
+| `lorelei`    | `@dicebear/lorelei@9.4.3`    | [Lorelei](https://www.figma.com/community/file/1198749693280469639)      | Lisa Wischofsky ([lischi_art](https://www.instagram.com/lischi_art/)) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)                    | `30c2142af0c739cea924365f6223654c1ffea79f166d6c591258466a53908a5e` |
+| `avataaars`  | `@dicebear/avataaars@9.4.3`  | [Avataaars](https://avataaars.com/)                                      | Pablo Stanley ([@pablostanley](https://twitter.com/pablostanley))     | “Free for personal and commercial use” ([avataaars.com](https://avataaars.com/)) | `61af36b4a3c6c9c3e4b0f66f484eacec0190c4d9bbcd01e39d9e1e230d6c1897` |
+
+- CC BY 4.0 attribution: “Adventurer” by Lisa Wischofsky and “Fun Emoji Set” by Davis Uche, licensed under CC BY 4.0, rendered through DiceBear. The project draws the artwork through DiceBear with options chosen from each player's seed and does not edit it. If the avatar component (TASK-123) applies an option that changes the artwork (background, colors, flip, rotation, clipping), it must be listed here as a modification.
+- “Free for personal and commercial use” is the designer's own wording as recorded by the package, not a standard license; no broader terms are inferred from it.
+- `@dicebear/collection` also installs the other DiceBear styles (see the inventory below). They are not offered by the app, and their artwork licenses are not covered by this section.
 
 ## Direct dependencies
 

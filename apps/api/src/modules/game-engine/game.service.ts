@@ -10,7 +10,9 @@
  * - a frozen question is scored deterministically (`computeQuestionResult`) by whichever caller
  *   gets there first and committed with a CAS on revision + closed-question hash, so a crash after
  *   freeze is recovered by the next `settle`/`tick` without double scoring;
- * - entering PODIUM freezes an immutable FrozenReport once and hands it to the finalization hook.
+ * - entering PODIUM freezes an immutable FrozenReport once and hands it to the finalization hook;
+ *   `syncFinalization` lets the scheduler re-drive a frozen report whose status is not yet `ready`
+ *   (failed enqueue, worker commit whose state update was lost) through a second typed callback.
  */
 import { Inject, Injectable, Optional } from "@nestjs/common";
 import { canonicalRequestHash } from "@kabuki-neko/database";
@@ -33,6 +35,15 @@ import { computeQuestionResult, scoreAnswer } from "./score-calculator";
 export const GAME_CLOCK = Symbol("GAME_CLOCK");
 /** Called once per room after its FrozenReport is stored (finalization queue hook). */
 export type ReportHook = (identity: RoomIdentity, report: FrozenReport) => Promise<void>;
+/**
+ * Re-drives finalization for a frozen report that is not `ready` yet (scheduler recovery): the
+ * implementation (report worker) re-enqueues it if needed and mirrors the durable job status.
+ */
+export type FinalizationSync = (
+  identity: RoomIdentity,
+  report: FrozenReport,
+  current: ActiveRoomState["finalization"],
+) => Promise<void>;
 /** Socket binding of a player connection. */
 export interface PlayerBinding extends RoomIdentity {
   playerId: string;
@@ -175,6 +186,7 @@ export function buildFrozenReport(state: Readonly<ActiveRoomState>, endedAt: num
 @Injectable()
 export class GameService {
   private hook: ReportHook | null = null;
+  private sync: FinalizationSync | null = null;
   private readonly clock: () => number;
 
   constructor(
@@ -188,6 +200,25 @@ export class GameService {
   /** Installs the finalization hook (typed callback, so there is no DI import cycle). */
   setReportHook(hook: ReportHook | null): void {
     this.hook = hook;
+  }
+
+  /** Installs the finalization recovery callback used by `syncFinalization` (typed, no DI cycle). */
+  setFinalizationSync(sync: FinalizationSync | null): void {
+    this.sync = sync;
+  }
+
+  /**
+   * Scheduler recovery for a final room: when its report is frozen but the status is not `ready`,
+   * hands it to the sync callback. Returns true when the callback ran.
+   */
+  async syncFinalization(identity: RoomIdentity): Promise<boolean> {
+    if (!this.sync) return false;
+    const state = await this.store.getPrivateSnapshot(identity);
+    if (!state || !FINAL.has(state.phase) || !state.frozenReport) return false;
+    if (state.finalization?.status === "ready" || state.finalization?.status === "lost")
+      return false;
+    await this.sync(identity, state.frozenReport, state.finalization);
+    return true;
   }
 
   /**

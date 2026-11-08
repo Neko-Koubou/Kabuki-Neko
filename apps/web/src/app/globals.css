@@ -1,19 +1,337 @@
-* {
-  box-sizing: border-box;
+/*
+ * Kabuki Neko design tokens and base styles (Design §2, §7; SA §8.3; TASK-087).
+ *
+ * - Semantic colors are CSS custom properties with Shadcn-compatible names (`--background`,
+ *   `--foreground`, `--primary`, …) plus the project names of Design §2.1. Light values live on
+ *   `:root`; dark values apply when the theme provider sets `data-theme="dark"` on <html>, and
+ *   before hydration through `prefers-color-scheme` unless the page is explicitly light.
+ * - The four answer colors (Design §2.2) are identical in both themes and must stay solid: never
+ *   apply opacity, tints, gradients or overlays to them or to their text pair.
+ * - Spacing, radius, elevation, layer, typography and breakpoint tokens are mapped into Tailwind 4
+ *   through `@theme inline`, so utilities such as `bg-primary`, `text-muted-foreground`,
+ *   `rounded-md`, `shadow-2` or `bg-answer-a` resolve to these variables.
+ * - Layout uses logical properties (RTL-ready) and every motion collapses under
+ *   `prefers-reduced-motion`.
+ * - "Noto Sans" is self-hosted (TASK-115): one variable WOFF2 Latin subset covers weights 400–800
+ *   with `font-display: swap`, so text renders immediately in the system UI font and swaps when the
+ *   file arrives. Its `unicode-range` limits it to Latin, so Japanese/Chinese text falls back to the
+ *   system CJK font (`system-ui, sans-serif`) instead of downloading any CJK glyphs.
+ */
+@import "tailwindcss";
+
+/*
+ * Noto Sans variable (wght 100–900), Latin subset — OFL-1.1, The Noto Project Authors. Source,
+ * version and checksum are recorded in THIRD-PARTY-NOTICES.md; the file is served from
+ * apps/web/public/fonts. The unicode-range matches the upstream Latin subset exactly.
+ */
+@font-face {
+  font-family: "Noto Sans";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/noto-sans-latin.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-html {
-  font-family: system-ui, sans-serif;
+:root {
+  color-scheme: light;
+
+  /* Brand identity (PRD) — identical in both themes. */
+  --brand-crimson: #d9381e;
+  --brand-gold: #f59e0b;
+  --brand-ink: #18181b;
+
+  /* Semantic colors — light theme (Design §2.1). */
+  --primary: #d9381e;
+  --primary-foreground: #ffffff;
+  --secondary: #f59e0b;
+  --secondary-foreground: #18181b;
+  --background: #fafaf9;
+  --panel: #ffffff;
+  --subtle: #f4f4f5;
+  --foreground: #18181b;
+  --muted-foreground: #52525b;
+  --border: #e4e4e7;
+  --input: #71717a;
+  --success: #166534;
+  --success-surface: #dcfce7;
+  --warning: #854d0e;
+  --warning-surface: #fef3c7;
+  --danger: #b91c1c;
+  --danger-surface: #fee2e2;
+  --ring: #1d4ed8;
+  --scrim: rgb(24 24 27 / 64%);
+
+  /* Shadcn aliases resolved from the semantic tokens above. */
+  --card: var(--panel);
+  --card-foreground: var(--foreground);
+  --popover: var(--panel);
+  --popover-foreground: var(--foreground);
+  --muted: var(--subtle);
+  --accent: var(--subtle);
+  --accent-foreground: var(--foreground);
+  --destructive: var(--danger);
+
+  /* Answer colors and text pairs (Design §2.2) — never themed, never translucent. */
+  --answer-a: #e21b3c;
+  --answer-a-foreground: #ffffff;
+  --answer-b: #1368ce;
+  --answer-b-foreground: #ffffff;
+  --answer-c: #d89e00;
+  --answer-c-foreground: #18181b;
+  --answer-d: #26890c;
+  --answer-d-foreground: #ffffff;
+  /* Focus on colored answer cards: double white + ink outline instead of the blue ring. */
+  --answer-focus-inner: #ffffff;
+  --answer-focus-outer: #18181b;
+
+  /* Spacing scale (Design §2.4), CSS px. */
+  --space-0: 0px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Elevation and layers (radius lives in the @theme block below). */
+  --elevation-0: none;
+  --elevation-1: 0 2px 6px #18181b14;
+  --elevation-2: 0 8px 24px #18181b1f;
+  --elevation-3: 0 20px 60px #00000040;
+  --elevation-border: transparent;
+  --layer-base: 0;
+  --layer-sticky: 10;
+  --layer-menu: 20;
+  --layer-scrim: 30;
+  --layer-dialog: 40;
+  --layer-toast: 50;
+  --layer-tooltip: 60;
+
+  /* Layout and targets. */
+  --container-max: 1280px;
+  --container-padding: 16px;
+  --shell-sidebar: 224px;
+  --player-max: 640px;
+  --target-min: 44px;
+  --target-primary-mobile: 48px;
+  --answer-min-block: 112px;
+
+  /* Motion (Design §7.3); reduced motion collapses these to 0ms. */
+  --motion-press: 120ms;
+  --motion-dialog: 180ms;
+  --motion-chart: 300ms;
+
+  /* Typography families (Design §2.3). */
+  --font-family-sans: "Noto Sans", system-ui, sans-serif;
+  --font-family-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-body {
-  margin: 0;
-  min-inline-size: 320px;
-  min-block-size: 100dvh;
+/* Dark theme (Design §2.1): explicit choice set by the theme provider. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --primary: #ff8a75;
+  --primary-foreground: #18181b;
+  --secondary: #fbbf24;
+  --secondary-foreground: #18181b;
+  --background: #18181b;
+  --panel: #27272a;
+  --subtle: #3f3f46;
+  --foreground: #fafafa;
+  --muted-foreground: #a1a1aa;
+  --border: #3f3f46;
+  --input: #71717a;
+  --success: #86efac;
+  --success-surface: #143322;
+  --warning: #fcd34d;
+  --warning-surface: #3b2b10;
+  --danger: #fca5a5;
+  --danger-surface: #451a1a;
+  --ring: #93c5fd;
+  --scrim: rgb(0 0 0 / 72%);
+  --elevation-border: #3f3f46;
 }
 
-main {
-  margin-inline: auto;
-  max-inline-size: 1280px;
-  padding: 24px;
+/* System preference before hydration (no data-theme yet); an explicit light choice wins. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --primary: #ff8a75;
+    --primary-foreground: #18181b;
+    --secondary: #fbbf24;
+    --secondary-foreground: #18181b;
+    --background: #18181b;
+    --panel: #27272a;
+    --subtle: #3f3f46;
+    --foreground: #fafafa;
+    --muted-foreground: #a1a1aa;
+    --border: #3f3f46;
+    --input: #71717a;
+    --success: #86efac;
+    --success-surface: #143322;
+    --warning: #fcd34d;
+    --warning-surface: #3b2b10;
+    --danger: #fca5a5;
+    --danger-surface: #451a1a;
+    --ring: #93c5fd;
+    --scrim: rgb(0 0 0 / 72%);
+    --elevation-border: #3f3f46;
+  }
+}
+
+/* Static tokens always emitted by Tailwind as runtime variables (`--radius-*`, Design §2.4). */
+@theme static {
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+}
+
+/* Tailwind 4 theme mapping: utilities read the runtime variables above. */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-panel: var(--panel);
+  --color-subtle: var(--subtle);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-success-surface: var(--success-surface);
+  --color-warning: var(--warning);
+  --color-warning-surface: var(--warning-surface);
+  --color-danger: var(--danger);
+  --color-danger-surface: var(--danger-surface);
+  --color-scrim: var(--scrim);
+  --color-brand-crimson: var(--brand-crimson);
+  --color-brand-gold: var(--brand-gold);
+  --color-brand-ink: var(--brand-ink);
+  --color-answer-a: var(--answer-a);
+  --color-answer-a-foreground: var(--answer-a-foreground);
+  --color-answer-b: var(--answer-b);
+  --color-answer-b-foreground: var(--answer-b-foreground);
+  --color-answer-c: var(--answer-c);
+  --color-answer-c-foreground: var(--answer-c-foreground);
+  --color-answer-d: var(--answer-d);
+  --color-answer-d-foreground: var(--answer-d-foreground);
+
+  --font-sans: var(--font-family-sans);
+  --font-mono: var(--font-family-mono);
+
+  --shadow-1: var(--elevation-1);
+  --shadow-2: var(--elevation-2);
+  --shadow-3: var(--elevation-3);
+
+  --text-caption: 12px;
+  --text-caption--line-height: 18px;
+  --text-small: 14px;
+  --text-small--line-height: 20px;
+  --text-body: 16px;
+  --text-body--line-height: 24px;
+  --text-label: 16px;
+  --text-label--line-height: 24px;
+  --text-title-sm: 20px;
+  --text-title-sm--line-height: 28px;
+  --text-title: 28px;
+  --text-title--line-height: 36px;
+  --text-display: 40px;
+  --text-display--line-height: 48px;
+
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1200px;
+  --breakpoint-xl: 1600px;
+}
+
+@layer base {
+  *,
+  ::before,
+  ::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    font-family: var(--font-family-sans);
+    font-size: 16px;
+    line-height: 24px;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    min-inline-size: 320px;
+    min-block-size: 100dvh;
+    background-color: var(--background);
+    color: var(--foreground);
+    overflow-wrap: anywhere;
+  }
+
+  main {
+    margin-inline: auto;
+    max-inline-size: var(--container-max);
+    padding-inline: var(--container-padding);
+    padding-block: var(--space-6);
+  }
+
+  /* Product focus baseline (Design §7.1): visible 2px ring with a 2px offset. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  /* Numbers that must not jitter (PIN, timer, scores). */
+  .tabular-nums,
+  kbd,
+  samp {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (min-width: 768px) {
+  :root {
+    --container-padding: 24px;
+  }
+}
+
+@media (min-width: 1200px) {
+  :root {
+    --container-padding: 32px;
+  }
+}
+
+/* Reduced motion (Design §7.3): every animation/transition becomes instant. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-press: 0ms;
+    --motion-dialog: 0ms;
+    --motion-chart: 0ms;
+  }
+
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

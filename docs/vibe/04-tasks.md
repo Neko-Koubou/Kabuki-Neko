@@ -1514,7 +1514,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/modules/reports/report-finalizer.spec.ts` rollback every insert boundary, source deletion, DB unavailable then recovery and stable IDs.
 
-### - [ ] TASK-084: Implementasikan worker antrean dan retry finalisasi
+### - [x] TASK-084: Implementasikan worker antrean dan retry finalisasi
 - **Traceability**: `US-14`, `US-20`, [SA §6.3](03-system-analysis.md#63-finalization-and-durability)
 - **Depends On**: `TASK-083`
 - **Target Files**:
@@ -1528,9 +1528,21 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/modules/reports/report-worker.spec.ts` competing workers/crash lease/restart, five failures/manual retry, no report link before commit.
 
-### - [ ] TASK-085: Implementasikan analitik laporan dan CSV
+### - [x] TASK-085A: Tambahkan pembacaan daftar dan bulk laporan pada repository
 - **Traceability**: `US-14`, [SA §4.5](03-system-analysis.md#45-reports)
-- **Depends On**: `TASK-084`
+- **Depends On**: `TASK-040`
+- **Target Files**:
+  - `MODIFY` `packages/database/src/repositories/reports.repository.ts`
+  - `MODIFY` `tests/contracts/reports.repository.spec.ts`
+- **Implementation Specs**:
+  - Koreksi 2026-11-08: TASK-085/086 membutuhkan `GET /reports` (ready-only, host aktif, quizId?, search judul snapshot, sort ended_desc, page/limit default 15) serta pembacaan seluruh pemain dan jawaban satu sesi untuk analitik/CSV; repository TASK-040 hanya menyediakan halaman per pemain.
+  - Tambah `list(hostId, query)` (parameterized LIKE ESCAPE, urutan stabil ended_at DESC lalu id), `allPlayers(hostId, id)` (urutan rank lalu kicked join order) dan `allAnswers(hostId, id)` (urutan question_index, player_id) melalui gate `session()` yang sama.
+- **Definition of Done (Verification)**:
+  - `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/reports.repository.spec.ts` pada SQLite/PostgreSQL/MySQL: list ready-only/host lain/host nonaktif/filter/search wildcard escape/pagination, bulk players/answers urutan stabil dan gate pending.
+
+### - [x] TASK-085: Implementasikan analitik laporan dan CSV
+- **Traceability**: `US-14`, [SA §4.5](03-system-analysis.md#45-reports)
+- **Depends On**: `TASK-084`, `TASK-085A`
 - **Target Files**:
   - `CREATE` `apps/api/src/modules/reports/reports.service.ts`
   - `CREATE` `apps/api/src/modules/reports/report-csv.ts`
@@ -1541,7 +1553,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/modules/reports/reports.service.spec.ts` denominator0 null, partial/unplayed/kicked, hardest ties, CSV =+-@/whitespace/control injection and inaccessible reports.
 
-### - [ ] TASK-086: Expose laporan REST dan status push
+### - [x] TASK-086: Expose laporan REST dan status push
 - **Traceability**: `US-14`, [SA §4.5](03-system-analysis.md#45-reports)
 - **Depends On**: `TASK-085`
 - **Target Files**:
@@ -1557,9 +1569,20 @@ flowchart LR
 
 ## Phase 4: Frontend Design Tokens, Base UI & State Layer
 
-### - [ ] TASK-087: Terapkan design tokens dan preferensi tema
+### - [x] TASK-087A: Aktifkan pipeline PostCSS Tailwind 4 untuk web
+- **Traceability**: `US-18`, [Design §2](02-design-spec.md#2-design-tokens-dan-tema), [00 §2](00-project-context.md#2-tech-stack-matrix)
+- **Depends On**: `TASK-010`
+- **Target Files**:
+  - `CREATE` `apps/web/postcss.config.mjs`
+- **Implementation Specs**:
+  - Koreksi 2026-11-08: manifest web sudah mendeklarasikan `tailwindcss` 4.3.3 dan `@tailwindcss/postcss`, tetapi tidak ada task yang membuat konfigurasi PostCSS, sehingga `@import "tailwindcss"`/`@theme` pada TASK-087 tidak akan diproses oleh Next.
+  - Daftarkan hanya plugin `@tailwindcss/postcss` (tanpa autoprefixer/plugin lain); tidak mengubah dependency atau lockfile.
+- **Definition of Done (Verification)**:
+  - `pnpm --filter @kabuki-neko/web build` lulus dengan konfigurasi baru; CSS hasil build memuat utility Tailwind setelah TASK-087 mengimpor `tailwindcss`.
+
+### - [x] TASK-087: Terapkan design tokens dan preferensi tema
 - **Traceability**: `US-18`, `US-21`, [SA §8.3](03-system-analysis.md#83-budget-qr-font-dan-accessible-media), [Design §2](02-design-spec.md#2-design-tokens-dan-tema)
-- **Depends On**: `TASK-010`, `TASK-014`, `TASK-012`
+- **Depends On**: `TASK-010`, `TASK-014`, `TASK-012`, `TASK-087A`
 - **Target Files**:
   - `MODIFY` `apps/web/src/app/globals.css`
   - `CREATE` `apps/web/src/providers/theme-provider.tsx`
@@ -1571,7 +1594,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/providers/theme-provider.spec.tsx` storage denied/system change preserve state; assertion green/white solid and yellow/ink contrast pair exact.
 
-### - [ ] TASK-088: Lengkapi katalog en: manifest, common, auth
+### - [x] TASK-088: Lengkapi katalog en: manifest, common, auth
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`
 - **Target Files**:
@@ -1584,7 +1607,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale en --namespaces common,auth` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-089: Lengkapi katalog en: quizzes, studio, media
+### - [x] TASK-089: Lengkapi katalog en: quizzes, studio, media
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`, `TASK-088`
 - **Target Files**:
@@ -1597,7 +1620,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale en --namespaces quizzes,studio,media` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-090: Lengkapi katalog en: host, player, reports
+### - [x] TASK-090: Lengkapi katalog en: host, player, reports
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`, `TASK-089`
 - **Target Files**:
@@ -1610,7 +1633,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale en --namespaces host,player,reports` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-091: Lengkapi katalog en: admin, validation, accessibility, about
+### - [x] TASK-091: Lengkapi katalog en: admin, validation, accessibility, about
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`, `TASK-090`
 - **Target Files**:
@@ -1624,7 +1647,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale en --namespaces admin,validation,accessibility,about` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-092: Lengkapi katalog id: manifest, common, auth
+### - [x] TASK-092: Lengkapi katalog id: manifest, common, auth
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`, `TASK-088`
 - **Target Files**:
@@ -1637,7 +1660,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale id --namespaces common,auth` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-093: Lengkapi katalog id: quizzes, studio, media
+### - [x] TASK-093: Lengkapi katalog id: quizzes, studio, media
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`, `TASK-092`, `TASK-089`
 - **Target Files**:
@@ -1650,7 +1673,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale id --namespaces quizzes,studio,media` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-094: Lengkapi katalog id: host, player, reports
+### - [x] TASK-094: Lengkapi katalog id: host, player, reports
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`, `TASK-093`, `TASK-090`
 - **Target Files**:
@@ -1663,7 +1686,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale id --namespaces host,player,reports` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-095: Lengkapi katalog id: admin, validation, accessibility, about
+### - [x] TASK-095: Lengkapi katalog id: admin, validation, accessibility, about
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`, `TASK-094`, `TASK-091`
 - **Target Files**:
@@ -1677,7 +1700,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale id --namespaces admin,validation,accessibility,about` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-096: Lengkapi katalog ja: manifest, common, auth
+### - [x] TASK-096: Lengkapi katalog ja: manifest, common, auth
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`, `TASK-088`
 - **Target Files**:
@@ -1690,7 +1713,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale ja --namespaces common,auth` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-097: Lengkapi katalog ja: quizzes, studio, media
+### - [x] TASK-097: Lengkapi katalog ja: quizzes, studio, media
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`, `TASK-096`, `TASK-089`
 - **Target Files**:
@@ -1703,7 +1726,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale ja --namespaces quizzes,studio,media` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-098: Lengkapi katalog ja: host, player, reports
+### - [x] TASK-098: Lengkapi katalog ja: host, player, reports
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`, `TASK-097`, `TASK-090`
 - **Target Files**:
@@ -1716,7 +1739,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale ja --namespaces host,player,reports` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-099: Lengkapi katalog ja: admin, validation, accessibility, about
+### - [x] TASK-099: Lengkapi katalog ja: admin, validation, accessibility, about
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`, `TASK-098`, `TASK-091`
 - **Target Files**:
@@ -1730,7 +1753,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale ja --namespaces admin,validation,accessibility,about` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-100: Lengkapi katalog zh-Hans: manifest, common, auth
+### - [x] TASK-100: Lengkapi katalog zh-Hans: manifest, common, auth
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`, `TASK-088`
 - **Target Files**:
@@ -1743,7 +1766,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale zh-Hans --namespaces common,auth` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-101: Lengkapi katalog zh-Hans: quizzes, studio, media
+### - [x] TASK-101: Lengkapi katalog zh-Hans: quizzes, studio, media
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`, `TASK-100`, `TASK-089`
 - **Target Files**:
@@ -1756,7 +1779,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale zh-Hans --namespaces quizzes,studio,media` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-102: Lengkapi katalog zh-Hans: host, player, reports
+### - [x] TASK-102: Lengkapi katalog zh-Hans: host, player, reports
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`, `TASK-101`, `TASK-090`
 - **Target Files**:
@@ -1769,7 +1792,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale zh-Hans --namespaces host,player,reports` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-103: Lengkapi katalog zh-Hans: admin, validation, accessibility, about
+### - [x] TASK-103: Lengkapi katalog zh-Hans: admin, validation, accessibility, about
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`, `TASK-102`, `TASK-091`
 - **Target Files**:
@@ -1783,7 +1806,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale zh-Hans --namespaces admin,validation,accessibility,about` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-104: Lengkapi katalog es: manifest, common, auth
+### - [x] TASK-104: Lengkapi katalog es: manifest, common, auth
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`, `TASK-088`
 - **Target Files**:
@@ -1796,7 +1819,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale es --namespaces common,auth` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-105: Lengkapi katalog es: quizzes, studio, media
+### - [x] TASK-105: Lengkapi katalog es: quizzes, studio, media
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`, `TASK-104`, `TASK-089`
 - **Target Files**:
@@ -1809,7 +1832,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale es --namespaces quizzes,studio,media` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-106: Lengkapi katalog es: host, player, reports
+### - [x] TASK-106: Lengkapi katalog es: host, player, reports
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`, `TASK-105`, `TASK-090`
 - **Target Files**:
@@ -1822,7 +1845,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale es --namespaces host,player,reports` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-107: Lengkapi katalog es: admin, validation, accessibility, about
+### - [x] TASK-107: Lengkapi katalog es: admin, validation, accessibility, about
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`, `TASK-106`, `TASK-091`
 - **Target Files**:
@@ -1836,7 +1859,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale es --namespaces admin,validation,accessibility,about` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-108: Lengkapi katalog fr: manifest, common, auth
+### - [x] TASK-108: Lengkapi katalog fr: manifest, common, auth
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`, `TASK-088`
 - **Target Files**:
@@ -1849,7 +1872,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale fr --namespaces common,auth` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-109: Lengkapi katalog fr: quizzes, studio, media
+### - [x] TASK-109: Lengkapi katalog fr: quizzes, studio, media
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`, `TASK-108`, `TASK-089`
 - **Target Files**:
@@ -1862,7 +1885,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale fr --namespaces quizzes,studio,media` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-110: Lengkapi katalog fr: host, player, reports
+### - [x] TASK-110: Lengkapi katalog fr: host, player, reports
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`, `TASK-109`, `TASK-090`
 - **Target Files**:
@@ -1875,7 +1898,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale fr --namespaces host,player,reports` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-111: Lengkapi katalog fr: admin, validation, accessibility, about
+### - [x] TASK-111: Lengkapi katalog fr: admin, validation, accessibility, about
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator), [Design §8.2](02-design-spec.md#82-kontrak-paket-bahasa-dan-panduan-kontributor)
 - **Depends On**: `TASK-071`, `TASK-087`, `TASK-110`, `TASK-091`
 - **Target Files**:
@@ -1889,7 +1912,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale fr --namespaces admin,validation,accessibility,about` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-112: Verifikasi enam katalog dan publikasikan bundle lokal
+### - [x] TASK-112: Verifikasi enam katalog dan publikasikan bundle lokal
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator)
 - **Depends On**: `TASK-091`, `TASK-095`, `TASK-099`, `TASK-103`, `TASK-107`, `TASK-111`
 - **Target Files**:
@@ -1901,7 +1924,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate`, `pnpm locales:build` dan `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/locale-coverage.spec.ts`; enam locale coverage 1, errors 0/warnings 0, template dapat diekstrak dan divalidasi.
 
-### - [ ] TASK-113: Sediakan logo, maskot dan favicon Kabuki Neko
+### - [x] TASK-113: Sediakan logo, maskot dan favicon Kabuki Neko
 - **Traceability**: `US-18`, `US-19`, [SA §8.3](03-system-analysis.md#83-budget-qr-font-dan-accessible-media), [Design §1](02-design-spec.md#1-arah-estetika-dan-prinsip-pengalaman)
 - **Depends On**: `TASK-087`, `TASK-013`
 - **Target Files**:
@@ -1915,7 +1938,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Assertion visual di browser: ketiga SVG decode pada16/32/128/320px, tidak ada external/script nodes, logo terbaca light/dark; notices cocok aset.
 
-### - [ ] TASK-114: Bangun pipeline FFmpeg dual-format dan manifest audio
+### - [x] TASK-114: Bangun pipeline FFmpeg dual-format dan manifest audio
 - **Traceability**: `US-07`, `US-13`, `US-18`, `US-19`, `US-21`, [Audio revision](audio-engine-revision.md); instruksi pengguna 2026-10-31.
 - **Depends On**: `TASK-113`, `TASK-016B`
 - **Target Files**:
@@ -1929,7 +1952,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - pnpm audio:optimize berhasil; ffprobe semua40 output codec/duration/decode; node --test scripts/optimize-audio.spec.mjs untuk3/4/N lobby, missing cue, corrupt source, conversion failure/stale cleanup dan safe publication. Lint script dan manifest shared validation PASS.
 
-### - [ ] TASK-114A: Rapikan kredit audio untuk repo dan distribusi
+### - [x] TASK-114A: Rapikan kredit audio untuk repo dan distribusi
 - **Traceability**: `US-07`, `US-13`, `US-18`, `US-19`, `US-21`, [Audio revision](audio-engine-revision.md); instruksi pengguna 2026-10-31.
 - **Depends On**: `TASK-114`
 - **Target Files**:
@@ -1942,7 +1965,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Assertion20 input punya entry provenance, credits links valid syntax dan file output copy identical; verifikasi izin distribusi tertulis atau tandai release-unverified spesifik, tidak klaim selesai hak legal tanpa bukti.
 
-### - [ ] TASK-115: Sediakan font lokal dan atribusi aset lengkap
+### - [x] TASK-115: Sediakan font lokal dan atribusi aset lengkap
 - **Traceability**: `US-18`, `US-19`, `US-21`, [SA §8.3](03-system-analysis.md#83-budget-qr-font-dan-accessible-media)
 - **Depends On**: `TASK-114`, `TASK-114A`
 - **Target Files**:

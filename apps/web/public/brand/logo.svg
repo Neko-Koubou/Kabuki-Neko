@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 96" width="400" height="96" role="img" aria-labelledby="title">
+  <title id="title">Kabuki Neko</title>
+  <!-- Kabuki Neko logo (informative): original artwork for the project (Apache-2.0 with Commons
+       Clause). Cat mark plus wordmark. The wordmark switches between Sumi Ink #18181B and
+       #FAFAFA with the viewer's color scheme so it stays readable on light and dark canvases;
+       the crimson/gold mark keeps its colors in both. Text uses the app's font stack with
+       system fallbacks; no scripts, external fonts or links. -->
+  <style>
+    .wordmark { fill: #18181B; }
+    .accent { fill: #D9381E; }
+    @media (prefers-color-scheme: dark) {
+      .wordmark { fill: #FAFAFA; }
+      .accent { fill: #FF8A75; }
+    }
+  </style>
+  <g transform="translate(4 4) scale(0.275)">
+    <g stroke="#18181B" stroke-width="10" stroke-linejoin="round">
+      <path d="M70 136 L86 34 L150 92 Z" fill="#FFF8F0"/>
+      <path d="M250 136 L234 34 L170 92 Z" fill="#FFF8F0"/>
+      <ellipse cx="160" cy="178" rx="116" ry="102" fill="#FFF8F0"/>
+    </g>
+    <path d="M90 108 L97 62 L128 90 Z M230 108 L223 62 L192 90 Z" fill="#D9381E"/>
+    <path d="M70 206 C82 168 104 146 136 136 M250 206 C238 168 216 146 184 136" fill="none" stroke="#D9381E" stroke-width="16" stroke-linecap="round"/>
+    <path d="M160 96 L176 114 L160 132 L144 114 Z" fill="#F59E0B" stroke="#18181B" stroke-width="6" stroke-linejoin="round"/>
+    <path d="M110 170 C118 156 138 154 148 166 C138 178 120 180 110 170 Z M210 170 C202 156 182 154 172 166 C182 178 200 180 210 170 Z" fill="#18181B"/>
+    <path d="M150 196 L170 196 L160 208 Z" fill="#18181B"/>
+  </g>
+  <text x="104" y="62" font-family="'Noto Sans', system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="42" font-weight="800" letter-spacing="0.5"><tspan class="wordmark">Kabuki</tspan><tspan class="accent" dx="10">Neko</tspan></text>
+</svg>
