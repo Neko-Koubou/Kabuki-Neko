@@ -176,8 +176,112 @@ it.each<DatabaseDriver>(["sqlite", "postgres", "mysql"])(
           "NOT_FOUND",
         );
         await expect(reports.session(randomUUID(), session)).rejects.toThrow("NOT_FOUND");
+        // TASK-085A: ready-only list, filters, wildcard escaping, pagination and bulk reads.
+        const other = randomUUID(),
+          second = randomUUID(),
+          foreign = randomUUID(),
+          pending = randomUUID();
+        await db.manager.insert("users", {
+          id: other,
+          email: "other-reports@example.org",
+          password_hash: "fixture",
+          name: "Other",
+          created_at: 0,
+          updated_at: 0,
+        });
+        const quiz2 = await quizzes.create(host, { title: "Filter" }, 0);
+        const ready = (id: string, owner: string, title: string, ended: number, quizId: string) =>
+          db.manager.insert("game_sessions", {
+            id,
+            host_id: owner,
+            quiz_id: quizId,
+            quiz_title_snapshot: title,
+            quiz_revision: 1,
+            pin_code: "000002",
+            display_mode: "STREAMER",
+            end_reason: "HOST_ENDED",
+            total_players: 4,
+            total_questions: 0,
+            played_questions: 0,
+            started_at: null,
+            ended_at: ended,
+            created_at: ended,
+            schema_version: 1,
+            snapshot: {},
+          });
+        await ready(second, host, "Weekly 100%_quiz", 10, quiz2);
+        await ready(foreign, other, "Frozen", 20, quiz2);
+        await db.manager.insert("room_allocations", {
+          id: pending,
+          pin_code: "000003",
+          host_id: host,
+          quiz_id: quiz2,
+          quiz_revision: 1,
+          creation_snapshot: {},
+          state_driver: "memory",
+          state_namespace: "test",
+          status: "FINALIZING",
+          created_at: 0,
+          expires_at: 100000,
+          last_heartbeat_at: 0,
+        });
+        await jobs.enqueue(pending, host, { title: "Pending" }, 5);
+        const ids = async (query: object) =>
+          (await reports.list(host, query)).items.map((item) => item.id);
+        expect(await ids({})).toEqual([second, session]);
+        expect((await reports.list(host, {})).meta).toEqual({
+          page: 1,
+          limit: 15,
+          total: 2,
+          totalPages: 1,
+        });
+        expect(await ids({ search: "100%" })).toEqual([second]);
+        expect(await ids({ search: "_" })).toEqual([second]);
+        expect(await ids({ search: "FROZEN" })).toEqual([session]);
+        expect(await ids({ quizId: quiz2 })).toEqual([second]);
+        expect(await ids({ page: "2", limit: "1" })).toEqual([session]);
+        expect((await reports.list(other, {})).items.map((item) => item.id)).toEqual([foreign]);
+        await expect(reports.list(host, { sort: "rank_asc" })).rejects.toThrow();
+        const playerRow = (id: string, join: number, rank: number | null, kicked: boolean) => ({
+          id,
+          session_id: second,
+          nickname: `P${join}`,
+          avatar_style: "bottts",
+          avatar_seed: `s${join}`,
+          join_order: join,
+          is_kicked: kicked,
+          final_score: 0,
+          final_rank: rank,
+          correct_count: 0,
+          unanswered_count: 0,
+          max_streak: 0,
+          avg_response_time_ms: null,
+          joined_at: join,
+          kicked_at: kicked ? join : null,
+        });
+        const [kicked, rank2, rank1, unranked] = [0, 1, 2, 3].map(() => randomUUID());
+        await db.manager.insert("game_players", [
+          playerRow(kicked as string, 0, null, true),
+          playerRow(rank2 as string, 1, 2, false),
+          playerRow(rank1 as string, 2, 1, false),
+          playerRow(unranked as string, 3, null, false),
+        ]);
+        expect((await reports.allPlayers(host, second)).map((p) => p.id)).toEqual([
+          rank1,
+          rank2,
+          unranked,
+          kicked,
+        ]);
+        expect(await reports.allAnswers(host, second)).toEqual([]);
+        const answers = await reports.allAnswers(host, session);
+        expect(answers.map((a) => [a.question_index, a.player_id, a.result])).toEqual([
+          [0, player, "UNANSWERED"],
+        ]);
+        await expect(reports.allPlayers(host, pending)).rejects.toThrow("FINALIZATION_PENDING");
+        await expect(reports.allAnswers(other, session)).rejects.toThrow("NOT_FOUND");
         await db.manager.update("users", host, { is_active: false });
         await expect(reports.session(host, session)).rejects.toThrow("NOT_FOUND");
+        expect((await reports.list(host, {})).items).toEqual([]);
       } finally {
         await db.destroy();
       }

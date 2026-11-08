@@ -1528,9 +1528,21 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/modules/reports/report-worker.spec.ts` competing workers/crash lease/restart, five failures/manual retry, no report link before commit.
 
+### - [x] TASK-085A: Tambahkan pembacaan daftar dan bulk laporan pada repository
+- **Traceability**: `US-14`, [SA §4.5](03-system-analysis.md#45-reports)
+- **Depends On**: `TASK-040`
+- **Target Files**:
+  - `MODIFY` `packages/database/src/repositories/reports.repository.ts`
+  - `MODIFY` `tests/contracts/reports.repository.spec.ts`
+- **Implementation Specs**:
+  - Koreksi 2026-11-08: TASK-085/086 membutuhkan `GET /reports` (ready-only, host aktif, quizId?, search judul snapshot, sort ended_desc, page/limit default 15) serta pembacaan seluruh pemain dan jawaban satu sesi untuk analitik/CSV; repository TASK-040 hanya menyediakan halaman per pemain.
+  - Tambah `list(hostId, query)` (parameterized LIKE ESCAPE, urutan stabil ended_at DESC lalu id), `allPlayers(hostId, id)` (urutan rank lalu kicked join order) dan `allAnswers(hostId, id)` (urutan question_index, player_id) melalui gate `session()` yang sama.
+- **Definition of Done (Verification)**:
+  - `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/reports.repository.spec.ts` pada SQLite/PostgreSQL/MySQL: list ready-only/host lain/host nonaktif/filter/search wildcard escape/pagination, bulk players/answers urutan stabil dan gate pending.
+
 ### - [ ] TASK-085: Implementasikan analitik laporan dan CSV
 - **Traceability**: `US-14`, [SA §4.5](03-system-analysis.md#45-reports)
-- **Depends On**: `TASK-084`
+- **Depends On**: `TASK-084`, `TASK-085A`
 - **Target Files**:
   - `CREATE` `apps/api/src/modules/reports/reports.service.ts`
   - `CREATE` `apps/api/src/modules/reports/report-csv.ts`

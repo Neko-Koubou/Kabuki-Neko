@@ -3,6 +3,7 @@ import type { DataSource, EntityManager } from "typeorm";
 import {
   reportPlayersQuerySchema,
   reportAnswersQuerySchema,
+  reportsQuerySchema,
   type Answer,
 } from "@kabuki-neko/shared";
 import { writeTransaction } from "../data-source.factory";
@@ -67,6 +68,31 @@ interface AnswerRecord {
   points_awarded: number;
   streak_bonus_awarded: number;
   current_streak: number;
+}
+/** Stored history session row (`game_sessions`). */
+export type ReportSessionRow = SessionRecord;
+/** Stored history player row (`game_players`). */
+export type ReportPlayerRow = PlayerRecord & { session_id: string };
+/** Stored history question row (`session_questions`). */
+export type ReportQuestionRow = QuestionRecord & { id: string; session_id: string };
+/** Stored history answer row (`player_answers`). */
+export type ReportAnswerRow = AnswerRecord & { session_id: string };
+/** Escapes LIKE wildcards with `!` (used with `ESCAPE '!'` on every dialect). */
+function likeTerm(search: string) {
+  return "%" + search.replace(/[!_%]/g, "!$&") + "%";
+}
+/**
+ * Report CSV/detail player order: ranked players by rank (unranked last), then kicked players by
+ * join order. Sorted in memory because NULL ordering differs between SQLite, PostgreSQL and MySQL.
+ */
+export function comparePlayers(a: PlayerRecord, b: PlayerRecord) {
+  if (a.is_kicked !== b.is_kicked) return a.is_kicked ? 1 : -1;
+  if (a.final_rank !== b.final_rank) {
+    if (a.final_rank === null) return 1;
+    if (b.final_rank === null) return -1;
+    return a.final_rank - b.final_rank;
+  }
+  return a.join_order - b.join_order;
 }
 export interface ReportBatch {
   session: SessionRecord;
@@ -215,7 +241,7 @@ export class ReportsRepository {
       .where("p.session_id=:id", { id });
     if (search)
       q.andWhere("LOWER(p.nickname) LIKE LOWER(:search) ESCAPE '!'", {
-        search: "%" + search.replace(/[!_%]/g, "!$&") + "%",
+        search: likeTerm(search),
       });
     const [items, total] = await q
       .orderBy("p.is_kicked", "ASC")
@@ -261,5 +287,48 @@ export class ReportsRepository {
       })),
       meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
+  }
+  /**
+   * Ready reports of an active host, newest first (`GET /reports`): optional source quiz filter and
+   * case-insensitive search on the quiz title snapshot; pending/failed sessions never appear.
+   */
+  async list(hostId: string, input: unknown) {
+    const { page, limit, quizId, search } = reportsQuerySchema.parse(input);
+    const q = this.db
+      .getRepository<SessionRecord>("game_sessions")
+      .createQueryBuilder("s")
+      .innerJoin("users", "u", "u.id=s.host_id AND u.is_active=:active", { active: true })
+      .where("s.host_id=:hostId", { hostId });
+    if (quizId) q.andWhere("s.quiz_id=:quizId", { quizId });
+    if (search)
+      q.andWhere("LOWER(s.quiz_title_snapshot) LIKE LOWER(:search) ESCAPE '!'", {
+        search: likeTerm(search),
+      });
+    const [items, total] = await q
+      .orderBy("s.ended_at", "DESC")
+      .addOrderBy("s.id", "DESC")
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+    return { items, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+  }
+  /** Every player of a ready report in report order (see `comparePlayers`), for analytics/CSV. */
+  async allPlayers(hostId: string, id: string): Promise<ReportPlayerRow[]> {
+    await this.session(hostId, id);
+    const players = await this.db
+      .getRepository<ReportPlayerRow>("game_players")
+      .find({ where: { session_id: id } });
+    return players.sort(comparePlayers);
+  }
+  /** Every stored answer of a ready report ordered by question index then player ID. */
+  async allAnswers(hostId: string, id: string): Promise<ReportAnswerRow[]> {
+    await this.session(hostId, id);
+    return this.db
+      .getRepository<ReportAnswerRow>("player_answers")
+      .createQueryBuilder("a")
+      .where("a.session_id=:id", { id })
+      .orderBy("a.question_index", "ASC")
+      .addOrderBy("a.player_id", "ASC")
+      .getMany();
   }
 }
