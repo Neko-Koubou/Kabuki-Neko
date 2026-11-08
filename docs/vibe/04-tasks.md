@@ -1965,7 +1965,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Assertion20 input punya entry provenance, credits links valid syntax dan file output copy identical; verifikasi izin distribusi tertulis atau tandai release-unverified spesifik, tidak klaim selesai hak legal tanpa bukti.
 
-### - [ ] TASK-115: Sediakan font lokal dan atribusi aset lengkap
+### - [x] TASK-115: Sediakan font lokal dan atribusi aset lengkap
 - **Traceability**: `US-18`, `US-19`, `US-21`, [SA §8.3](03-system-analysis.md#83-budget-qr-font-dan-accessible-media)
 - **Depends On**: `TASK-114`, `TASK-114A`
 - **Target Files**:

@@ -12,10 +12,28 @@
  *   `rounded-md`, `shadow-2` or `bg-answer-a` resolve to these variables.
  * - Layout uses logical properties (RTL-ready) and every motion collapses under
  *   `prefers-reduced-motion`.
- * - Font files are self-hosted by a dedicated asset task; until then "Noto Sans" falls back to the
- *   system UI font immediately (no blocking download).
+ * - "Noto Sans" is self-hosted (TASK-115): one variable WOFF2 Latin subset covers weights 400–800
+ *   with `font-display: swap`, so text renders immediately in the system UI font and swaps when the
+ *   file arrives. Its `unicode-range` limits it to Latin, so Japanese/Chinese text falls back to the
+ *   system CJK font (`system-ui, sans-serif`) instead of downloading any CJK glyphs.
  */
 @import "tailwindcss";
+
+/*
+ * Noto Sans variable (wght 100–900), Latin subset — OFL-1.1, The Noto Project Authors. Source,
+ * version and checksum are recorded in THIRD-PARTY-NOTICES.md; the file is served from
+ * apps/web/public/fonts. The unicode-range matches the upstream Latin subset exactly.
+ */
+@font-face {
+  font-family: "Noto Sans";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/noto-sans-latin.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
 
 :root {
   color-scheme: light;
