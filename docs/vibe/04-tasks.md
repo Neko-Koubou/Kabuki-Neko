@@ -2138,7 +2138,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/stores/game.store.spec.ts` reordered pushes, same revision distinct roles/events, new session reused PIN and accepted recovery.
 
-### - [ ] TASK-128: Bangun socket lifecycle dan recovery hooks
+### - [x] TASK-128: Bangun socket lifecycle dan recovery hooks
 - **Traceability**: `US-07`, `US-08`, `US-10`, `US-12`, [SA §6.4](03-system-analysis.md#64-cache-dan-client-state)
 - **Depends On**: `TASK-127`, `TASK-082`, `TASK-086`
 - **Target Files**:

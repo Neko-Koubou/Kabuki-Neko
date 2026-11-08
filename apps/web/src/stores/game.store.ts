@@ -79,6 +79,10 @@ export interface GameState {
   setTransport(status: TransportState["status"]): void;
   checkHeartbeat(now: number): void;
   clearSyncRequest(): void;
+  /** Asks the socket layer for a `room:sync` (e.g. after an unknown ACK). */
+  requestSync(): void;
+  /** Records a terminal outcome learned from an ACK (kicked, invalid token, room gone). */
+  setTerminal(reason: TerminalReason): void;
   setDraft(questionId: string, value: Answer | null): boolean;
   markSubmitting(questionId: string, submissionId: string): boolean;
   markAccepted(ack: { submissionId: string; questionIndex: number }): void;
@@ -395,6 +399,14 @@ export function createGameStore(): StoreApi<GameState> {
 
     clearSyncRequest() {
       set({ syncRequested: false });
+    },
+
+    requestSync() {
+      if (get().snapshot) set({ syncRequested: true });
+    },
+
+    setTerminal(reason) {
+      set({ terminal: reason, syncRequested: false });
     },
 
     setDraft(questionId, value) {
