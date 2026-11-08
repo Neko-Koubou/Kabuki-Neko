@@ -2204,7 +2204,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Web component tests keyboard/focus/M-in-input, volume clamp, lobby-only shuffle, projector exclusion, opt-in persistence policy dan exit cleanup.
 
-### - [ ] TASK-130C: Sediakan modal kredit audio aman
+### - [x] TASK-130C: Sediakan modal kredit audio aman
 - **Traceability**: `US-07`, `US-13`, `US-18`, `US-19`, `US-21`, [Audio revision](audio-engine-revision.md); instruksi pengguna 2026-10-31.
 - **Depends On**: `TASK-130B`, `TASK-114A`, `TASK-119`
 - **Target Files**:
