@@ -1364,7 +1364,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/modules/game-engine/scoring.spec.ts` t499/500,950/750/500, partial475, wrong/POLL/m0, response null ties, empty/1/2 winners.
 
-### - [ ] TASK-076: Implementasikan proyeksi allowlist host dan player
+### - [x] TASK-076: Implementasikan proyeksi allowlist host dan player
 - **Traceability**: `US-09`, `US-10`, `US-12`, `US-13`, [SA §5.3](03-system-analysis.md#53-public-and-private-snapshots)
 - **Depends On**: `TASK-075`, `TASK-050`
 - **Target Files**:

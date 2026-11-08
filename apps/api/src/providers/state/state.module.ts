@@ -3,6 +3,7 @@ import Redis, { Cluster } from "ioredis";
 import { createAdapter } from "@socket.io/redis-adapter";
 import type { Server } from "socket.io";
 import { ConfigService } from "../../config/config.service";
+import { projectRoom } from "../../modules/game-engine/room-projector";
 import { GAME_STATE_STORE, StateDomainError } from "./game-state.interface";
 import type { RoomProjector } from "./game-state.interface";
 import { MemoryStateStore } from "./memory-state.store";
@@ -135,9 +136,19 @@ export class StateConnections {
   }
 }
 
+/**
+ * Installs the allowlist role projector (TASK-076) into the shared projection holder. The projector
+ * is a pure function, so both stores receive it without a circular Nest module dependency.
+ */
+function createProjection(): StateProjection {
+  const projection = new StateProjection();
+  projection.register(projectRoom);
+  return projection;
+}
+
 @Module({
   providers: [
-    StateProjection,
+    { provide: StateProjection, useFactory: createProjection },
     {
       provide: StateConnections,
       inject: [ConfigService],
