@@ -76,7 +76,9 @@ it.each<DatabaseDriver>(["sqlite", "postgres", "mysql"])(
         const results = await Promise.allSettled(requests.map((x) => repo.reserve(x, snapshot)));
         expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
         const winning = results.findIndex((r) => r.status === "fulfilled");
-        const first = await repo.reserve(requests[winning]!, snapshot);
+        const winner = requests[winning];
+        if (!winner) throw new Error("Expected one successful reservation");
+        const first = await repo.reserve(winner, snapshot);
         expect(results.find((r) => r.status === "rejected")?.reason.message).toBe(
           "CAPACITY_REACHED",
         );
@@ -87,8 +89,17 @@ it.each<DatabaseDriver>(["sqlite", "postgres", "mysql"])(
         expect(await repo.release(first.id, first.pin_code, 3)).toBe(true);
         const replacement = await repo.reserve({ ...input, requestId: randomUUID() }, snapshot);
         expect(replacement.id).not.toBe(first.id);
+        // TASK-078A: crashed CREATING rows are discoverable by age and readable by session ID.
+        expect((await repo.find(replacement.id))?.status).toBe("CREATING");
+        expect(await repo.find(randomUUID())).toBeNull();
+        expect(await repo.staleCreating(2)).toEqual([]);
+        expect((await repo.staleCreating(3)).map((row) => row.id)).toEqual([replacement.id]);
+        expect((await repo.staleCreating(3)).map((row) => row.creation_snapshot)).toEqual([
+          { version: 1 },
+        ]);
         expect(await repo.release(first.id, first.pin_code, 4)).toBe(false);
         await repo.activate(replacement.id, 5);
+        expect(await repo.staleCreating(1_000_000)).toEqual([]);
         expect(await repo.heartbeat(replacement.id, 6)).toBe(true);
         expect(await repo.transition(replacement.id, "ACTIVE", "LOST", 7)).toBe(true);
         expect(await repo.release(replacement.id, replacement.pin_code, 8)).toBe(false);

@@ -1,9 +1,14 @@
+/**
+ * Room allocation persistence (SA §6.2): PIN uniqueness, active-room capacity, media pins and the
+ * `room.create` idempotency receipt live in SQL; game state lives in the state store.
+ */
 import { randomInt, randomUUID } from "node:crypto";
 import { In, type EntityManager, type DataSource } from "typeorm";
 import { ROOM_LIMITS, DEDUP_LIMITS, pinCodeSchema } from "@kabuki-neko/shared";
 import { lockParent, writeTransaction } from "../data-source.factory";
 type Status = "CREATING" | "ACTIVE" | "FINALIZING" | "CLOSED" | "LOST";
-interface Allocation {
+/** One `room_allocations` row. */
+export interface Allocation {
   id: string;
   pin_code: string;
   host_id: string;
@@ -186,6 +191,21 @@ export class RuntimeRepository {
           .execute()
       ).affected === 1
     );
+  }
+  /** One allocation by session ID (any status), or null. */
+  find(sessionId: string): Promise<Allocation | null> {
+    return this.db.getRepository<Allocation>("room_allocations").findOneBy({ id: sessionId });
+  }
+  /** CREATING allocations created before `before` (crashed creates), oldest first, bounded. */
+  staleCreating(before: number, limit = 100): Promise<Allocation[]> {
+    return this.db
+      .getRepository<Allocation>("room_allocations")
+      .createQueryBuilder("r")
+      .where("r.status='CREATING' AND r.created_at<:before", { before })
+      .orderBy("r.created_at", "ASC")
+      .addOrderBy("r.id", "ASC")
+      .take(Math.max(1, Math.min(limit, 100)))
+      .getMany();
   }
   expired(now: number) {
     return this.db

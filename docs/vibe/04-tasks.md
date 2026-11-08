@@ -1389,9 +1389,21 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/modules/game-engine/room-capacity.spec.ts` worst-case escaped Unicode/control text,200 questions,1/5000 players; actual serialized bytes never exceed reservation.
 
+### - [x] TASK-078A: Expose stale CREATING allocations and allocation lookup
+- **Traceability**: `US-07`, `US-16`, [SA §6.2](03-system-analysis.md#62-room-allocation-leases-and-lifetime); prerequisite discovered while implementing TASK-078 (crash reconciliation needs to find CREATING allocations older than 120 s and read one allocation by session ID).
+- **Depends On**: `TASK-038`
+- **Target Files**:
+  - `MODIFY` `packages/database/src/repositories/runtime.repository.ts`
+  - `MODIFY` `tests/contracts/runtime.repository.spec.ts`
+- **Implementation Specs**:
+  - Add `find(sessionId)` and bounded `staleCreating(before, limit)` (CREATING with `created_at < before`, oldest first, ≤100) using parameterized queries; export the allocation row type. Existing reserve/activate/release semantics unchanged; document members.
+- **Definition of Done (Verification)**:
+  - Database lint/typecheck/build PASS; `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/runtime.repository.spec.ts` PASS on SQLite/PostgreSQL/MySQL including stale selection boundaries and lookup.
+- **Commit Message**: `TASK-078A: Expose stale CREATING allocations and allocation lookup`
+
 ### - [ ] TASK-078: Implementasikan alokasi room dan rekonsiliasi create
 - **Traceability**: `US-07`, `US-12`, `US-16`, [SA §6.2](03-system-analysis.md#62-room-allocation-leases-and-lifetime)
-- **Depends On**: `TASK-077`, `TASK-038`, `TASK-054`, `TASK-074`
+- **Depends On**: `TASK-077`, `TASK-038`, `TASK-054`, `TASK-074`, `TASK-078A`
 - **Target Files**:
   - `CREATE` `apps/api/src/modules/game-engine/room-registry.service.ts`
   - `CREATE` `apps/api/src/modules/game-engine/room-registry.service.spec.ts`

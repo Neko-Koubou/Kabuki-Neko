@@ -610,3 +610,15 @@
 - `planCapacity(quiz, configured)`: `baseBytes` = serialized FrozenReport skeleton with every private question snapshot counted twice and widest session values; `perPlayerBytes` = 2048 + Σ(1024 + worst answer: text 48002, multiple/puzzle 32, single/TF/POLL 2); `maxPublicQuestionBytes` = largest answering-phase public projection. Effective maxPlayers = min(configured, 5000, ⌊(64 MiB − base)/perPlayer⌋, ⌊(4 MiB − maxPublicQuestion)/1024⌋); 422 `PAYLOAD_TOO_LARGE` when a public question exceeds 512 KiB, 422 `CAPACITY_TOO_SMALL` when the result is < 1. `hasSeat` counts retained kicked players. Errors raised before any room becomes ACTIVE.
 - Verification PASS: `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/modules/game-engine/room-capacity.spec.ts` 5 tests (bounds incl. 8000 escaped controls = 48002 bytes; short quiz configured 1 → 1 and 5000 → roster-limited with both budgets respected, worst-case report and 15-family-emoji roster within reservation; 200-question mixed worst-case quiz: fully serialized worst report ≤ base + N×perPlayer ≤ 64 MiB and every public question ≤ reserved max; >512 KiB public question and configured 0 rejected; kicked seats counted). API typecheck PASS.
 - Correction: the first TASK-077 commit (`43cfda7`) was pushed while `pnpm --filter @kabuki-neko/api lint` reported an unused `emptyAccessibility` import in the spec (the verification chain did not stop on the lint failure). Follow-up commit removes the import; re-run: API lint PASS, typecheck PASS, room-capacity spec 5/5 PASS.
+
+## TASK-078: Implementasikan alokasi room dan rekonsiliasi create — IN PROGRESS
+- **Started**: 2026-11-08T10:23:35+07:00
+- **Plan**: `apps/api/src/modules/game-engine/room-registry.service.ts`, `apps/api/src/modules/game-engine/room-registry.service.spec.ts`
+- **Done so far**: design only (no files written).
+- **Verification**: not started — paused (marker reset to `[ ]`) until corrective TASK-078A adds stale CREATING lookup to the runtime repository.
+
+## TASK-078A — 2026-11-08T10:25:34+07:00
+
+- Files: `packages/database/src/repositories/runtime.repository.ts`, `tests/contracts/runtime.repository.spec.ts`; task checklist (corrective task inserted before TASK-078, which now depends on it)/log.
+- Added `find(sessionId)` and bounded `staleCreating(before, limit≤100)` (CREATING rows with `created_at < before`, oldest first, parameterized); exported the `Allocation` row type; documented the module. Existing reserve/activate/release behaviour unchanged. Also replaced a pre-existing non-null assertion in the contract test with an explicit check (ESLint `no-non-null-assertion`).
+- Verification PASS: database lint/typecheck/build; `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/runtime.repository.spec.ts` 3 tests on SQLite/PostgreSQL/MySQL (find existing/unknown, stale boundary exclusive at created_at, creation snapshot round-trip, activated rows no longer stale); ESLint on the spec PASS.
