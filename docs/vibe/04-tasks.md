@@ -2113,7 +2113,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/providers/auth-provider.spec.tsx` parallel tabs single refresh, consumed replay no loop, inactive401 and unsafe returnTo rejected.
 
-### - [ ] TASK-126: Bangun draft store studio dan unsaved guard
+### - [x] TASK-126: Bangun draft store studio dan unsaved guard
 - **Traceability**: `US-04`, [SA §6.4](03-system-analysis.md#64-cache-dan-client-state)
 - **Depends On**: `TASK-019`, `TASK-125`
 - **Target Files**:
