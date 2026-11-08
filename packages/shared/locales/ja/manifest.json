@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "locale": "ja",
+  "nativeName": "日本語",
+  "direction": "ltr",
+  "packageVersion": "1.0.0",
+  "catalogVersion": "1",
+  "credits": [
+    {
+      "name": "Kabuki Neko contributors",
+      "url": null
+    }
+  ]
+}
