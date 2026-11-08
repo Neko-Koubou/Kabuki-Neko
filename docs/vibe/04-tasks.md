@@ -1323,7 +1323,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/api test --runInBand --runTestsByPath src/modules/system/health.service.spec.ts` partial dependency failures, stale timestamps, cache invalidation, secret redaction and settings conflict.
 
-### - [ ] TASK-073: Implementasikan registry locale, audio dan About
+### - [x] TASK-073: Implementasikan registry locale, audio dan About
 - **Traceability**: `US-07`, `US-19`, `US-21`, [SA §4.4](03-system-analysis.md#44-media-system-et-locales)
 - **Depends On**: `TASK-072`, `TASK-013`, `TASK-016B`
 - **Target Files**:
