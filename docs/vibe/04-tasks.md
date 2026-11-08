@@ -2152,7 +2152,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/hooks/use-session-recovery.spec.tsx` lost ACK, refresh after accepted, kick no autojoin, replacement and no duplicate listeners on locale switch.
 
-### - [ ] TASK-129: Bangun clock sync dan timer game
+### - [x] TASK-129: Bangun clock sync dan timer game
 - **Traceability**: `US-10`, `US-18`, [SA §6.4](03-system-analysis.md#64-cache-dan-client-state), [Design §7.1](02-design-spec.md#71-keyboard-fokus-dan-semantik-produk)
 - **Depends On**: `TASK-128`
 - **Target Files**:
