@@ -1912,7 +1912,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm locales:validate --locale fr --namespaces admin,validation,accessibility,about` menghasilkan errors 0/warnings 0 untuk file task; review bahasa/plural/placeholder. Full six-locale gate menunggu semua task katalog.
 
-### - [ ] TASK-112: Verifikasi enam katalog dan publikasikan bundle lokal
+### - [x] TASK-112: Verifikasi enam katalog dan publikasikan bundle lokal
 - **Traceability**: `US-21`, [SA §8.1](03-system-analysis.md#81-paket-dan-validator)
 - **Depends On**: `TASK-091`, `TASK-095`, `TASK-099`, `TASK-103`, `TASK-107`, `TASK-111`
 - **Target Files**:
