@@ -2021,7 +2021,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/ui/form-primitives.spec.tsx` keyboard/disabled/pending/error/empty variants dan labelled controls; lima state desain §6.3.
 
-### - [ ] TASK-119: Bangun modal sheet dan menu keyboard
+### - [x] TASK-119: Bangun modal sheet dan menu keyboard
 - **Traceability**: `US-18`, `US-21`, [SA §8.3](03-system-analysis.md#83-budget-qr-font-dan-accessible-media), [Design §4.9](02-design-spec.md#49-dialog--m01m12)
 - **Depends On**: `TASK-118`
 - **Target Files**:

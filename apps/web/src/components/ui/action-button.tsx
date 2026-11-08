@@ -17,7 +17,7 @@
 import { cva } from "class-variance-authority";
 import { clsx } from "clsx";
 import { LoaderCircle } from "lucide-react";
-import { useId, type ButtonHTMLAttributes, type MouseEvent, type ReactNode } from "react";
+import { useId, type ButtonHTMLAttributes, type MouseEvent, type ReactNode, type Ref } from "react";
 import { twMerge } from "tailwind-merge";
 import { useLocale } from "@/providers/locale-provider";
 
@@ -62,6 +62,8 @@ interface BaseProps extends Omit<
   /** Optional leading icon (decorative). */
   icon?: ReactNode;
   onPress?: (event: MouseEvent<HTMLButtonElement>) => void;
+  /** Ref to the native button (React 19 ref-as-prop), e.g. a dialog's initial focus target. */
+  ref?: Ref<HTMLButtonElement>;
 }
 
 /** Text button: the label is the accessible name. */
