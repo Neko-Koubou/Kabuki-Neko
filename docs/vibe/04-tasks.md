@@ -95,7 +95,7 @@ flowchart LR
   - `pnpm build`, `pnpm typecheck`, `pnpm lint` PASS; `pnpm --filter @kabuki-neko/api test` PASS; `pnpm test:contracts --runInBand --testPathPatterns='migration-sqlite|migration-runner|database-types'` PASS.
 - **Commit Message**: `TASK-001A: Adopt Node 26 as the root runtime baseline`
 
-### - [ ] TASK-001B: Selaraskan tipe Node 26 pada aplikasi api dan web
+### - [x] TASK-001B: Selaraskan tipe Node 26 pada aplikasi api dan web
 - **Traceability**: `US-16`, `US-20`, [SA §1.1](03-system-analysis.md#11-stack-dan-versi-baseline); lanjutan TASK-001A.
 - **Depends On**: `TASK-001A`
 - **Target Files**:
