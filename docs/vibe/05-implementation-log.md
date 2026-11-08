@@ -808,3 +808,9 @@
 - Manifest: `schemaVersion` 1, `locale` `zh-Hans`, `nativeName` "简体中文", `direction` `ltr`, `packageVersion` 1.0.0, `catalogVersion` "1", credits "Kabuki Neko contributors".
 - Natural Simplified Chinese with full-width punctuation (，。：（）“”) and consistent terms (测验, 房间, PIN, 主持人, 玩家, 登录/退出登录, 上传/下载, 邀请码, 实例, 创作者, 幻灯片), friendly "你" address. Chinese has only the CLDR `other` plural, so counts use `=0` + `other` (`{count, plural, =0 {没有结果} other {# 个结果}}`); pagination `第 {page, number} 页，共 {totalPages, number} 页`; dates/times via ICU with the visible timezone; safe auth wording. Creator content and identifiers are not translated.
 - Verification PASS: `pnpm locales:validate --locale zh-Hans --namespaces common,auth` → coverage 100.0%, 0 errors, 0 warnings. Review: 236 messages formatted with `intl-messageformat` (locale `zh-Hans`) — 0 problems. Prettier PASS.
+
+## TASK-101 — 2026-11-08T12:44:34+07:00
+
+- Files: `packages/shared/locales/zh-Hans/quizzes.json` (91), `studio.json` (91), `media.json` (81); task checklist/log.
+- Natural Simplified Chinese with the TASK-100 conventions and terms (测验, 草稿, 幻灯片, 题目, 选项, 解析, 主持, 背景音乐, 媒体库, 字幕, 文字稿, 替代文本); question types 单选题/多选题/判断题/填空题/排序题/投票. Plurals use `other` (+ `=0`): `{count, plural, =0 {暂无题目} other {# 道题}}`, `{seconds, plural, other {# 秒}}`; placeholders kept (`第 {row, number} 行，{column} 列`, `第 {position, number} 张幻灯片，共 {total, number} 张`, `保存于 {savedAt, time, short}`, `{percent, number}%`, `{limit, number} MiB`). Creator content is never translated.
+- Verification PASS: `pnpm locales:validate --locale zh-Hans --namespaces quizzes,studio,media` → coverage 100.0%, 0 errors, 0 warnings. Review: 263 messages formatted with `intl-messageformat` (locale `zh-Hans`) — 0 problems. Prettier PASS.
