@@ -2048,7 +2048,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/ui/status-primitives.spec.tsx` no false empty on fetch failure, no endless skeleton, repeated event notices dedup.
 
-### - [ ] TASK-121: Bangun content card dan data collection
+### - [x] TASK-121: Bangun content card dan data collection
 - **Traceability**: `US-18`, `US-21`, [SA §8.3](03-system-analysis.md#83-budget-qr-font-dan-accessible-media), [Design §6.3](02-design-spec.md#63-semua-base-components)
 - **Depends On**: `TASK-120`
 - **Target Files**:
