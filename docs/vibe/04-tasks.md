@@ -2179,7 +2179,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Web unit tests fake Howler/clock: volume/mute persistence, autoplay/decode error, burst joins, interrupted fade, no orphan loop, stop/unload, route/StrictMode ownership. Lint/typecheck PASS.
 
-### - [ ] TASK-130A: Orkestrasi seluruh audio Host/Player dari state
+### - [x] TASK-130A: Orkestrasi seluruh audio Host/Player dari state
 - **Traceability**: `US-07`, `US-13`, `US-18`, `US-19`, `US-21`, [Audio revision](audio-engine-revision.md); instruksi pengguna 2026-10-31.
 - **Depends On**: `TASK-130`
 - **Target Files**:
