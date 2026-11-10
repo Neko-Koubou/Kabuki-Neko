@@ -2261,7 +2261,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Assertion browser S01/S17 L/E/I/P/X: service offline retry, missing brand fallback,404 and kicked/expired route guidance; keyboard44px and320px wrap.
 
-### - [ ] TASK-134: Bangun form setup, login dan registrasi
+### - [x] TASK-134: Bangun form setup, login dan registrasi
 - **Traceability**: `US-01`, `US-02`, `US-18`, `US-21`, [SA §4.2](03-system-analysis.md#42-setup-auth-users-dan-undangan), [Design §4.1](02-design-spec.md#41-publik-setup-dan-autentikasi--s01s04)
 - **Depends On**: `TASK-133`, `TASK-125`
 - **Target Files**:

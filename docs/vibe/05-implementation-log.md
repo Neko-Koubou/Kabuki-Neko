@@ -1138,3 +1138,38 @@
     - Error boundary: an ApiError FORBIDDEN maps to the no-access text with its reference. A generic error hides its message, and a failed retry shows "Still not working" with the reason kept.
   - `session-fallback.spec.tsx` 10/10 and `shells.spec.tsx` 10/10 (two repeated runs).
   - Full web suite: 243/243 across 23 files. Lint, typecheck, `prettier --check` and build all pass.
+
+## TASK-134 — 2026-11-10T15:18:56+07:00
+
+- **Files**:
+  - `apps/web/src/components/auth/public-auth-forms.tsx` (CREATE): F01 `PublicAuthForms({ mode, returnTo, onAuthenticated, onStepChange })`.
+    - Helpers: `useSetupStatus` (`/auth/setup-status` with retry), `issueMessageKey` (server and zod codes → `validation.errors.*`), `validateFields` (shared request schemas, with required-first ordering), `serverFieldErrors` (maps `details[].path` to fields).
+    - Internal pieces: `useSummaryFocus` (focuses the error summary in an effect, so it never steals focus later), `ErrorSummary` (a role=alert list linking to each field), `FormNotice`, and `PasswordField` (shared 12–128 policy shown as a range, a counter, and the range appended to the error).
+    - LoginForm:
+      - `username`/`current-password` hints; one request while pending; `acceptSession` → `onAuthenticated(safeReturnTo(returnTo))`.
+      - INVALID_CREDENTIALS keeps the email and clears only the password.
+      - SETUP_REQUIRED links to setup; network errors give the s03 error with entries kept.
+      - The register link appears only when registration is open.
+    - RegisterForm by policy:
+      - SINGLE_ADMIN or REGISTRATION_CLOSED → closed state with Sign in.
+      - PUBLIC → no invite field, and the body never carries `inviteCode`.
+      - INVITE_ONLY → invite code required (trimmed, `one-time-code`).
+      - EMAIL_EXISTS / INVITE_UNAVAILABLE → field error plus s04 partial.
+      - OPERATION_COMPLETED_REAUTH_REQUIRED → sign-in notice.
+      - An uncertain outcome gives the "check status" notice and keeps the same Idempotency-Key; a definitive failure creates a new key.
+    - SetupForm:
+      - Two local steps with a step list (`aria-current="step"`) and the heading focused on each step change; Back keeps values.
+      - A single POST at the end with an Idempotency-Key.
+      - SETUP_COMPLETE or a completed replay → race state with Sign in.
+      - An uncertain outcome checks setup-status: initialized → Sign in; otherwise the s02 error with entries kept.
+      - Already initialized → the alreadyInitialized message.
+    - A status load failure shows the alert with Try again.
+  - `apps/web/src/components/auth/public-auth-forms.spec.tsx` (CREATE): 13 tests.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/web test -- src/components/auth/public-auth-forms.spec.tsx`: the full web suite runs, 256/256 across 24 files. The auth spec is 13/13 over five runs, stable after replacing rAF focus with effect focus.
+  - Five states per mode:
+    - Login: empty instructions; loading "Signing in…"; ideal "You're signed in." and returnTo; partial INVALID_CREDENTIALS; error on network failure.
+    - Register: loading "Checking registration settings…"; empty when closed; ideal on success; partial when the invite is used; error on an uncertain outcome.
+    - Setup: loading "Checking setup status…"; empty intro; ideal "Setup complete…"; partial on race; error with entries kept.
+  - Also covered: policy closed / PUBLIC without inviteCode / INVITE_ONLY required; setup race; uncertain outcomes reconciled through status; one setup request despite a double press; Idempotency-Key reuse rules; autocomplete hints and `user.paste`; summary focus and its links to fields; server `details` mapping; the password policy range; no localStorage or sessionStorage writes.
+  - Lint, typecheck, `prettier --check` and build all pass.
