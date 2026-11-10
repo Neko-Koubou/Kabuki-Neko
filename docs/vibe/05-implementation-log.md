@@ -1563,3 +1563,24 @@
   - `pnpm --filter @kabuki-neko/web test -- src/components/host/podium.spec.tsx` → 36 files / 359 tests passed.
   - typecheck, lint, prettier and build → OK.
   - Chromium check with a temporary probe (deleted afterwards): podium at 1024px light and 360px dark, FINISHED at 360px, a live first-place reveal with confetti pieces confirmed in the DOM and on screen, and the leaderboard at 360px light and 1024px dark. No horizontal overflow.
+
+## TASK-157 — 2026-11-10T21:25:00+07:00
+
+- **Files**:
+  - `CREATE` `apps/web/src/components/player/player-stage-answer-pad.tsx`: PlayerStageAnswerPad, answerIndices, AnsweringSnapshot.
+  - `CREATE` `apps/web/src/app/(player)/play/[pin]/page.tsx`: PIN validation (404 for anything else) and localized title. Passes only the PIN, so no quiz content reaches the RSC payload.
+  - `CREATE` `apps/web/src/components/player/player-game.tsx`: PlayerGame, PlayerScreen, Countdown. An extra file: the client composition of all eight phases, kept out of the server page.
+  - `CREATE` `tests/e2e/player.spec.ts`: 3 tests.
+- **Notes**:
+  - One socket, store, clock and audio engine per page, held in state, so locale/theme switches keep the socket, draft and focus.
+  - Credentials are read after mount (no hydration mismatch). F17 wraps everything.
+  - Phases: LOBBY (avatar editor), countdown, preview (no options), answering (PROJECTOR shapes first with an sr-only prompt and the shared-screen hint; STREAMER prompt plus media reveal), reveal (personal result + chart), leaderboard (own row and rank), podium/finished (no report link).
+  - Answer status comes from `self.acceptedAnswer`, the store draft and the server reply. Grace comes from the authoritative `inputClosesAt`. The accepted sound plays only after an ACK.
+  - E2E found that the server goes straight from the last reveal to PODIUM; the test follows the server.
+- **Verification**:
+  - `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium pnpm test:e2e` → 12/12 passed:
+    - auth 3, join 6, player 3;
+    - the player run covers all six inputs, Streamer and Projector, refresh after acceptance, reconnect, grace, podium/final, kick, and no key in HTML/RSC, DOM or socket frames before the reveal.
+  - Web suite: 36 files / 359 tests passed.
+  - typecheck, lint, prettier and build → OK.
+  - 360px screenshots (light and dark) of lobby, answering, accepted, reveal, leaderboard, puzzle, final, projector and kicked, taken through a temporary spec copy (deleted afterwards).

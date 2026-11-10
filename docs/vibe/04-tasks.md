@@ -2561,7 +2561,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/host/podium.spec.tsx` zero/1/2/3 winners, ties preserve order, reduced motion and unchanged phaseVersion no repeat.
 
-### - [ ] TASK-157: Integrasikan semua fase layar player
+### - [x] TASK-157: Integrasikan semua fase layar player
 - **Traceability**: `US-08`, `US-09`, `US-10`, `US-11`, `US-12`, `US-13`, `US-18`, `US-21`, [SA §5.3](03-system-analysis.md#53-public-and-private-snapshots), [Design §6.1](02-design-spec.md#61-semua-layar)
 - **Depends On**: `TASK-156`, `TASK-127`, `TASK-130B`
 - **Target Files**:
