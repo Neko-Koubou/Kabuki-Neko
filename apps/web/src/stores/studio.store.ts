@@ -110,9 +110,11 @@ export function blankQuestion(type: QuestionType = "SINGLE_CHOICE"): Question {
     pointsMultiplier: type === "POLL" ? 0 : 1,
     explanationText: null,
     accessibility: emptyAccessibility(),
-    options: Array.from({ length: optionCount }, (_, index) =>
-      blankOption(index, type === "TYPE_ANSWER"),
-    ),
+    // Accepted answers of TYPE_ANSWER are all correct by definition (SA §3.1).
+    options: Array.from({ length: optionCount }, (_, index) => ({
+      ...blankOption(index, type === "TYPE_ANSWER"),
+      isCorrect: type === "TYPE_ANSWER",
+    })),
   } as Question;
 }
 

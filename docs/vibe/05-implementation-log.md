@@ -1654,3 +1654,26 @@
   - `pnpm --filter @kabuki-neko/web test -- src/components/studio/slide-navigator.spec.tsx` → 39 files / 380 tests passed.
   - typecheck, lint, prettier and build → OK.
   - Chromium probe (deleted) at 360px light and 1280px dark: a real mouse drag reordered 1,2,3 → 2,3,1; Move up kept focus on the moved slide. No overflow.
+
+## TASK-144 — 2026-11-11T05:38:27+07:00
+
+- **Files**:
+  - `CREATE` `apps/web/src/components/studio/question-fields.tsx`: QuestionFields, convertQuestionType, typeChangeLosesData, lengthIssues, TrueFalseLabels.
+  - `CREATE` `apps/web/src/components/studio/question-fields.spec.tsx`: 8 tests.
+  - `MODIFY` `apps/web/src/stores/studio.store.ts`: bug found during the visual check. `blankQuestion("TYPE_ANSWER")` created its accepted answer with `isCorrect: false`, so every new typed-answer slide showed a key-count problem. Accepted answers are now correct by definition.
+- **Notes**:
+  - Common fields: type (select), prompt 500, media button (M05 via `onChooseMedia`), explanation 1,000. Counters use graphemes.
+  - Per type:
+    - single / true-false: radio key;
+    - multiple select: checkbox keys;
+    - poll: no keys;
+    - typed answer: 1–20 accepted answers;
+    - puzzle: 4 items with Move up/down setting sortOrder.
+    - Option IDs are stable across edits.
+  - Type change: `convertQuestionType` keeps texts, IDs and keys that fit. A lossy change asks M09; Cancel keeps everything. New TRUE_FALSE options use the creator's localized "Correct"/"Incorrect" labels as content.
+  - Problems: shared playability issues (draft warnings vs errors) plus local too-long checks, listed with focus buttons; `focusPath` focuses from outside.
+  - Rows stack in two tiers on phones; this was fixed after the first 360px shot squeezed the option inputs.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/web test -- src/components/studio/question-fields.spec.tsx` → 40 files / 388 tests passed.
+  - typecheck, lint, prettier and build → OK.
+  - Chromium probe (deleted): single choice at 360px light, puzzle at 1024px dark, typed answer with emoji at 360px dark. No overflow.

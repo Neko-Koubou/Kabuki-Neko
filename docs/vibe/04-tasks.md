@@ -2392,7 +2392,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/studio/slide-navigator.spec.tsx` keyboard drag alternative/stable IDs/empty/pending/error/long text and per-slide issue focus.
 
-### - [ ] TASK-144: Bangun editor enam tipe pertanyaan
+### - [x] TASK-144: Bangun editor enam tipe pertanyaan
 - **Traceability**: `US-04`, `US-18`, `US-21`, [SA §3.1](03-system-analysis.md#31-primitif-dan-batas), [Design §4.3](02-design-spec.md#43-quiz-studio--s07)
 - **Depends On**: `TASK-143`
 - **Target Files**:
