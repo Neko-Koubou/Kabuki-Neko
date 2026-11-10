@@ -2520,7 +2520,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/player/choice-answer-pad.spec.tsx` keyboard focus colors/selection, no double submit, poll neutral, missing selection and deadline/grace states.
 
-### - [ ] TASK-154: Bangun input teks dan puzzle keyboard
+### - [x] TASK-154: Bangun input teks dan puzzle keyboard
 - **Traceability**: `US-09`, `US-10`, `US-18`, `US-21`, [SA §3.1](03-system-analysis.md#31-primitif-dan-batas), [Design §7.1](02-design-spec.md#71-keyboard-fokus-dan-semantik-produk)
 - **Depends On**: `TASK-153`
 - **Target Files**:

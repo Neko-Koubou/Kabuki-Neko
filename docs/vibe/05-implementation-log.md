@@ -1477,3 +1477,33 @@
   - `pnpm --filter @kabuki-neko/web test -- src/components/player/choice-answer-pad.spec.tsx` → 33 files / 330 tests passed.
   - typecheck, lint, prettier and build → OK.
   - Chromium check with a temporary probe (deleted afterwards): single-choice accepted at 360px light, multiple select at 360px dark with focus and selection, projector shape-first, true/false at 1024px dark, grace "Time's up.". No horizontal overflow.
+
+## TASK-154 — 2026-11-10T20:45:20+07:00
+
+- **Files**:
+  - `CREATE` `apps/web/src/components/player/text-answer-pad.tsx`: TextAnswerPad, parseTextAnswer, isComposingEnter, TextAnswerProblem.
+  - `CREATE` `apps/web/src/components/player/puzzle-answer-pad.tsx`: PuzzleAnswerPad, isPuzzleOrder, moveEntry.
+  - `CREATE` `apps/web/src/components/player/text-puzzle.spec.tsx`: 10 tests.
+  - `MODIFY` `apps/web/src/components/player/choice-answer-pad.tsx`: exports AnswerLockState, isAnswerLocked, AnswerStatusLine, SHAPE_SYMBOL and COLOR_CLASS, so all three pads share one lock and status behavior. This is outside the target files but needed to avoid duplicating the lock rules.
+- **Notes**:
+  - Text pad:
+    - The counter counts graphemes and never truncates.
+    - The payload is NFC + trim and checked with the shared `textAnswerSchema` (250 graphemes, 8,000 bytes, no controls).
+    - Enter never submits during IME composition (`isComposing`, composition events, Safari `keyCode 229`).
+    - The field turns read-only when locked and keeps the sent text visible.
+  - Puzzle pad:
+    - Starts in the server's game order.
+    - Letter, shape, color and label follow the item.
+    - Move up and Move down buttons are named with the item through aria-labelledby. Focus stays on the moved item's button and the position is announced.
+    - A pointer drag handle tracks the gesture with window listeners, so it survives DOM moves.
+    - The payload is a frozen copy.
+  - Drafts are restored only for the same, still-editable question; puzzle drafts must also be a valid permutation.
+  - Locks: submitting, accepted, closed, grace and offline.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/web test -- src/components/player/text-puzzle.spec.tsx` → 34 files / 340 tests passed.
+  - typecheck, lint, prettier and build → OK.
+  - Chromium check with a temporary probe (deleted afterwards):
+    - Text error and accepted states at 360px, light and dark.
+    - Puzzle keyboard move keeps focus on the item; real mouse drag reorders 0,2,1,3 → 2,1,3,0.
+    - The 360px two-line row layout was fixed after the first screenshot showed mid-word breaks; 1024px dark also checked.
+    - No horizontal overflow.

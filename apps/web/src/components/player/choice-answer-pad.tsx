@@ -39,11 +39,62 @@ export interface ChoiceOption {
 /** Answer status of the current question (from the game store draft). */
 export type PadStatus = "idle" | "submitting" | "accepted" | "rejected";
 
+/** Input state shared by every answer pad (choice, text and puzzle). */
+export interface AnswerLockState {
+  status: PadStatus;
+  /** The server still accepts new input (before the natural deadline). */
+  inputOpen: boolean;
+  /** Natural deadline passed and the grace period runs (waiting for results). */
+  grace?: boolean;
+  /** The connection is not live: everything is locked. */
+  offline?: boolean;
+}
+
+/**
+ * True when an answer pad must ignore input: while submitting, once accepted, when the input is
+ * closed, during grace and while offline. Nothing can be sent twice or after the deadline.
+ */
+export function isAnswerLocked({
+  status,
+  inputOpen,
+  grace = false,
+  offline = false,
+}: AnswerLockState): boolean {
+  return status === "submitting" || status === "accepted" || !inputOpen || grace || offline;
+}
+
+/**
+ * Shared status lines of the answer pads: a rejected answer as an alert and the submit progress,
+ * acceptance, grace ("Time's up.") or closed input in a polite live region. Never shows
+ * correctness.
+ */
+export function AnswerStatusLine({ status, inputOpen, grace = false }: AnswerLockState) {
+  const { t } = useLocale();
+  let statusText = "";
+  if (status === "submitting") statusText = t("player.answer.submitting");
+  else if (status === "accepted")
+    statusText = `${t("player.answer.accepted")} ${t("player.answer.locked")}`;
+  else if (grace) statusText = t("player.answer.timeExpired");
+  else if (!inputOpen) statusText = t("player.answer.inputClosed");
+  return (
+    <>
+      {status === "rejected" && (
+        <p role="alert" className="text-small text-danger">
+          {t("player.answer.inputClosed")}
+        </p>
+      )}
+      <p role="status" aria-live="polite" className="text-small empty:hidden">
+        {statusText}
+      </p>
+    </>
+  );
+}
+
 /** Unicode geometric symbols (announced by screen readers in the user's language). */
-const SHAPE_SYMBOL = { triangle: "▲", diamond: "◆", circle: "●", square: "■" } as const;
+export const SHAPE_SYMBOL = { triangle: "▲", diamond: "◆", circle: "●", square: "■" } as const;
 
 /** CSS color tokens per answer index (solid pairs from globals.css). */
-const COLOR_CLASS = [
+export const COLOR_CLASS = [
   "bg-[var(--answer-a)] text-[var(--answer-a-foreground)]",
   "bg-[var(--answer-b)] text-[var(--answer-b-foreground)]",
   "bg-[var(--answer-c)] text-[var(--answer-c-foreground)]",
@@ -70,20 +121,13 @@ export function AnswerShape({
 }
 
 /** Props of {@link ChoiceAnswerPad}. */
-export interface ChoiceAnswerPadProps {
+export interface ChoiceAnswerPadProps extends AnswerLockState {
   questionId: string;
   type: ChoiceType;
   options: readonly ChoiceOption[];
   displayMode: "PROJECTOR" | "STREAMER";
-  status: PadStatus;
   /** Indices of the submitted/accepted answer (shown as chosen). */
   chosen?: readonly number[] | null;
-  /** The server still accepts new input (before the natural deadline). */
-  inputOpen: boolean;
-  /** Natural deadline passed and the grace period runs (waiting for results). */
-  grace?: boolean;
-  /** The connection is not live: everything is locked. */
-  offline?: boolean;
   /** Projector rooms: show option text on this device initially. */
   defaultShowText?: boolean;
   onSubmit: (answer: number | number[]) => void;
@@ -120,7 +164,7 @@ export function ChoiceAnswerPad({
   }, [questionId]);
 
   const multiple = type === "MULTIPLE_SELECT";
-  const locked = status === "submitting" || status === "accepted" || !inputOpen || grace || offline;
+  const locked = isAnswerLocked({ status, inputOpen, grace, offline });
   const marked = new Set(chosen ?? (multiple ? selection : []));
   const textVisible = displayMode === "STREAMER" || showText;
 
@@ -148,13 +192,6 @@ export function ChoiceAnswerPad({
     }
     onSubmit([...selection]);
   };
-
-  let statusText = "";
-  if (status === "submitting") statusText = t("player.answer.submitting");
-  else if (status === "accepted")
-    statusText = `${t("player.answer.accepted")} ${t("player.answer.locked")}`;
-  else if (grace) statusText = t("player.answer.timeExpired");
-  else if (!inputOpen) statusText = t("player.answer.inputClosed");
 
   const instructions =
     type === "POLL"
@@ -242,14 +279,7 @@ export function ChoiceAnswerPad({
           {t("player.answer.noSelection")}
         </p>
       )}
-      {status === "rejected" && (
-        <p role="alert" className="text-small text-danger">
-          {t("player.answer.inputClosed")}
-        </p>
-      )}
-      <p role="status" aria-live="polite" className="text-small empty:hidden">
-        {statusText}
-      </p>
+      <AnswerStatusLine status={status} inputOpen={inputOpen} grace={grace} />
     </section>
   );
 }
