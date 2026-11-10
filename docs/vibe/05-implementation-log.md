@@ -1635,3 +1635,22 @@
     - a malformed YouTube link at 360px.
     - The first shots showed the preview below the list, so it was moved above and focused.
     - No horizontal overflow.
+
+## TASK-143 — 2026-11-11T05:32:14+07:00
+
+- **Files**:
+  - `CREATE` `apps/web/src/components/studio/slide-navigator.tsx`: SlideNavigator, SortableSlide, SlideSummary, TYPE_KEY, MANY_SLIDES.
+  - `CREATE` `apps/web/src/components/studio/slide-navigator.spec.tsx`: 6 tests.
+  - `CREATE` `apps/web/src/types/global-jsx.d.ts`: extra file. React 19 types dropped the global `JSX` namespace that the dnd-kit `.d.ts` files still use, and the project keeps `skipLibCheck: false`. This alias keeps every library check on.
+- **Notes**:
+  - Entries are keyed by question UUID and show position, type and prompt (2 lines visually, full text for assistive technology), plus a problem indicator that jumps to the slide's issues.
+  - Reordering:
+    - dnd-kit pointer and keyboard sensors with localized announcements;
+    - Move up/down buttons as the keyboard alternative, keeping focus on the moved slide and announcing "Slide n of total";
+    - a rejected move shows the restored-order error.
+  - Add/Duplicate/Delete with focus handling: the copy is selected and focused; delete focuses a neighbour, or Add slide on the empty canvas.
+  - The list scrolls, and a hint appears from 20 slides.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/web test -- src/components/studio/slide-navigator.spec.tsx` → 39 files / 380 tests passed.
+  - typecheck, lint, prettier and build → OK.
+  - Chromium probe (deleted) at 360px light and 1280px dark: a real mouse drag reordered 1,2,3 → 2,3,1; Move up kept focus on the moved slide. No overflow.

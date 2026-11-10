@@ -2380,7 +2380,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/studio/media-picker.spec.tsx` all five states, malformed external URL, unusable pending asset and question copy independent of library edits.
 
-### - [ ] TASK-143: Bangun navigasi dan reorder slide studio
+### - [x] TASK-143: Bangun navigasi dan reorder slide studio
 - **Traceability**: `US-04`, `US-18`, `US-21`, [SA §3.1](03-system-analysis.md#31-primitif-dan-batas), [Design §4.3](02-design-spec.md#43-quiz-studio--s07)
 - **Depends On**: `TASK-142`, `TASK-126`
 - **Target Files**:
