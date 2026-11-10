@@ -2287,7 +2287,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:e2e -- tests/e2e/auth.spec.ts` first-run→login→logout/register policies; second setup tab loses safely and one SUPERADMIN exists.
 
-### - [ ] TASK-136: Bangun konfirmasi dan unsaved-dialog reusable
+### - [x] TASK-136: Bangun konfirmasi dan unsaved-dialog reusable
 - **Traceability**: `US-03`, `US-04`, `US-06`, `US-07`, `US-15`, `US-18`, [SA §6.4](03-system-analysis.md#64-cache-dan-client-state), [Design §4.9](02-design-spec.md#49-dialog--m01m12)
 - **Depends On**: `TASK-135`, `TASK-126`
 - **Target Files**:

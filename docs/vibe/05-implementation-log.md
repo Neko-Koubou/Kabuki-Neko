@@ -1210,3 +1210,33 @@
     - Setup step 2 with error summary and field errors.
     - Login on dark mobile with the wrong-password notice.
     - Register on 360 px with the summary and no horizontal overflow.
+
+## TASK-136 — 2026-11-10T15:47:34+07:00
+
+- **Files**:
+  - `apps/web/src/components/ui/confirm-dialog.tsx` (CREATE):
+    - `confirmResultFromError`:
+      - NOT_FOUND → missing.
+      - FORBIDDEN and the 409 conflicts (MEDIA_IN_USE, LAST_SUPERADMIN, REVISION_CONFLICT, ROOM_ACTIVE, RESOURCE_BUSY, FINALIZATION_PENDING, OPERATION_PENDING, INVITE_UNAVAILABLE) → blocked with a safe reason.
+      - Other definite errors → failed with reason and reference.
+      - Uncertain or non-API errors → null, meaning "reconcile first".
+    - `useConfirmAction({ run, onDone, reconcile })`:
+      - The parent owns the operation: closing never cancels it, reopening shows it still pending, and `onDone` fires once on real success even after the dialog was closed.
+      - Single flight.
+      - An ambiguous outcome is only done when `reconcile()` says "done"; otherwise it stays an error with the "couldn't confirm" text.
+    - `ConfirmDialog` (M09, ModalSheet):
+      - Title "Confirm action", the impact as description, "Affected item: {name}" (long names wrap), and a specific CTA (danger by default).
+      - Cancel has the initial focus; pending shows "Confirming…".
+      - Empty state (no target or 404): Close only.
+      - Partial (blocked): reason, Close only.
+      - Error: retry plus a safe reference ID.
+  - `apps/web/src/components/studio/unsaved-dialog.tsx` (CREATE): `UnsavedDialog` (M10) driven by `useUnsavedChanges`.
+    - Stacked Stay (initial focus) / Discard / Save and continue.
+    - "Saving, then continuing…" while saving; a failed save shows the error and keeps the dialog and the draft, so navigation stays blocked.
+    - An incomplete-draft note; Escape means stay.
+  - `apps/web/src/components/ui/confirm-dialog.spec.tsx` (CREATE): 9 tests.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/web test -- src/components/ui/confirm-dialog.spec.tsx` runs the full suite: 266/266 across 25 files. The spec itself is 9/9 over three runs.
+  - Covered: keyboard (Cancel focus, Tab trap, Escape with focus return, Enter on the CTA); pending close and reopen with a single run and `onDone` after close; blocked MEDIA_IN_USE reason, failed with "Reference ID: ref-500", uncertain with reconcile unknown → not success, 404 → empty with Close; reconcile "done" → success; null target → empty; question-type change: Cancel keeps QUIZ, confirm applies TRUE_FALSE; M10: clean → direct navigation, failed save blocks navigation and keeps the draft, then a successful save continues, Stay/Escape/Discard.
+  - Lint, typecheck and prettier pass.
+  - Chromium visual check at 360 px using a temporary probe (removed): M09 ideal (light), M09 blocked (dark), M10 with the failure and incomplete note (stacked buttons).
