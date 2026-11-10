@@ -1369,3 +1369,32 @@
     - helpers, and the library Import button opening the dialog.
   - Lint, typecheck, prettier and build PASS.
   - Chromium at 360 px through the library with a route-faked 422: problem list scrollable in the sheet, summary focused. Copy was tidied: count and atomic note on separate lines, no duplicated generic sentence.
+
+## TASK-150 — 2026-11-10T16:22:46+07:00
+
+- **Scope note**: Started ahead of TASK-141–149 at the user's request: guest players (join without an account, PRD role PLAYER) were prioritized. Its only unfinished dependency, TASK-149 (About page), is an ordering link, not a technical prerequisite. The technical dependencies TASK-123 (avatar) and TASK-079 (game API) are done.
+- **Files**:
+  - `apps/web/src/components/player/avatar-customizer.tsx` (CREATE): `AvatarCustomizer` (M01/F12) plus helpers `styleName`, `nicknameProblem` and `DICE_SOUND_THROTTLE_MS`.
+    - Join mode:
+      - Avatar: 128 px preview and a 2-column radio grid of the six DiceBear styles with 40 px previews.
+      - Dice: `randomAvatarSeed` plus a `nekoPop` cue through the audio manager singleton. The first press unlocks audio; cues are throttled to 150 ms; no sound object is created per render.
+      - Nickname: `FormField`, 15-grapheme limit with counter, shared `nicknameSchema`, `autocomplete=nickname`. Friendly rooms instead show a read-only server name from `player:request_friendly_name` plus a ticket.
+      - Join: `player:join_room` with a single-flight complete identity. On ok, the room-scoped credentials are stored with `savePlayerSession` and `onJoined` is called.
+      - Lost ACK: the error notice is shown and the same `requestId` is reused.
+      - Definitive errors get a new id. NICKNAME_TAKEN, NICKNAME_FORBIDDEN and NICKNAME_INVALID become field errors (taken also shows the partial note and clears the ticket). Room codes (full, locked, in progress, not found, expired, lost) show the error with Back.
+      - Recovery props send `sessionId` + `sessionToken`, never the nickname.
+    - Edit mode (lobby): avatar only; `player:update_avatar`; a failure reverts the preview to the saved avatar with the f12 error; outside LOBBY the controls are disabled and an `invalidPhase` note is shown.
+  - `apps/web/src/components/player/avatar-customizer.spec.tsx` (CREATE): 7 tests.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/web test -- src/components/player/avatar-customizer.spec.tsx` runs the full suite: 309/309 across 30 files. The spec is 7/7 over three runs with no act warnings.
+  - Covered:
+    - six styles named and selectable;
+    - a "😺Ñeko 小猫" nickname joins (empty → loading → ideal), with storage keys written;
+    - local rejection of empty and 16-character names, while 15 family emoji are accepted;
+    - dice re-rolls with the cue played once and unlock called once;
+    - friendly name and ticket, then taken (partial), then a new name joins;
+    - forbidden keeps fields; full room shows the error and Back; a lost ACK retries with the same request id while definitive errors get new ids;
+    - recovery sends the token without a nickname and the server nickname is kept;
+    - lobby edit: avatar-only payload, revert on failure, disabled outside the lobby.
+  - Lint, typecheck (after a build to refresh `.next/types`), prettier and build PASS.
+  - Chromium using a temporary probe (removed): join at 360 px light with the taken error and the 8/15 counter for the Unicode name; friendly at 360 px dark; lobby edit on desktop. No overflow, and all 7 avatar images rendered.

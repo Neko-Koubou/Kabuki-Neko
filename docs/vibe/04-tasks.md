@@ -2469,7 +2469,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Assertion all 3 routes and footer links resolve, template ZIP downloads+validates, official terms visible, keyboard/320px/+40% and L/E/I/P/X including unknown version.
 
-### - [ ] TASK-150: Bangun nickname dan avatar customizer
+### - [x] TASK-150: Bangun nickname dan avatar customizer
 - **Traceability**: `US-08`, `US-09`, `US-12`, `US-18`, `US-21`, [SA §5.2](03-system-analysis.md#52-semua-client-to-server-methods), [Design §4.6](02-design-spec.md#46-join-dan-player--s14s15)
 - **Depends On**: `TASK-149`, `TASK-123`, `TASK-079`
 - **Target Files**:
