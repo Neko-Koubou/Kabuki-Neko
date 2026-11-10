@@ -1336,3 +1336,36 @@
     - Helpers.
   - Lint, typecheck, prettier and build PASS.
   - Chromium against `next start` with a route-faked API: owner detail on desktop, invalid draft on 360 px in dark mode (issue list, Host disabled), and the 404 state. No horizontal overflow. The Host button was kept on one line with `shrink-0`.
+
+## TASK-140 — 2026-11-10T16:17:00+07:00
+
+- **Files**:
+  - `apps/web/src/components/studio/import-export.tsx` (CREATE): M04/F07.
+    - Helpers:
+      - `detectFormat` (`.json`/`.csv`).
+      - `parseCsvRows`: RFC 4180 with quotes, doubled quotes, CRLF/LF and BOM; never evaluates cells.
+      - `referencedMedia`: the JSON `media` list or the CSV `media_ref` column, with UUIDs only, de-duplicated and capped at 201.
+      - `issueLocation`: "Row n, column x", otherwise the path.
+    - `ImportDialog({ open, onClose, onImported, save? })`:
+      - File input (json/csv); unsupported type or more than 5 MiB is rejected before upload. Shows name, format and size.
+      - JSON/CSV template downloads via `api.download` + `saveBlob`.
+      - Media mapping: one select per reference, limited to the user's own media from `GET /media` of the same kind, sent as the `mediaMap` JSON field.
+      - `POST /quizzes/import` (multipart `file` + optional `mediaMap`) with an Idempotency-Key, single flight, 60 s timeout. Success opens the studio through `onImported`.
+      - 422 and other problems: up to 200 listed with location and message, plus the total (`params.actual`) and the atomic-failure note; the summary is focused.
+      - Uncertain outcome: `reconcileOperation(key, "quiz.import")`. done → load the quiz and open it; not-received → retry with the same key; pending or unknown → error with a "check again" action.
+      - States: empty, loading, ideal, partial, error.
+  - `apps/web/src/components/studio/quiz-library-detail.tsx` (MODIFY): Import opens `ImportDialog`; a successful import invalidates the list and navigates to `/studio/:id`; `onImport` can replace the dialog.
+  - `apps/web/src/components/studio/import-export.spec.tsx` (CREATE): 10 tests.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/web test -- src/components/studio/import-export.spec.tsx` runs the full suite: 302/302 across 29 files. The spec is 10/10 over three runs with no act warnings.
+  - Covered:
+    - empty → loading (single flight, FormData file, no mediaMap, key) → ideal;
+    - .txt and over-5 MiB files rejected client-side;
+    - 422 row/column problems with "250 problems found", the atomic note and focus;
+    - MALFORMED_CSV and UNSUPPORTED_IMPORT_VERSION messages;
+    - missing media: mapping limited to owned images; an unmapped reference shows the server location; then `mediaMap` `{ref: ownedId}` succeeds;
+    - lost response: an unknown lookup gives the error; "check again" returns not-received, and the resend uses the same Idempotency-Key and succeeds; a reconciled done opens the quiz without a resend;
+    - CSV template download with the server filename;
+    - helpers, and the library Import button opening the dialog.
+  - Lint, typecheck, prettier and build PASS.
+  - Chromium at 360 px through the library with a route-faked 422: problem list scrollable in the sheet, summary focused. Copy was tidied: count and atomic note on separate lines, no duplicated generic sentence.

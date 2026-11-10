@@ -2340,7 +2340,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/studio/quiz-detail.spec.tsx` five states, nonowner403/hidden404, missing cover and download failure no empty success.
 
-### - [ ] TASK-140: Bangun dialog import JSON/CSV dan media map
+### - [x] TASK-140: Bangun dialog import JSON/CSV dan media map
 - **Traceability**: `US-05`, `US-06`, `US-21`, [SA §7.2](03-system-analysis.md#72-versioned-importexport), [Design §4.9](02-design-spec.md#49-dialog--m01m12)
 - **Depends On**: `TASK-139`
 - **Target Files**:

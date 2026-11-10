@@ -11,8 +11,8 @@
  *   Actions follow the server `capabilities`: Host (playable quizzes open M06; invalid drafts go
  *   to the detail page with the problem summary), Edit, Duplicate and Delete (M09). Public quizzes
  *   of other creators are read-only (no Edit/Delete).
- * - Create opens M03 and then the studio. Import is offered through `onImport` (dialog integrated
- *   later).
+ * - Create opens M03 and then the studio. Import opens M04 (`ImportDialog`), and a successful
+ *   import opens the new quiz in the studio; `onImport` can replace the dialog.
  * - Requests: only the latest list response is applied (stale responses are dropped), and every
  *   mutation invalidates the list (re-fetch). Duplicate and room creation reconcile lost responses
  *   through their operation keys. Delete sends `If-Match` with the card revision; a lost DELETE is
@@ -38,6 +38,7 @@ import {
   type CreateRoomRequest,
   type CreatedRoom,
 } from "@/components/host/host-config-dialog";
+import { ImportDialog } from "@/components/studio/import-export";
 import { QuizSettingsModal } from "@/components/studio/QuizSettingsModal";
 import { ActionButton } from "@/components/ui/action-button";
 import { ChoiceGroup } from "@/components/ui/choice-group";
@@ -167,7 +168,7 @@ export interface QuizLibraryProps {
   navigate: (href: string) => void;
   /** Room creation (defaults to a short-lived host socket). */
   createRoom?: CreateRoomFn;
-  /** Opens the import dialog (integrated later). */
+  /** Replaces the built-in M04 import dialog (optional). */
   onImport?: () => void;
 }
 
@@ -185,6 +186,7 @@ export function QuizLibrary({
   const [version, setVersion] = useState(0);
   const [searchText, setSearchText] = useState(query.search);
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [hostQuiz, setHostQuiz] = useState<QuizSummary | null>(null);
   const [deleting, setDeleting] = useState<QuizSummary | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -451,8 +453,7 @@ export function QuizLibrary({
             variant="secondary"
             icon={<Upload />}
             label={t("quizzes.library.import")}
-            disabled={!onImport}
-            onPress={() => onImport?.()}
+            onPress={() => (onImport ? onImport() : setImportOpen(true))}
           />
           <ActionButton
             icon={<Plus />}
@@ -550,6 +551,15 @@ export function QuizLibrary({
           />
         </nav>
       )}
+      <ImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={(quiz) => {
+          setImportOpen(false);
+          invalidate();
+          navigate(`/studio/${quiz.id}`);
+        }}
+      />
       <QuizSettingsModal
         open={createOpen}
         mode="create"
