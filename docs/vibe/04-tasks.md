@@ -2404,7 +2404,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/studio/question-fields.spec.tsx` all 6 valid/incomplete/invalid, IME Unicode counters, type change cancel and stable correct option IDs.
 
-### - [ ] TASK-145: Bangun properti soal dan alternatif media
+### - [x] TASK-145: Bangun properti soal dan alternatif media
 - **Traceability**: `US-04`, `US-06`, `US-18`, [SA §3.1](03-system-analysis.md#31-primitif-dan-batas), [Design §7.2](02-design-spec.md#72-waktu-media-dan-alternatif-yang-perlu-disediakan)
 - **Depends On**: `TASK-144`
 - **Target Files**:

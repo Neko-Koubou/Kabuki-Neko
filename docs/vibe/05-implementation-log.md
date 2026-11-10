@@ -1677,3 +1677,21 @@
   - `pnpm --filter @kabuki-neko/web test -- src/components/studio/question-fields.spec.tsx` → 40 files / 388 tests passed.
   - typecheck, lint, prettier and build → OK.
   - Chromium probe (deleted): single choice at 360px light, puzzle at 1024px dark, typed answer with emoji at 360px dark. No overflow.
+
+## TASK-145 — 2026-11-11T05:42:59+07:00
+
+- **Files**:
+  - `CREATE` `apps/web/src/components/studio/question-properties.tsx`: QuestionProperties, attachmentKind, rangeInvalid, clearAttachment, AttachedMedia.
+  - `CREATE` `apps/web/src/components/studio/question-properties.spec.tsx`: 6 tests.
+- **Notes**:
+  - Time limit is a select with exactly TIME_LIMITS_SEC.
+  - Points 0/1/2 as radios; polls are fixed at 0 with the reason.
+  - Media summary: upload kind and name, a YouTube URL, or "File missing" for an unresolvable ID (kept). Choose media opens M05; Remove media clears the attachment, range, effect and alternatives together.
+  - Video clip range in whole seconds with an inline end>start error.
+  - Reveal: NONE/3×3/5×5/BLUR. Effects are disabled without an image; an incompatible saved effect gets an error plus a "Show immediately" fix.
+  - Question-context alternatives by kind (alt, visual description, transcript, captions). They are never prefilled (no file name as alt), and missing ones are listed as warnings that focus their field.
+  - `focusPath` support.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/web test -- src/components/studio/question-properties.spec.tsx` → 41 files / 394 tests passed.
+  - typecheck, lint, prettier and build → OK.
+  - Chromium probe (deleted): image at 360px light, and YouTube with an invalid range, incompatible effect and caption at 360px dark. Duplicate help/error text was removed after the check. No overflow.
