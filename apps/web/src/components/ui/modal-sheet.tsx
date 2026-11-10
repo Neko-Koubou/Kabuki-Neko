@@ -56,6 +56,8 @@ export interface ModalSheetProps {
   footer?: ReactNode;
   /** Optional mobile-style back action in the header. */
   onBack?: () => void;
+  /** Focus target after a real close instead of the opener (used when it is set and connected). */
+  returnFocus?: RefObject<HTMLElement | null>;
   /** Allow an outside press to request closing (default true). */
   dismissOnOutside?: boolean;
   onCloseRequest: (reason: CloseReason) => void;
@@ -103,6 +105,7 @@ export function ModalSheet({
   onBack,
   dismissOnOutside = true,
   onCloseRequest,
+  returnFocus,
   children,
 }: ModalSheetProps) {
   const { t } = useLocale();
@@ -164,7 +167,8 @@ export function ModalSheet({
             event.preventDefault();
             // Covered by another modal: that one takes focus. Really closed: back to the opener.
             if (!open) {
-              const target = opener.current;
+              const chosen = returnFocus?.current;
+              const target = chosen?.isConnected ? chosen : opener.current;
               if (target?.isConnected) target.focus();
             }
           }}

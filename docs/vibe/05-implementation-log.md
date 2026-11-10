@@ -1398,3 +1398,43 @@
     - lobby edit: avatar-only payload, revert on failure, disabled outside the lobby.
   - Lint, typecheck (after a build to refresh `.next/types`), prettier and build PASS.
   - Chromium using a temporary probe (removed): join at 360 px light with the taken error and the 8/15 counter for the Unicode name; friendly at 360 px dark; lobby edit on desktop. No overflow, and all 7 avatar images rendered.
+
+## TASK-151 — 2026-11-10T20:26:51+07:00
+
+- **Scope note**: Part of the user-prioritized guest player flow (players join without an account). Dependencies TASK-150 and TASK-131 are done.
+- **Files**:
+  - `apps/web/src/components/player/pin-join-scanner.tsx` (CREATE): S14/F11 `PinJoinScanner` and `normalizePin`.
+    - Input: one `inputmode=numeric` field; digits only, so leading zeros and pasted separators are handled ("000 123" → "000123").
+    - `player:check_pin` runs over an anonymous player socket.
+    - A deep link is checked exactly once (a ref guard that holds under StrictMode).
+    - The QR scanner (M02) is wired to check once on a recognized PIN; "Enter the PIN instead" returns focus to the PIN field.
+    - Errors:
+      - unknown PIN → `invalidPin` (aria-invalid, never polled);
+      - locked / full / in progress → specific guidance;
+      - RATE_LIMITED → "Try again in N seconds" with Join soft-disabled until `retryAfterMs`;
+      - unknown or offline → s14 error with Try again.
+    - Recovery: credentials stored for the PIN offer "Rejoin your game" (also while GAME_IN_PROGRESS) using a recovery `player:join_room` bound to that sessionId. Dead credentials (INVALID_SESSION_TOKEN, KICKED, REPLACED, room gone) are cleared and lead to a new identity.
+    - Identity uses the TASK-150 `AvatarCustomizer`; after joining, the player is sent to `/play/<pin>`.
+  - `apps/web/src/components/player/join-route.tsx` (CREATE, supporting): client route wrapper with `router.push`.
+  - `apps/web/src/app/(public)/join/page.tsx` (CREATE): PublicShell plus `JoinRoute`; `?pin` (first value, at most 32 chars) passed through; localized title via `serverTranslator(["player"])`.
+  - `tests/e2e/join.spec.ts` (CREATE): real-stack E2E.
+    - Setup: admin by setup or login, a playable quiz (POST plus PUT with a complete single-choice question), and two rooms via a socket.io host (normal and friendly).
+    - Flows: leading-zero PIN with no polling, deep-link once, guest join, duplicate nickname, friendly join, locked room, loading/error via swallowed check frames, camera denied, foreign QR. The flows stay within CHECK_JOIN of 10 per minute per IP.
+  - Supporting changes:
+    - `apps/web/src/components/ui/modal-sheet.tsx`: optional `returnFocus` ref.
+    - `apps/web/src/components/player/qr-scanner.tsx`: passes `returnFocus`.
+    - `apps/web/src/components/player/pin-join-scanner.spec.tsx` (CREATE): 8 unit tests.
+- **Verification**:
+  - DoD `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium pnpm exec playwright test tests/e2e/join.spec.ts`: 6/6 PASS against the API (SQLite) and the production web build.
+    - PIN 000123 kept, with one check frame only.
+    - The deep link sends one check frame.
+    - The guest join reaches `/play/<pin>`; localStorage holds the session id and no JWT.
+    - The duplicate nickname is rejected with the field kept.
+    - The friendly room joins with a server-picked name.
+    - A locked room shows the partial guidance.
+    - Loading "Checking…" with the input disabled, then the error with Try again after the 5 s ACK timeout.
+    - Camera denied falls back to manual entry with focus on the PIN field.
+    - A foreign QR (Y4M fake camera) is refused with no navigation.
+  - Full `pnpm test:e2e` (auth + join): 9/9 PASS. The only server warning is `next start` with `output: standalone`, which TASK-175 addresses with the standalone runtime.
+  - Unit: `pin-join-scanner.spec.tsx` 8/8 (stable over three runs). Web suite 317/317 across 31 files. Lint, typecheck, prettier and build PASS; the E2E files type-check with strict tsc.
+  - Chromium check of `/join` at 360 px in light and dark (offline error state): no overflow.

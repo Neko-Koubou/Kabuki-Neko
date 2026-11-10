@@ -2483,7 +2483,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/player/avatar-customizer.spec.tsx` six styles/leading Unicode/friendly tickets, all 5 states and recovery ignores changed nickname.
 
-### - [~] TASK-151: Bangun PIN join, scan dan deep-link
+### - [x] TASK-151: Bangun PIN join, scan dan deep-link
 - **Traceability**: `US-08`, `US-12`, `US-21`, [SA §5.2](03-system-analysis.md#52-semua-client-to-server-methods), [Design §4.6](02-design-spec.md#46-join-dan-player--s14s15)
 - **Depends On**: `TASK-150`, `TASK-131`
 - **Target Files**:

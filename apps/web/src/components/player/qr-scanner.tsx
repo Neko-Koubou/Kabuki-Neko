@@ -15,7 +15,7 @@
  * - The dialog is the shared full-height ModalSheet (focus trap, Escape, focus return).
  */
 import { CameraOff, ScanQrCode } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { ActionButton } from "@/components/ui/action-button";
 import { ModalSheet } from "@/components/ui/modal-sheet";
 import {
@@ -52,6 +52,8 @@ export interface QrScannerProps {
   /** Decoder loader (tests); defaults to the lazy native/ZXing loader. */
   loadDecoder?: () => Promise<QrFrameDecoder | null>;
   scanIntervalMs?: number;
+  /** Focus target after closing (e.g. the PIN field after "Enter the PIN instead"). */
+  returnFocus?: RefObject<HTMLElement | null>;
 }
 
 /** Scanner state machine. */
@@ -73,6 +75,7 @@ export function QrScanner({
   secureContext,
   loadDecoder = loadQrDecoder,
   scanIntervalMs = DEFAULT_SCAN_INTERVAL_MS,
+  returnFocus,
 }: QrScannerProps) {
   const { t } = useLocale();
   const [phase, setPhase] = useState<ScannerPhase>({ kind: "idle" });
@@ -239,6 +242,7 @@ export function QrScanner({
       size="normal"
       fullHeight
       initialFocus={allowRef}
+      {...(returnFocus ? { returnFocus } : {})}
       onCloseRequest={close}
       footer={
         <div className="flex flex-wrap gap-2">
