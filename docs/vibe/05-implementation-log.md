@@ -1240,3 +1240,40 @@
   - Covered: keyboard (Cancel focus, Tab trap, Escape with focus return, Enter on the CTA); pending close and reopen with a single run and `onDone` after close; blocked MEDIA_IN_USE reason, failed with "Reference ID: ref-500", uncertain with reconcile unknown → not success, 404 → empty with Close; reconcile "done" → success; null target → empty; question-type change: Cancel keeps QUIZ, confirm applies TRUE_FALSE; M10: clean → direct navigation, failed save blocks navigation and keeps the draft, then a successful save continues, Stay/Escape/Discard.
   - Lint, typecheck and prettier pass.
   - Chromium visual check at 360 px using a temporary probe (removed): M09 ideal (light), M09 blocked (dark), M10 with the failure and incomplete note (stacked buttons).
+
+## TASK-137 — 2026-11-10T15:56:43+07:00
+
+- **Files**:
+  - `apps/web/src/components/studio/QuizSettingsModal.tsx` (CREATE): M03.
+    - Helpers:
+      - `useLobbyTracks`: the packaged audio manifest's lobby tracks, also handed to the audio manager; or the given tracks.
+      - `bgmOptions`: "Random lobby music" first, then the manifest tracks, then a kept unknown or legacy id labelled "Random lobby music (<id>)".
+    - Fields:
+      - title: required, 150 chars, shared schema;
+      - description: textarea, 5000;
+      - cover: preview, "Choose cover" via `onChooseCover(select)` for the M05 picker, "Remove cover", and a failed image switches to the partial message;
+      - visibility: radio, default PRIVATE;
+      - background music: select plus a Preview/Stop toggle on the audio-manager singleton.
+    - Preview behaviour: one at a time; it stops on track change, submit, close and unmount; legacy/Random cannot be previewed.
+    - Create: `POST /quizzes` with an Idempotency-Key. A lost response is reconciled with `reconcileOperation(key, "quiz.create")` and `GET /quizzes/:id`, so no second create happens. Errors keep entries; server title issues map to the field.
+    - Edit: `onApply(values)` only (draft, not saved).
+  - `apps/web/src/components/host/host-config-dialog.tsx` (CREATE): M06 `HostConfigDialog`.
+    - Shows the title and the pluralized question count.
+    - Display mode: vertical radios with descriptions, default PROJECTOR.
+    - Friendly nicknames: checkbox, default off.
+    - Empty (0 / unplayable): note plus an Edit link to the studio, no Open lobby button.
+    - Dirty: partial note and Open lobby soft-disabled.
+    - Sending: `host:create_room` once (single flight).
+      - ok → `onCreated`.
+      - error → a new request id; REVISION_CONFLICT → save note; QUIZ_NOT_PLAYABLE → empty; others → error with reference.
+      - unknown ACK → `reconcileRoom(requestId)` (default `api.reconcileOperation(…, "room.create")`); done → `onCreated({sessionId, pinCode:null})` with no re-send; otherwise the error state with Try again re-sending the same request id (server dedup → one room).
+  - `apps/web/src/components/host/host-config-dialog.spec.tsx` (CREATE): 9 tests (6 for M06, 3 for M03).
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/web test -- src/components/host/host-config-dialog.spec.tsx` runs the full suite: 275/275 across 26 files. The spec is 9/9 over three runs with no act warnings.
+  - Covered for M06: zero questions and unplayable (no emit); dirty blocks; stale revision gives a new id on retry; double submit makes one emit; a lost ACK is reconciled, then retried with the same id for one room; reconciled done means no re-send; CAPACITY_REACHED shows the error with a reference. The five states are all covered.
+  - Covered for M03: Random plus the tracks; no overlapping previews; preview stops on change, close and submit; a legacy id is kept and not previewable but applied to the draft; create body and key; a lost response reconciled to the created quiz with a single POST; error keeps entries.
+  - Lint, typecheck (after rebuilding `.next/types`), prettier and build PASS.
+  - Chromium visual check using a temporary probe, since removed:
+    - M03 edit at desktop size with the legacy track option;
+    - M06 at 360 px, dark, after a lost ACK and failed reconciliation, showing the error and Try again;
+    - M06 dirty at 360 px.

@@ -2300,7 +2300,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/ui/confirm-dialog.spec.tsx` keyboard, pending-close-reopen, cancel/type-change and failed save blocks navigation.
 
-### - [ ] TASK-137: Bangun metadata kuis dan persiapan host
+### - [x] TASK-137: Bangun metadata kuis dan persiapan host
 - **Traceability**: `US-03`, `US-04`, `US-07`, [SA §4.3](03-system-analysis.md#43-kuis-dan-importexport), [Design §4.9](02-design-spec.md#49-dialog--m01m12)
 - **Depends On**: `TASK-136`, `TASK-128`, `TASK-074`, `TASK-130B`
 - **Target Files**:
