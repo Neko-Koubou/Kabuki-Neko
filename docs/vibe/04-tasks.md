@@ -2533,7 +2533,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/player/text-puzzle.spec.tsx` IME/CJK/emoji, stable option identity, keyboard reordering, no post-deadline send and accepted locks.
 
-### - [ ] TASK-155: Bangun reveal dan hasil individual
+### - [x] TASK-155: Bangun reveal dan hasil individual
 - **Traceability**: `US-11`, `US-13`, `US-14`, `US-18`, `US-21`, [SA §5.3](03-system-analysis.md#53-public-and-private-snapshots), [Design §4.7](02-design-spec.md#47-panggung-host--s16)
 - **Depends On**: `TASK-154`, `TASK-122`
 - **Target Files**:

@@ -1507,3 +1507,34 @@
     - Puzzle keyboard move keeps focus on the item; real mouse drag reorders 0,2,1,3 → 2,1,3,0.
     - The 360px two-line row layout was fixed after the first screenshot showed mid-word breaks; 1024px dark also checked.
     - No horizontal overflow.
+
+## TASK-155 — 2026-11-10T20:54:11+07:00
+
+- **Files**:
+  - `CREATE` `apps/web/src/components/host/result-chart.tsx`: ResultChart, cuePlan, useCuePlan, STATIC_CUE, CHART_ANIMATION_MS.
+  - `CREATE` `apps/web/src/components/player/personal-result.tsx`: PersonalResult, STREAK_CUE_MIN.
+  - `CREATE` `apps/web/src/components/host/explanation-dialog.tsx`: ExplanationDialog, LONG_EXPLANATION.
+  - `CREATE` `apps/web/src/components/host/result-chart.spec.tsx`: 11 tests.
+- **Notes**:
+  - Chart:
+    - Choice, multiple and poll results are a real table with per-option counts.
+    - Bars are scaled to the largest count, with no percentages, so multiple select can exceed the player count.
+    - Correct options are marked with a check plus visible text; polls are neutral.
+    - TYPE_ANSWER shows the accepted list and ORDER_PUZZLE the correct order, only from the reveal payload.
+    - Outcome counts come from the server, and the M08 button appears only when an explanation exists.
+  - Personal result:
+    - All six results.
+    - pointsAwarded is the headline, with the base/bonus breakdown taken from the payload (no client addition).
+    - No-points, total, streak, rank and "behind" lines.
+  - Motion:
+    - Bars at revealBar +450 ms and the streak at +350 ms (AUDIO_TIMING) with the audio engine's cue tolerance.
+    - Planned once per phaseKey (no replay), static under reduced motion and for late renders.
+    - The components never play audio, so nothing is triggered twice.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/web test -- src/components/host/result-chart.spec.tsx` → 35 files / 351 tests passed.
+  - typecheck, lint, prettier and build → OK.
+  - Chromium check with a temporary probe (deleted afterwards):
+    - Single choice at 360px light (the row layout was fixed after the first shot split the swatch from long text).
+    - Multiple select at 1024px dark; text and puzzle reveals at 360px.
+    - Personal partial 475 = 375 + 100 in light and dark; explanation dialog with long text.
+    - No horizontal overflow.
