@@ -25,9 +25,12 @@
  *   - transcript, visual description and timed captions for video.
  *   It saves with `PATCH` + `If-Match`. A revision conflict is explained and reloads the latest
  *   version; edits are never silently merged. Nothing is auto-filled (no filename as alt text).
- * - Delete goes through M09. Media in use (or not deletable) is blocked with the reason, and a
- *   server-side "in use" answer is reported in the dialog.
+ * - Delete (library only, not in the picker) goes through M09. Media in use (or not deletable)
+ *   is blocked with the reason, and a server-side "in use" answer is reported in the dialog.
  * - Picker mode (TASK-142) adds "Select" and can lock the list to one kind (e.g. cover images).
+ *   `view="upload"` shows only the upload area (the picker's Upload tab). `embedded` drops the
+ *   page heading inside a dialog. `onUploaded` hands over an asset only after its 201 READY
+ *   answer, so pending files are never selectable.
  * States:
  * - loading: skeletons;
  * - empty: no media, or no search matches;
@@ -307,6 +310,12 @@ export interface AssetLibraryProps {
   upload?: UploadFn;
   /** Size limits (tests); defaults to the public configuration. */
   limits?: UploadLimits | null;
+  /** "upload" shows only the upload area and queue (picker's Upload tab). */
+  view?: "full" | "upload";
+  /** Inside another dialog: no page heading (the dialog has the title). */
+  embedded?: boolean;
+  /** A file finished uploading and is READY (201); never called for pending files. */
+  onUploaded?: (media: Media) => void;
 }
 
 /** Fetches one library page. */
@@ -341,6 +350,9 @@ export function AssetLibrary({
   onSelect,
   upload,
   limits: providedLimits,
+  view = "full",
+  embedded = false,
+  onUploaded,
 }: AssetLibraryProps) {
   const { t, formatNumber, ensureNamespaces } = useLocale();
   const { api, getAccessToken } = useAuth();
@@ -356,6 +368,9 @@ export function AssetLibrary({
   const baseId = useId();
   const fileInput = useRef<HTMLInputElement>(null);
   const running = useRef(0);
+  const uploaded = useRef(onUploaded);
+  uploaded.current = onUploaded;
+  const picker = mode === "picker";
   const effectiveQuery = lockedKind ? { ...query, type: lockedKind } : query;
 
   const limits: UploadLimits | null =
@@ -435,7 +450,7 @@ export function AssetLibrary({
     async (item: UploadItem) => {
       patchItem(item.id, { status: "uploading", progress: 0, errorKey: null });
       try {
-        await uploader({
+        const media = await uploader({
           file: item.file,
           folder: folder ?? folderFor(item.kind ?? "image"),
           idempotencyKey: item.key,
@@ -444,6 +459,7 @@ export function AssetLibrary({
         });
         patchItem(item.id, { status: "done" });
         invalidate();
+        uploaded.current?.(media);
       } catch (error) {
         if (error instanceof ApiError && error.uncertain) {
           const answer = await api.reconcileOperation(item.key, "media.upload");
@@ -560,14 +576,18 @@ export function AssetLibrary({
   if (state.status === "loading")
     body = (
       <div aria-busy="true" className="flex flex-col gap-3">
-        <SkeletonBlock layout="media" count={3} label={t("media.inventory.s08.loading")} />
+        <SkeletonBlock
+          layout="media"
+          count={3}
+          label={picker ? t("media.inventory.m05.loading") : t("media.inventory.s08.loading")}
+        />
       </div>
     );
   else if (state.status === "error")
     body = (
       <StatusNotice
         tone="error"
-        message={t("media.inventory.s08.error")}
+        message={picker ? t("media.inventory.m05.error") : t("media.inventory.s08.error")}
         correlationId={state.error instanceof ApiError ? state.error.correlationId : null}
         action={{ label: t("common.actions.retry"), onAction: invalidate }}
       />
@@ -578,7 +598,9 @@ export function AssetLibrary({
         <p role="status">
           {query.search
             ? t("common.pagination.resultCount", { count: 0 })
-            : t("media.inventory.s08.empty")}
+            : picker
+              ? t("media.inventory.m05.empty")
+              : t("media.inventory.s08.empty")}
         </p>
         {query.search && (
           <ActionButton
@@ -654,17 +676,19 @@ export function AssetLibrary({
                   accessibleName={`${t("common.actions.edit")}: ${media.originalName}`}
                   onPress={() => setEditing(media)}
                 />
-                <ActionButton
-                  variant="ghost"
-                  label={t("media.library.delete")}
-                  accessibleName={`${t("media.library.delete")}: ${media.originalName}`}
-                  disabled={blocked}
-                  {...(blocked ? { disabledReason: t("media.inventory.f06.partial") } : {})}
-                  onPress={() => {
-                    setDeleting(media);
-                    confirmDelete.request();
-                  }}
-                />
+                {!picker && (
+                  <ActionButton
+                    variant="ghost"
+                    label={t("media.library.delete")}
+                    accessibleName={`${t("media.library.delete")}: ${media.originalName}`}
+                    disabled={blocked}
+                    {...(blocked ? { disabledReason: t("media.inventory.f06.partial") } : {})}
+                    onPress={() => {
+                      setDeleting(media);
+                      confirmDelete.request();
+                    }}
+                  />
+                )}
               </div>
             </li>
           );
@@ -678,11 +702,16 @@ export function AssetLibrary({
   );
 
   return (
-    <section aria-labelledby={`${baseId}-title`} className="flex flex-col gap-6">
+    <section
+      {...(embedded ? {} : { "aria-labelledby": `${baseId}-title` })}
+      className="flex flex-col gap-6"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 id={`${baseId}-title`} className="text-title font-bold">
-          {mode === "picker" ? t("media.inventory.m05.title") : t("media.library.title")}
-        </h1>
+        {!embedded && (
+          <h1 id={`${baseId}-title`} className="text-title font-bold">
+            {picker ? t("media.inventory.m05.title") : t("media.library.title")}
+          </h1>
+        )}
         <div className="flex flex-col items-end gap-1">
           <ActionButton
             icon={<Upload />}
@@ -793,58 +822,60 @@ export function AssetLibrary({
       {failedUploads.length > 0 && queue.some((item) => item.status === "done") && (
         <p className="text-small text-warning">{t("media.inventory.s08.partial")}</p>
       )}
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        {!lockedKind && (
-          <ChoiceGroup
-            mode="tabs"
-            label={t("media.library.title")}
-            hideLabel
-            items={[
-              { id: "all", label: t("media.library.all") },
-              { id: "image", label: t("media.library.images") },
-              { id: "audio", label: t("media.library.audio") },
-              { id: "video", label: t("media.library.video") },
-            ]}
-            selected={query.type ?? "all"}
-            onSelect={(id) =>
-              onQueryChange({
-                ...query,
-                type: id === "image" || id === "audio" || id === "video" ? id : null,
-                page: 1,
-              })
-            }
-          />
-        )}
-        <form
-          role="search"
-          onSubmit={submitSearch}
-          className="flex w-full items-end gap-2 md:w-auto"
-        >
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <label htmlFor={`${baseId}-search`} className="text-label font-semibold">
-              {t("media.library.search")}
-            </label>
-            <input
-              id={`${baseId}-search`}
-              type="search"
-              value={searchText}
-              maxLength={MAX_SEARCH}
-              onChange={(event) => setSearchText(event.target.value)}
-              className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-body md:w-64"
+      {view === "full" && (
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          {!lockedKind && (
+            <ChoiceGroup
+              mode="tabs"
+              label={t("media.library.title")}
+              hideLabel
+              items={[
+                { id: "all", label: t("media.library.all") },
+                { id: "image", label: t("media.library.images") },
+                { id: "audio", label: t("media.library.audio") },
+                { id: "video", label: t("media.library.video") },
+              ]}
+              selected={query.type ?? "all"}
+              onSelect={(id) =>
+                onQueryChange({
+                  ...query,
+                  type: id === "image" || id === "audio" || id === "video" ? id : null,
+                  page: 1,
+                })
+              }
             />
-          </div>
-          <ActionButton type="submit" variant="secondary" label={t("common.actions.search")} />
-        </form>
-      </div>
-      {state.status === "ready" && state.stale && (
+          )}
+          <form
+            role="search"
+            onSubmit={submitSearch}
+            className="flex w-full items-end gap-2 md:w-auto"
+          >
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <label htmlFor={`${baseId}-search`} className="text-label font-semibold">
+                {t("media.library.search")}
+              </label>
+              <input
+                id={`${baseId}-search`}
+                type="search"
+                value={searchText}
+                maxLength={MAX_SEARCH}
+                onChange={(event) => setSearchText(event.target.value)}
+                className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-body md:w-64"
+              />
+            </div>
+            <ActionButton type="submit" variant="secondary" label={t("common.actions.search")} />
+          </form>
+        </div>
+      )}
+      {view === "full" && state.status === "ready" && state.stale && (
         <StatusNotice
           tone="warning"
           message={t("common.status.stale")}
           action={{ label: t("common.actions.retry"), onAction: invalidate }}
         />
       )}
-      {body}
-      {state.status === "ready" && totalPages > 1 && (
+      {view === "full" && body}
+      {view === "full" && state.status === "ready" && totalPages > 1 && (
         <nav
           aria-label={t("common.pagination.label")}
           className="flex flex-wrap items-center justify-center gap-3"

@@ -1609,3 +1609,29 @@
   - `pnpm --filter @kabuki-neko/web test -- src/components/media/asset-library-picker-upload.spec.tsx` → 37 files / 368 tests passed.
   - typecheck, lint, prettier and build → OK.
   - Chromium check with a route-faked API at 1280px light, 360px dark, empty, the edit dialog with captions, and refused uploads at 360px. The upload row layout was fixed after the first shot broke a short file name per character. No horizontal overflow.
+
+## TASK-142 — 2026-11-11T05:25:08+07:00
+
+- **Files**:
+  - `CREATE` `apps/web/src/components/studio/media-picker.tsx`: MediaPicker, checkAttachment, parseSeconds, CoverSelection, QuestionMediaSelection.
+  - `CREATE` `apps/web/src/components/studio/media-picker.spec.tsx`: 6 tests.
+  - `MODIFY` `apps/web/src/components/studio/QuizSettingsModal.tsx`: "Choose cover" always shows. A parent `onChooseCover` still wins; otherwise the built-in M05 picker opens (applyCover).
+  - `MODIFY` `apps/web/src/components/media/asset-library-picker-upload.tsx`: needed so the picker can reuse the library.
+    - `view="upload"`, `embedded` and `onUploaded` (only after 201 READY);
+    - M05 texts in picker mode;
+    - no Delete in the picker.
+- **Notes**:
+  - Tabs: library / upload / YouTube (questions only); covers are images only.
+  - The selection preview sits above the list, is focused and shows missing-alternative warnings.
+  - Question attachments are checked with the shared mediaAttachmentSchema (exclusive source, clip range, canonical YouTube URL); malformed links are refused.
+  - Accessibility is deep-copied (structuredClone) into the question selection.
+  - Closing never aborts an upload; `onUploadSettled` reports READY assets to the parent.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/web test -- src/components/studio/media-picker.spec.tsx` → 38 files / 374 tests passed.
+  - typecheck, lint, prettier and build → OK.
+  - Chromium check:
+    - cover picker from Create quiz at 1280px light and 360px dark;
+    - question picker with a video selection and clip range at 1280px dark;
+    - a malformed YouTube link at 360px.
+    - The first shots showed the preview below the list, so it was moved above and focused.
+    - No horizontal overflow.

@@ -4,7 +4,8 @@
  * (Design §4.9 M03, §7; SA §4.3; Audio revision 2026-10-31; US-03/04/07; TASK-137).
  *
  * - Fields: title (required, 150), description (optional, multiline), cover (choose/remove; the
- *   parent opens the media picker through `onChooseCover` and hands back the chosen media),
+ *   parent may open its own picker through `onChooseCover`, otherwise the built-in M05 picker opens
+ *   locked to images and hands back the chosen READY image — TASK-142),
  *   visibility (default PRIVATE) and background music.
  * - Background music: "Random lobby music" (the default) followed by the real lobby tracks from
  *   the packaged audio manifest. A saved track id the manifest no longer has (legacy/unknown) is
@@ -32,6 +33,7 @@ import {
   type QuizDetail,
 } from "@kabuki-neko/shared/schemas/quiz.schema";
 import { issueMessageKey } from "@/components/auth/public-auth-forms";
+import { MediaPicker } from "@/components/studio/media-picker";
 import { ActionButton } from "@/components/ui/action-button";
 import { ChoiceGroup } from "@/components/ui/choice-group";
 import { FormField } from "@/components/ui/form-field";
@@ -182,6 +184,7 @@ export function QuizSettingsModal({
   });
   const [coverUrl, setCoverUrl] = useState<string | null>(initial?.coverUrl ?? null);
   const [coverFailed, setCoverFailed] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<"title" | "description", string>>>({});
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -281,160 +284,174 @@ export function QuizSettingsModal({
   const set = <K extends keyof QuizMetadataValues>(key: K, value: QuizMetadataValues[K]) =>
     setValues((current) => ({ ...current, [key]: value }));
 
+  /** Applies a chosen cover (from the parent's picker or the built-in one). */
+  const applyCover = (cover: CoverChoice) => {
+    set("coverMediaId", cover.id);
+    setCoverUrl(cover.url);
+    setCoverFailed(false);
+  };
+
   return (
-    <ModalSheet
-      open={open}
-      title={t("quizzes.metadata.title")}
-      description={t("quizzes.inventory.m03.empty")}
-      pending={pending}
-      onCloseRequest={onClose}
-      footer={
-        <div className="flex flex-wrap justify-end gap-2">
-          <ActionButton variant="secondary" label={t("common.actions.cancel")} onPress={onClose} />
-          <ActionButton
-            type="submit"
-            form={`${ids.title}-form`}
-            pending={pending}
-            label={mode === "create" ? t("quizzes.metadata.create") : t("quizzes.metadata.apply")}
-          />
-        </div>
-      }
-    >
-      <form
-        id={`${ids.title}-form`}
-        noValidate
-        onSubmit={(event) => void submit(event)}
-        className="flex flex-col gap-4"
+    <>
+      <ModalSheet
+        open={open}
+        title={t("quizzes.metadata.title")}
+        description={t("quizzes.inventory.m03.empty")}
+        pending={pending}
+        onCloseRequest={onClose}
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <ActionButton
+              variant="secondary"
+              label={t("common.actions.cancel")}
+              onPress={onClose}
+            />
+            <ActionButton
+              type="submit"
+              form={`${ids.title}-form`}
+              pending={pending}
+              label={mode === "create" ? t("quizzes.metadata.create") : t("quizzes.metadata.apply")}
+            />
+          </div>
+        }
       >
-        {failed && (
-          <p
-            role="alert"
-            className="rounded-md border border-danger bg-danger-surface p-3 text-small text-danger"
-          >
-            {t("quizzes.inventory.m03.error")}
-          </p>
-        )}
-        {partial && (
-          <p
-            role="note"
-            className="rounded-md border border-warning bg-warning-surface p-3 text-small text-warning"
-          >
-            {t("quizzes.inventory.m03.partial")}
-          </p>
-        )}
-        <FormField
-          id={ids.title}
-          name="title"
-          label={t("quizzes.metadata.quizTitle")}
-          required
-          limit={TEXT_LIMITS.title}
-          value={values.title}
-          onChange={(title) => set("title", title)}
-          error={errors.title ? t(errors.title) : undefined}
-        />
-        <FormField
-          id={ids.description}
-          name="description"
-          kind="textarea"
-          rows={3}
-          label={t("quizzes.metadata.description")}
-          limit={TEXT_LIMITS.description}
-          value={values.description ?? ""}
-          onChange={(description) => set("description", description === "" ? null : description)}
-          error={errors.description ? t(errors.description) : undefined}
-        />
-        <fieldset className="flex flex-col gap-2">
-          <legend className="text-label font-semibold">{t("quizzes.metadata.cover")}</legend>
-          <div className="flex flex-wrap items-center gap-3">
-            {coverUrl && !coverFailed ? (
-              // Plain <img>: user media from the API, not a static asset for next/image.
-              <img
-                src={coverUrl}
-                alt=""
-                className="h-20 w-32 rounded-md border border-border object-cover"
-                onError={() => setCoverFailed(true)}
-              />
-            ) : (
-              <span className="inline-flex h-20 w-32 items-center justify-center rounded-md border border-dashed border-border p-2 text-center text-caption text-muted-foreground">
-                {t("quizzes.detail.coverMissing")}
-              </span>
-            )}
-            {onChooseCover && (
+        <form
+          id={`${ids.title}-form`}
+          noValidate
+          onSubmit={(event) => void submit(event)}
+          className="flex flex-col gap-4"
+        >
+          {failed && (
+            <p
+              role="alert"
+              className="rounded-md border border-danger bg-danger-surface p-3 text-small text-danger"
+            >
+              {t("quizzes.inventory.m03.error")}
+            </p>
+          )}
+          {partial && (
+            <p
+              role="note"
+              className="rounded-md border border-warning bg-warning-surface p-3 text-small text-warning"
+            >
+              {t("quizzes.inventory.m03.partial")}
+            </p>
+          )}
+          <FormField
+            id={ids.title}
+            name="title"
+            label={t("quizzes.metadata.quizTitle")}
+            required
+            limit={TEXT_LIMITS.title}
+            value={values.title}
+            onChange={(title) => set("title", title)}
+            error={errors.title ? t(errors.title) : undefined}
+          />
+          <FormField
+            id={ids.description}
+            name="description"
+            kind="textarea"
+            rows={3}
+            label={t("quizzes.metadata.description")}
+            limit={TEXT_LIMITS.description}
+            value={values.description ?? ""}
+            onChange={(description) => set("description", description === "" ? null : description)}
+            error={errors.description ? t(errors.description) : undefined}
+          />
+          <fieldset className="flex flex-col gap-2">
+            <legend className="text-label font-semibold">{t("quizzes.metadata.cover")}</legend>
+            <div className="flex flex-wrap items-center gap-3">
+              {coverUrl && !coverFailed ? (
+                // Plain <img>: user media from the API, not a static asset for next/image.
+                <img
+                  src={coverUrl}
+                  alt=""
+                  className="h-20 w-32 rounded-md border border-border object-cover"
+                  onError={() => setCoverFailed(true)}
+                />
+              ) : (
+                <span className="inline-flex h-20 w-32 items-center justify-center rounded-md border border-dashed border-border p-2 text-center text-caption text-muted-foreground">
+                  {t("quizzes.detail.coverMissing")}
+                </span>
+              )}
               <ActionButton
                 variant="secondary"
                 label={t("quizzes.metadata.chooseCover")}
-                onPress={() =>
-                  onChooseCover((cover) => {
-                    set("coverMediaId", cover.id);
-                    setCoverUrl(cover.url);
-                    setCoverFailed(false);
-                  })
-                }
-              />
-            )}
-            {values.coverMediaId && (
-              <ActionButton
-                variant="ghost"
-                label={t("quizzes.metadata.removeCover")}
                 onPress={() => {
-                  set("coverMediaId", null);
-                  setCoverUrl(null);
-                  setCoverFailed(false);
+                  if (onChooseCover) onChooseCover(applyCover);
+                  else setPickerOpen(true);
                 }}
               />
-            )}
+              {values.coverMediaId && (
+                <ActionButton
+                  variant="ghost"
+                  label={t("quizzes.metadata.removeCover")}
+                  onPress={() => {
+                    set("coverMediaId", null);
+                    setCoverUrl(null);
+                    setCoverFailed(false);
+                  }}
+                />
+              )}
+            </div>
+          </fieldset>
+          <ChoiceGroup
+            mode="radio"
+            name="visibility"
+            label={t("quizzes.metadata.visibility")}
+            orientation="horizontal"
+            items={[
+              { id: "PRIVATE", label: t("common.visibility.private") },
+              { id: "PUBLIC", label: t("common.visibility.public") },
+            ]}
+            selected={values.visibility}
+            onSelect={(id) => set("visibility", id === "PUBLIC" ? "PUBLIC" : "PRIVATE")}
+          />
+          <div className="flex flex-col gap-1">
+            <label htmlFor={ids.bgm} className="text-label font-semibold">
+              {t("quizzes.metadata.bgmTrack")}
+            </label>
+            <div className="flex flex-wrap items-stretch gap-2">
+              <select
+                id={ids.bgm}
+                name="bgmTrack"
+                value={values.bgmTrack}
+                onChange={(event) => {
+                  stopPreview();
+                  set("bgmTrack", event.target.value);
+                }}
+                className="min-h-11 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-body"
+              >
+                {options.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <ActionButton
+                variant="secondary"
+                disabled={!canPreview}
+                icon={previewing === values.bgmTrack ? <Pause /> : <Play />}
+                label={
+                  previewing === values.bgmTrack
+                    ? t("quizzes.metadata.stopPreview")
+                    : t("quizzes.metadata.previewBgm")
+                }
+                onPress={() => void togglePreview()}
+              />
+            </div>
           </div>
-        </fieldset>
-        <ChoiceGroup
-          mode="radio"
-          name="visibility"
-          label={t("quizzes.metadata.visibility")}
-          orientation="horizontal"
-          items={[
-            { id: "PRIVATE", label: t("common.visibility.private") },
-            { id: "PUBLIC", label: t("common.visibility.public") },
-          ]}
-          selected={values.visibility}
-          onSelect={(id) => set("visibility", id === "PUBLIC" ? "PUBLIC" : "PRIVATE")}
-        />
-        <div className="flex flex-col gap-1">
-          <label htmlFor={ids.bgm} className="text-label font-semibold">
-            {t("quizzes.metadata.bgmTrack")}
-          </label>
-          <div className="flex flex-wrap items-stretch gap-2">
-            <select
-              id={ids.bgm}
-              name="bgmTrack"
-              value={values.bgmTrack}
-              onChange={(event) => {
-                stopPreview();
-                set("bgmTrack", event.target.value);
-              }}
-              className="min-h-11 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-body"
-            >
-              {options.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <ActionButton
-              variant="secondary"
-              disabled={!canPreview}
-              icon={previewing === values.bgmTrack ? <Pause /> : <Play />}
-              label={
-                previewing === values.bgmTrack
-                  ? t("quizzes.metadata.stopPreview")
-                  : t("quizzes.metadata.previewBgm")
-              }
-              onPress={() => void togglePreview()}
-            />
-          </div>
-        </div>
-        <p role="status" aria-live="polite" className="text-small empty:hidden">
-          {pending ? t("quizzes.inventory.m03.loading") : ""}
-        </p>
-      </form>
-    </ModalSheet>
+          <p role="status" aria-live="polite" className="text-small empty:hidden">
+            {pending ? t("quizzes.inventory.m03.loading") : ""}
+          </p>
+        </form>
+      </ModalSheet>
+      <MediaPicker
+        open={pickerOpen}
+        context="cover"
+        onClose={() => setPickerOpen(false)}
+        onSelectCover={applyCover}
+      />
+    </>
   );
 }

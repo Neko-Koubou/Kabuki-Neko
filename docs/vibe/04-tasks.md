@@ -2367,7 +2367,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/media/asset-library-picker-upload.spec.tsx` five states, wrong MIME/size, metadata conflict, in-use delete and partial failure.
 
-### - [ ] TASK-142: Integrasikan media picker dan YouTube
+### - [x] TASK-142: Integrasikan media picker dan YouTube
 - **Traceability**: `US-04`, `US-06`, `US-18`, [SA §7.1](03-system-analysis.md#71-storage-pipeline-dan-cleanup), [Design §4.9](02-design-spec.md#49-dialog--m01m12)
 - **Depends On**: `TASK-141`
 - **Target Files**:
