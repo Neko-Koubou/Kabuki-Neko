@@ -19,11 +19,11 @@ Status Legend: `- [ ]` Pending | `- [~]` In Progress | `- [x]` Completed | `- [!
 | 3. Core Domain Services & API Endpoints | TASK-051–TASK-086 | 36 | M3 → M4 |
 | 4. Frontend Design Tokens, Base UI & State Layer | TASK-087–TASK-131 | 45 | Fondasi M5–M6; source katalog M1 dituntaskan sebelum UI |
 | 5. Feature Screens, API Integration & 5 UI States | TASK-132–TASK-163 | 32 | M5 → M6 |
-| 6. Hardening, Edge Cases & Polish | TASK-164–TASK-181 | 18 | M7 + release evidence |
+| 6. Hardening, Edge Cases & Polish | TASK-164–TASK-182 | 19 | M7 + release evidence + paket self-host Docker |
 
 **Urutan:** ambil task Pending bernomor terkecil yang semua Depends On-nya Completed. Dependensi per-task adalah DAG operasional; phase merangkum milestone, bukan izin mengerjakan seluruh phase dalam satu `/vibe-code`. API/DB/adapter selesai sebelum integrasi UI; catalog tools/contracts lebih awal dan enam katalog lengkap tersedia sebelum provider UI. Tidak ada delegasi atau eksekusi agen paralel yang diperlukan oleh plan ini.
 
-Task berakhiran huruf adalah koreksi/perluasan atomik; jumlah pada tabel fase di atas menunjukkan181 task baseline, sedangkan total195 mencakup14 task tambahan. Detail dependensi di setiap task tetap normatif.
+Task berakhiran huruf adalah koreksi/perluasan atomik; jumlah pada tabel fase di atas menunjukkan181 task baseline, sedangkan total196 mencakup14 task tambahan plus TASK-182 (paket self-host Docker, permintaan pengguna 2026-11-10). Detail dependensi di setiap task tetap normatif.
 
 ### Dependency graph
 
@@ -44,6 +44,7 @@ flowchart LR
   QA --> DEPLOY["TASK-176 Compose + restore"]
   DEPLOY --> PERF["TASK-179 measured performance"]
   PERF --> RELEASE["TASK-181 release gate"]
+  RELEASE --> SELFHOST["TASK-182 self-host Docker package"]
 ```
 
 ### Aturan eksekusi dan verification
@@ -2482,7 +2483,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/player/avatar-customizer.spec.tsx` six styles/leading Unicode/friendly tickets, all 5 states and recovery ignores changed nickname.
 
-### - [ ] TASK-151: Bangun PIN join, scan dan deep-link
+### - [~] TASK-151: Bangun PIN join, scan dan deep-link
 - **Traceability**: `US-08`, `US-12`, `US-21`, [SA §5.2](03-system-analysis.md#52-semua-client-to-server-methods), [Design §4.6](02-design-spec.md#46-join-dan-player--s14s15)
 - **Depends On**: `TASK-150`, `TASK-131`
 - **Target Files**:
@@ -2903,6 +2904,21 @@ flowchart LR
   - Release checklist map every US/AC/BR/NFR to evidence, manual language/a11y/license/cloud review truthfully pending if absent. Require matching catalog pair and measured budgets; no automatic publish/deploy action.
 - **Definition of Done (Verification)**:
   - `pnpm install --frozen-lockfile`, `pnpm locales:validate`, `pnpm locales:build`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:contracts`, `pnpm test:integration`, `pnpm build`, `pnpm test:e2e`, both Compose configs dan `pnpm exec tsx scripts/verify-release.ts`; gate rejects missing evidence. Jalankan `pnpm test:performance`; review bukti manual/cloud/license yang belum tersedia tetap menjadi release gap.
+
+### - [ ] TASK-182: Siapkan paket self-host Docker siap pakai
+- **Traceability**: `US-16`, `US-17`, `US-19`, `US-20`, [SA §10.2](03-system-analysis.md#102-environment-tambahan-dan-compose), [SA §10.3](03-system-analysis.md#103-recoveryretention-dan-known-limits); permintaan pengguna 2026-11-10: "sediakan file untuk deployment menggunakan docker ... agar orang bisa self host dengan docker".
+- **Depends On**: `TASK-181`, `TASK-176`, `TASK-177`, `TASK-178`
+- **Target Files**:
+  - `CREATE` `docs/self-hosting.md`
+  - `CREATE` `docker/docker-compose.tls.yml`
+  - `CREATE` `docker/Caddyfile`
+  - `CREATE` `scripts/selfhost-smoke.sh`
+- **Implementation Specs**:
+  - Panduan self-host untuk operator non-developer (Bahasa Indonesia + English) di atas image/Compose TASK-175–176: prasyarat (Docker Engine + Compose v2, RAM/disk minimum), unduh/clone rilis, salin `.env.example` menjadi `.env` dengan hanya URL publik/nama instansi yang wajib diubah, `docker compose -f docker/docker-compose.yml up -d`, first-run `/setup`, profil default (SQLite/memory/local) vs scale, letak data persisten (`docker/data`, `docker/uploads`, secrets), upgrade (pull/build ulang + migrasi otomatis satu leader), backup/restore (rujuk TASK-178), troubleshooting (port bentrok, URL publik salah, cookie same-site, CORS, healthcheck), dan batasan (memory rooms hilang saat restart, kapasitas bukan sertifikasi).
+  - Override HTTPS opsional `docker/docker-compose.tls.yml` + `docker/Caddyfile`: reverse proxy Caddy (image dipin digest) dengan TLS otomatis untuk satu domain, path `/api` dan WebSocket `/socket.io` ke API (sticky/timeout >=75 s), sisanya ke web, `TRUST_PROXY_CIDRS` jaringan proxy saja, header keamanan konsisten dengan CSP task sebelumnya; tidak membuka port API/web langsung saat TLS dipakai. Tidak ada kredensial contoh yang dipakai di produksi.
+  - `scripts/selfhost-smoke.sh` (bash `set -euo pipefail`, tanpa sudo): jalankan Compose default dengan project name terisolasi, tunggu healthcheck, cek `GET /` 200, `GET /api/v1/auth/setup-status` 200 dan `/join` 200, restart lalu verifikasi data persisten tetap ada, dan teardown `down` **tanpa** menghapus volume/data operator kecuali flag eksplisit untuk project uji itu sendiri. README menautkan panduan.
+- **Definition of Done (Verification)**:
+  - `docker compose -f docker/docker-compose.yml -f docker/docker-compose.tls.yml config --quiet` dan Caddyfile `caddy validate` via container; `bash scripts/selfhost-smoke.sh` lulus dari checkout bersih pada profil default (dan scale bila Docker tersedia); setiap env var yang disebut panduan ada di `.env.example`, tautan dokumen valid, dan tidak ada secret/credential contoh yang di-commit.
 
 ## 3. Blueprint coverage
 
