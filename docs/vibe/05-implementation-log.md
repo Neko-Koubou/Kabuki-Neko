@@ -1103,3 +1103,38 @@
     - The dark mobile menu opens.
     - Public desktop renders; on dark mobile the 503 shows the error banner.
     - An anonymous visitor lands on `/login?returnTo=%2Fdashboard%2Fquizzes` without the library flashing.
+
+## TASK-133 — 2026-11-10T15:09:43+07:00
+
+- **Files**:
+  - `apps/web/src/app/page.tsx` (MODIFY): S01 landing inside `PublicShell`.
+    - Instance name from the shell's public config. "Kabuki Neko" shows while loading or unknown; long names wrap with hyphenation, and the heading is smaller on mobile.
+    - Lead text, "Join a game" → `/join`, "Sign in" → `/login`, and the PIN hint.
+    - "Create one" → `/register` only for PUBLIC or INVITE_ONLY (hidden for SINGLE_ADMIN or when unknown).
+    - Decorative mascot with a monogram fallback, including when it fails before hydration.
+  - `apps/web/src/components/ui/session-fallback.tsx` (CREATE):
+    - `FALLBACK_VARIANTS`, `isTerminalVariant`, `fallbackForError` (API/socket code → variant), `describeError` (code plus API correlation ID or server digest, never the message) and `safeReference`.
+    - `SessionFallback` (S17): optional logo + language header, h1 and fixed safe message, and per-variant next steps:
+      - not found → Home
+      - forbidden → Back + Home
+      - auth expired → Sign in again with a sanitized `returnTo`
+      - room expired / kicked → Join a game + Home
+      - replaced → Home + Join a game
+      - service → Try again: one at a time, busy "Trying again…", the reason stays visible, and a failure shows "Still not working".
+    - Shows a safe reference ID with support guidance. Before the validation/auth/player namespaces load it shows the `common` shell text.
+    - `ConnectionBanner`: an inline status for reconnecting/offline/resyncing/lost; Retry only once the connection is lost.
+  - `apps/web/src/app/not-found.tsx` (CREATE): `SessionFallback variant="notFound"`, noindex.
+  - `apps/web/src/app/error.tsx` (CREATE): Next 16 boundary (`error`, `retry`). Maps the error code to a variant and passes the reference. Retry runs in a transition; a retry within 10 s is remembered across the boundary remount, so a repeated failure says "Still not working".
+  - Supporting changes:
+    - `apps/web/src/components/ui/public-shell.tsx`: `PublicShellContext` + `usePublicShell`, so the landing reuses the shell's config request. The brand text class now uses the real `text-body` token (`text-body-strong` did not exist).
+    - `apps/web/src/components/ui/session-fallback.spec.tsx` (CREATE): 10 unit tests.
+- **Verification**:
+  - DoD browser assertions (`scratchpad/fallback-shot.cjs`, Chromium against `next start`, API faked via Playwright routes, temporary probe page since removed) all PASS:
+    - S01 ideal at 320 px: a long instance name wraps, every control is ≥ 44 px, no horizontal overflow, Tab reaches the skip link first.
+    - S01 offline: 503 shows the banner while the heading and CTAs stay; Try again recovers the instance name (2 requests).
+    - S01 with the brand mark and mascot returning 404: both monograms are shown.
+    - 404: HTTP 404, safe text that does not echo the path, Go to home.
+    - kicked / roomExpired / replaced / authExpired: guidance, a manual next step, the reference ID, and no automatic navigation within 2.5 s.
+    - Error boundary: an ApiError FORBIDDEN maps to the no-access text with its reference. A generic error hides its message, and a failed retry shows "Still not working" with the reason kept.
+  - `session-fallback.spec.tsx` 10/10 and `shells.spec.tsx` 10/10 (two repeated runs).
+  - Full web suite: 243/243 across 23 files. Lint, typecheck, `prettier --check` and build all pass.

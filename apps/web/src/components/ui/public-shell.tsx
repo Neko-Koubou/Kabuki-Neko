@@ -10,7 +10,8 @@
  * - `BrandMark`: the self-hosted square brand mark with the instance name; long names wrap, and a missing logo
  *   (failed before or after hydration) becomes a text monogram.
  * - `ThemeMenu`: system/light/dark preference through the existing `ThemeProvider` (no remount).
- * - `usePublicConfig`: loads `/system/public-config` once per shell mount.
+ * - `usePublicConfig`: loads `/system/public-config` once per shell mount; pages inside the shell
+ *   read the same result through `usePublicShell` (no second request).
  * Shell states: loading (default name "Kabuki Neko" while the config loads), empty (no instance
  * name → "Kabuki Neko"), ideal (instance name), partial (logo missing → monogram; long names wrap)
  * and error (service-unavailable banner with Try again; static content and links stay usable).
@@ -18,7 +19,16 @@
  */
 import { Check, Monitor, Moon, Sun } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { publicConfigSchema } from "@kabuki-neko/shared/schemas/system.schema";
 import type { z } from "zod";
 import { CreditsButton } from "@/components/common/CreditsModal";
@@ -109,7 +119,7 @@ export function BrandMark({ name, href = "/" }: { name: string; href?: string })
   return (
     <Link
       href={href}
-      className="inline-flex min-h-11 min-w-0 items-center gap-2 rounded-md text-body-strong font-bold"
+      className="inline-flex min-h-11 min-w-0 items-center gap-2 rounded-md text-body font-bold"
     >
       {logoFailed ? (
         <span
@@ -220,6 +230,23 @@ export function displayName(state: PublicConfigState): string {
     : PRODUCT_NAME;
 }
 
+/** Configuration shared by the public shell with its pages (one request per shell mount). */
+export interface PublicShellContextValue {
+  state: PublicConfigState;
+  retry: () => void;
+  /** Display name: the instance name, else "Kabuki Neko". */
+  name: string;
+}
+
+const PublicShellContext = createContext<PublicShellContextValue | null>(null);
+
+/** Public configuration of the surrounding {@link PublicShell}; throws outside one. */
+export function usePublicShell(): PublicShellContextValue {
+  const value = useContext(PublicShellContext);
+  if (!value) throw new Error("usePublicShell must be used inside PublicShell");
+  return value;
+}
+
 /** Props of {@link PublicShell}. */
 export interface PublicShellProps {
   children: ReactNode;
@@ -232,57 +259,60 @@ export function PublicShell({ children, loadConfig }: PublicShellProps) {
   const { t, ensureNamespaces } = useLocale();
   const { state, retry } = usePublicConfig(loadConfig);
   const name = displayName(state);
+  const shared = useMemo(() => ({ state, retry, name }), [state, retry, name]);
 
   useEffect(() => {
     void ensureNamespaces(["auth", "player", "about"]);
   }, [ensureNamespaces]);
 
   return (
-    <div className="flex min-h-dvh flex-col bg-canvas text-foreground">
-      <SkipLink />
-      <header className="border-b border-border bg-panel px-4 py-2 md:px-6 lg:px-8">
-        <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-2">
-          <BrandMark name={name} />
-          <nav
-            aria-label={t("common.navigation.menu")}
-            className="flex flex-wrap items-center gap-1"
-          >
-            <Link
-              href="/join"
-              className="inline-flex min-h-11 items-center rounded-md px-3 text-label font-semibold hover:bg-subtle"
+    <PublicShellContext.Provider value={shared}>
+      <div className="flex min-h-dvh flex-col bg-canvas text-foreground">
+        <SkipLink />
+        <header className="border-b border-border bg-panel px-4 py-2 md:px-6 lg:px-8">
+          <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-2">
+            <BrandMark name={name} />
+            <nav
+              aria-label={t("common.navigation.menu")}
+              className="flex flex-wrap items-center gap-1"
             >
-              {t("player.join.title")}
-            </Link>
-            <Link
-              href="/login"
-              className="inline-flex min-h-11 items-center rounded-md bg-primary px-3 text-label font-semibold text-primary-foreground hover:bg-primary/90"
-            >
-              {t("auth.login.submit")}
-            </Link>
-            <LocalePicker />
-            <ThemeMenu />
-          </nav>
-        </div>
-      </header>
-      {state.status === "error" && (
-        <div className="px-4 pt-4 md:px-6 lg:px-8">
-          <div className="mx-auto max-w-[1280px]">
-            <StatusNotice
-              tone="error"
-              message={t("common.inventory.s01.error")}
-              action={{ label: t("common.actions.retry"), onAction: retry }}
-            />
+              <Link
+                href="/join"
+                className="inline-flex min-h-11 items-center rounded-md px-3 text-label font-semibold hover:bg-subtle"
+              >
+                {t("player.join.title")}
+              </Link>
+              <Link
+                href="/login"
+                className="inline-flex min-h-11 items-center rounded-md bg-primary px-3 text-label font-semibold text-primary-foreground hover:bg-primary/90"
+              >
+                {t("auth.login.submit")}
+              </Link>
+              <LocalePicker />
+              <ThemeMenu />
+            </nav>
           </div>
-        </div>
-      )}
-      <main
-        id="main-content"
-        tabIndex={-1}
-        className="mx-auto w-full max-w-[1280px] flex-1 px-4 py-6 outline-none md:px-6 lg:px-8"
-      >
-        {children}
-      </main>
-      <SiteFooter instanceName={name} />
-    </div>
+        </header>
+        {state.status === "error" && (
+          <div className="px-4 pt-4 md:px-6 lg:px-8">
+            <div className="mx-auto max-w-[1280px]">
+              <StatusNotice
+                tone="error"
+                message={t("common.inventory.s01.error")}
+                action={{ label: t("common.actions.retry"), onAction: retry }}
+              />
+            </div>
+          </div>
+        )}
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="mx-auto w-full max-w-[1280px] flex-1 px-4 py-6 outline-none md:px-6 lg:px-8"
+        >
+          {children}
+        </main>
+        <SiteFooter instanceName={name} />
+      </div>
+    </PublicShellContext.Provider>
   );
 }

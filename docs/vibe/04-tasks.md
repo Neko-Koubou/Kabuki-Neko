@@ -2247,7 +2247,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/ui/shells.spec.tsx` roles/direct navigation, long labels/mobile, loading/empty/ideal/partial/error shell states.
 
-### - [ ] TASK-133: Bangun landing publik dan fallback aman
+### - [x] TASK-133: Bangun landing publik dan fallback aman
 - **Traceability**: `US-08`, `US-12`, `US-19`, `US-21`, [SA §1.2](03-system-analysis.md#12-pemetaan-modul-dan-file), [Design §4.8](02-design-spec.md#48-fallback--s17)
 - **Depends On**: `TASK-132`
 - **Target Files**:
