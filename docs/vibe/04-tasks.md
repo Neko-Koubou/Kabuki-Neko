@@ -2508,7 +2508,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/player/connection-recovery.spec.tsx` five states, invalid token clears storage, replacement no loop and state-store outage locks controls.
 
-### - [ ] TASK-153: Bangun choice answer pad untuk empat tipe
+### - [x] TASK-153: Bangun choice answer pad untuk empat tipe
 - **Traceability**: `US-09`, `US-10`, `US-18`, `US-21`, [SA §5.3](03-system-analysis.md#53-public-and-private-snapshots), [Design §4.6](02-design-spec.md#46-join-dan-player--s14s15)
 - **Depends On**: `TASK-152`, `TASK-129`
 - **Target Files**:

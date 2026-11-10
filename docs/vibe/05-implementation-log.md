@@ -1466,3 +1466,14 @@
     - `recoveryView` derivation.
   - Lint, typecheck (after a build refresh), prettier and build PASS.
   - Chromium at 360 px with a temporary probe (removed): reconnecting banner over the dimmed, locked lobby (dark), and the kicked fallback (light).
+
+## TASK-153 — 2026-11-10T20:36:44+07:00
+
+- **Files**:
+  - `CREATE` `apps/web/src/components/player/choice-answer-pad.tsx`: ChoiceAnswerPad, AnswerShape, ChoiceType, ChoiceOption, PadStatus.
+  - `CREATE` `apps/web/src/components/player/choice-answer-pad.spec.tsx`: 6 tests.
+- **Notes**: Single, true/false and poll answers send on the first tap. Multiple select toggles options and sends them with "Submit answer (n)"; with nothing chosen it shows "Choose an answer first." The accessible name always carries the letter, shape symbol and option text. Projector rooms show shapes first and offer a show/hide text toggle; Streamer rooms always show the text. Input locks while submitting, after acceptance, after closing, during grace and while offline. The pad never shows correctness or a key count. A new question resets the selection.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/web test -- src/components/player/choice-answer-pad.spec.tsx` → 33 files / 330 tests passed.
+  - typecheck, lint, prettier and build → OK.
+  - Chromium check with a temporary probe (deleted afterwards): single-choice accepted at 360px light, multiple select at 360px dark with focus and selection, projector shape-first, true/false at 1024px dark, grace "Time's up.". No horizontal overflow.
