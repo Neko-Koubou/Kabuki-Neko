@@ -15,6 +15,10 @@
  * - Failures never loop: `TOKEN_REVOKED`/`TOKEN_EXPIRED` and uncertain outcomes (network errors
  *   during rotation) resolve to `null` so the caller asks the user to sign in again; a logout in
  *   any tab is broadcast to all.
+ * - Broadcasting is best effort: a closed or failing channel never turns a successful refresh into
+ *   a failure. Given a channel factory, `close()` releases the channel and `reopen()` creates a new
+ *   one, so a provider whose effects are cleaned up and re-run (React StrictMode, fast refresh)
+ *   keeps cross-tab messaging working.
  */
 
 /** A fresh access token and its expiry (epoch ms). */
@@ -51,7 +55,8 @@ export interface RefreshCoordinatorOptions {
   /** Performs `POST /auth/refresh`; resolves the outcome (no retries inside). */
   refresh: () => Promise<RefreshOutcome>;
   locks?: LocksLike | null;
-  channel?: ChannelLike | null;
+  /** Cross-tab channel, or a factory so the channel can be reopened after `close()`. */
+  channel?: ChannelLike | null | (() => ChannelLike | null);
   /** Lease storage when Web Locks is unavailable. */
   storage?: Pick<Storage, "getItem" | "setItem" | "removeItem"> | null;
   now?: () => number;
@@ -118,7 +123,22 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
     if (message.type === "logout") latest = null;
     for (const listener of listeners) listener(message);
   };
-  options.channel?.addEventListener("message", onMessage);
+  /** The open channel (null when none or after `close()`). */
+  let channel: ChannelLike | null = null;
+  /** Opens the channel (from the factory or the given object) and listens to it. */
+  const open = () => {
+    channel = typeof options.channel === "function" ? options.channel() : (options.channel ?? null);
+    channel?.addEventListener("message", onMessage);
+  };
+  open();
+  /** Broadcasts to other tabs; a closed or broken channel only loses the broadcast. */
+  const post = (message: AuthMessage) => {
+    try {
+      channel?.postMessage(message);
+    } catch {
+      // Other tabs fall back to their own (serialized) refresh.
+    }
+  };
 
   /** A token newer than `current` that is still comfortably valid, if any tab has one. */
   function reusable(current: string | null): SharedToken | null {
@@ -133,7 +153,7 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
     const outcome = await options.refresh();
     if (outcome.ok) {
       latest = outcome.token;
-      options.channel?.postMessage({ type: "token", token: outcome.token } satisfies AuthMessage);
+      post({ type: "token", token: outcome.token });
     }
     return outcome;
   }
@@ -192,22 +212,31 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
     /** Shares a token obtained outside a refresh (sign-in) with every tab. */
     share(token: SharedToken) {
       latest = token;
-      options.channel?.postMessage({ type: "token", token } satisfies AuthMessage);
+      post({ type: "token", token });
     },
     /** Tells every tab that the user signed out. */
     announceLogout() {
       latest = null;
-      options.channel?.postMessage({ type: "logout" } satisfies AuthMessage);
+      post({ type: "logout" });
     },
     /** Subscribes to other tabs' token/logout messages. */
     subscribe(listener: (message: AuthMessage) => void) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
+    /** Releases the channel (subscriptions are removed by their own cleanups). */
     close() {
-      options.channel?.removeEventListener("message", onMessage);
-      options.channel?.close();
-      listeners.clear();
+      channel?.removeEventListener("message", onMessage);
+      try {
+        channel?.close();
+      } catch {
+        // Already closed.
+      }
+      channel = null;
+    },
+    /** Reopens the channel after `close()` (only possible with a channel factory). */
+    reopen() {
+      if (channel === null && typeof options.channel === "function") open();
     },
   };
 }

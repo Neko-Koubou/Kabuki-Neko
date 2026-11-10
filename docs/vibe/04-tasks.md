@@ -2273,7 +2273,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/auth/public-auth-forms.spec.tsx` five states each mode, policy closed/invite used/setup race and manager/paste.
 
-### - [ ] TASK-135: Integrasikan ketiga rute autentikasi
+### - [x] TASK-135: Integrasikan ketiga rute autentikasi
 - **Traceability**: `US-01`, `US-02`, `US-17`, `US-21`, [SA §4.2](03-system-analysis.md#42-setup-auth-users-dan-undangan), [Design §6.1](02-design-spec.md#61-semua-layar)
 - **Depends On**: `TASK-134`
 - **Target Files**:

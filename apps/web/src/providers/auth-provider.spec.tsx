@@ -266,6 +266,56 @@ function Dashboard() {
   );
 }
 
+describe("refresh coordinator channel lifecycle", () => {
+  it("keeps a successful refresh when broadcasting fails and reopens a factory channel", async () => {
+    const token = { accessToken: "access-1", expiresAt: Date.now() + 900_000 };
+    const refresh = vi.fn(async (): Promise<RefreshOutcome> => ({ ok: true, token }));
+    // A channel that throws once closed, like a real BroadcastChannel.
+    const opened: { posted: unknown[]; closed: boolean }[] = [];
+    const factory = () => {
+      const state = { posted: [] as unknown[], closed: false };
+      opened.push(state);
+      return {
+        postMessage(message: unknown) {
+          if (state.closed) throw new DOMException("closed", "InvalidStateError");
+          state.posted.push(message);
+        },
+        addEventListener() {},
+        removeEventListener() {},
+        close() {
+          state.closed = true;
+        },
+      } satisfies ChannelLike;
+    };
+    const coordinator = createRefreshCoordinator({
+      refresh,
+      locks: null,
+      channel: factory,
+      storage: null,
+    });
+    // StrictMode-style effect cleanup and re-run.
+    coordinator.close();
+    coordinator.reopen();
+    await expect(coordinator.refresh(null)).resolves.toEqual({ ok: true, token });
+    expect(opened).toHaveLength(2);
+    expect(opened[0]?.posted).toEqual([]);
+    expect(opened[1]?.posted).toEqual([{ type: "token", token }]);
+
+    // A plain (non-factory) channel that was closed only loses the broadcast.
+    const broken = factory();
+    broken.close();
+    const plain = createRefreshCoordinator({
+      refresh,
+      locks: null,
+      channel: broken,
+      storage: null,
+    });
+    await expect(plain.refresh(null)).resolves.toEqual({ ok: true, token });
+    expect(() => plain.share(token)).not.toThrow();
+    expect(() => plain.announceLogout()).not.toThrow();
+  });
+});
+
 describe("AuthProvider", () => {
   it("hides protected content until the lazy check succeeds and keeps the token in memory only", async () => {
     const setItem = vi.spyOn(Storage.prototype, "setItem");

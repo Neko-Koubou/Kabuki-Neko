@@ -77,7 +77,9 @@ function subscribeModals(listener: () => void) {
 }
 /** Current open-modal list (server: none). */
 const modalSnapshot = () => openModals;
-const serverModalSnapshot = (): readonly string[] => [];
+/** Server snapshot: one cached empty list (a new array per call would loop useSyncExternalStore). */
+const NO_MODALS: readonly string[] = [];
+const serverModalSnapshot = (): readonly string[] => NO_MODALS;
 
 /** Desktop widths per size. */
 const SIZE_CLASS = {

@@ -175,7 +175,8 @@ export function AuthProvider({
     });
     return createRefreshCoordinator({
       locks: locks === undefined ? browserLocks() : locks,
-      channel: channel === undefined ? browserChannel() : channel,
+      // A factory, so the channel can be reopened when effects re-run (StrictMode, fast refresh).
+      channel: channel === undefined ? browserChannel : channel,
       storage: storage === undefined ? browserStorage() : storage,
       refresh: async (): Promise<RefreshOutcome> => {
         try {
@@ -322,7 +323,11 @@ export function AuthProvider({
     };
   }, [coordinator, loadPrincipal, resetSession]);
 
-  useEffect(() => () => coordinator.close(), [coordinator]);
+  // Own the cross-tab channel for the provider's lifetime (reopened if the effect re-runs).
+  useEffect(() => {
+    coordinator.reopen();
+    return () => coordinator.close();
+  }, [coordinator]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

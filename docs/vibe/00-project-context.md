@@ -43,7 +43,7 @@ Versi di bawah dibaca dari manifest dan lockfile yang terpasang (semua dipin exa
 | Media storage | Local directory (default) atau S3-compatible (`@aws-sdk/client-s3` + presigner 3.1160.0) untuk MinIO/R2/S3/Spaces; Sharp 0.35.5 untuk metadata/re-encode; validasi magic bytes memakai tabel signature internal (`media-processor.ts`) karena `file-type` 22.3.0 ESM-only tidak dapat di-`require` dari API CommonJS (dependensinya masih tercantum) |
 | Unit test | **Vitest 5.0.5** (shared: node; web: jsdom + Testing Library), **Jest 30.5.2 + ts-jest** (API, `src/**/*.spec.ts`) |
 | Contract / integration test | Jest root config + **Testcontainers 12.2.1** (PostgreSQL, MySQL, Redis, MinIO) + SQLite; Supertest 7.3.1; butuh Docker daemon |
-| E2E | **Playwright 1.64.1** (Chromium, workers 1) + `@axe-core/playwright`; menjalankan API build + Next dev pada port 43101/43100 dengan runtime terisolasi |
+| E2E | **Playwright 1.64.1** (Chromium, workers 1) + `@axe-core/playwright`; menjalankan API build + Next production build (`next build` lalu `next start`) pada port 43101/43100 dengan runtime terisolasi; `PLAYWRIGHT_CHROMIUM_EXECUTABLE` opsional menunjuk Chromium yang sudah terpasang (TASK-135) |
 | Lint & format | ESLint **10.13.0** flat config + `typescript-eslint` 8.72.1 `strict` + `eslint-config-prettier`; Prettier **3.9.10** |
 | Tooling script | `tsx` 4.23.15 untuk `scripts/*.ts` |
 | Deploy (target) | Docker Compose default `web`/`api`; profile `scale` menambah PostgreSQL, Redis, MinIO + bucket init (belum dibuat — lihat §4) |

@@ -1173,3 +1173,40 @@
     - Setup: loading "Checking setup status…"; empty intro; ideal "Setup complete…"; partial on race; error with entries kept.
   - Also covered: policy closed / PUBLIC without inviteCode / INVITE_ONLY required; setup race; uncertain outcomes reconciled through status; one setup request despite a double press; Idempotency-Key reuse rules; autocomplete hints and `user.paste`; summary focus and its links to fields; server `details` mapping; the password policy range; no localStorage or sessionStorage writes.
   - Lint, typecheck, `prettier --check` and build all pass.
+
+## TASK-135 — 2026-11-10T15:42:43+07:00
+
+- **Files**:
+  - `apps/web/src/app/(auth)/setup/page.tsx`, `login/page.tsx`, `register/page.tsx` (CREATE): server pages that mount the shared F01 forms inside `PublicShell`.
+    - Each has a localized `<title>` via `generateMetadata` (for example "Sign in · Kabuki Neko") and noindex.
+    - `/setup` asks `/auth/setup-status` without caching and redirects an initialized instance to `/login` before rendering.
+    - Only the raw `returnTo` string crosses to the client.
+  - Supporting files:
+    - `apps/web/src/app/(auth)/auth-route.tsx` (CREATE, client): silent session check that shows only a loading status meanwhile. A live session goes to `safeReturnTo(returnTo)`; anonymous or reauth visitors get `PublicAuthForms`.
+    - `apps/web/src/app/(auth)/auth-metadata.ts` (CREATE, server): `authMetadata`, `fetchSetupStatus` (internal URL, no-store, 1.5 s timeout) and `returnToFrom`.
+    - `apps/web/src/lib/i18n/locale.server.ts`: `serverTranslator(request, namespaces)` for server-side titles, using the same locale resolution as the layout with an `en` fallback.
+  - `tests/e2e/auth.spec.ts` (CREATE): 3 serial flows against the real API and the web app.
+    - Two tabs race the setup; exactly one SUPERADMIN and one account exist; `/setup` then redirects to `/login`.
+    - A wrong then a right password returns to `returnTo`; a live session skips the form; an unsafe `returnTo` goes to the dashboard; logout shows the form again.
+    - Registration policies SINGLE_ADMIN (closed) / INVITE_ONLY (one-time code, reuse rejected, entries kept) / PUBLIC (no code), ending with users 3, SUPERADMIN 1, CREATOR 2.
+    - No password or JWT appears in storage or HTML.
+    - Each browser context gets its own `X-Forwarded-For` address.
+  - `playwright.config.ts` (MODIFY, supporting; the original design is kept):
+    - API: dependencies + API build; consistent `NEXT_PUBLIC_*`/`APP_URL` (required by `APP_URL === NEXT_PUBLIC_APP_URL`); `TRUST_PROXY_CIDRS` loopback, so per-IP auth limits apply per simulated client.
+    - Web: `API_INTERNAL_URL`; production `next build` + `next start` instead of `next dev`. Dev mode writes `.next/dev/types`, whose global `LayoutProps` duplicates `.next/types` and breaks later `next build`/`tsc`.
+    - `locale: en-US`; optional `PLAYWRIGHT_CHROMIUM_EXECUTABLE`; `KABUKI_E2E_API_URL`.
+  - Bug fixes found by E2E (supporting):
+    - `apps/web/src/lib/refresh-coordinator.ts` + `apps/web/src/providers/auth-provider.tsx`: under StrictMode, effect cleanup closed the BroadcastChannel, and `postMessage` on the closed channel turned every successful refresh into "uncertain". Live sessions were then never restored after a reload. Fix:
+      - Broadcasts are best effort.
+      - The channel can be a factory, and `close()`/`reopen()` are bound to the provider effect.
+      - A regression test was added in `auth-provider.spec.tsx`.
+    - `apps/web/src/components/ui/modal-sheet.tsx`: `getServerSnapshot` returned a new array per call (React "should be cached" warning); it is now a constant.
+  - `apps/web/src/components/auth/public-auth-forms.tsx`: the password range `(12–128)` is appended only to length errors, not to "required".
+  - `docs/vibe/00-project-context.md`: the E2E row now describes the production build and the optional Chromium executable.
+- **Verification**:
+  - `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium pnpm test:e2e -- tests/e2e/auth.spec.ts`: 3/3 PASS, four times (twice with `next dev` before switching, twice with the production build). The final run was 53.7 s with no WebServer warnings, and no `.next/dev` was left behind.
+  - Web suite: 257/257 across 24 files. Lint, typecheck, `prettier --check` and build PASS. E2E files type-check with strict `tsc`.
+  - Visual check in Chromium (production build) in Indonesian, the instance default:
+    - Setup step 2 with error summary and field errors.
+    - Login on dark mobile with the wrong-password notice.
+    - Register on 360 px with the summary and no horizontal overflow.

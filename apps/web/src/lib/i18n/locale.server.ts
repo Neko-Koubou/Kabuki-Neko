@@ -15,6 +15,7 @@
  */
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import type { LocaleNamespace } from "@kabuki-neko/shared/schemas/locale.schema";
 import { publicConfigSchema } from "@kabuki-neko/shared/schemas/system.schema";
 import {
   SHELL_NAMESPACES,
@@ -24,6 +25,7 @@ import {
   type LocaleCatalog,
   type SerializedCatalog,
 } from "./catalog-loader";
+import { createTranslator, type Translator } from "./format";
 import { readLocaleCookie, resolveLocale, type LocaleSource } from "./resolve";
 
 /** Instance default cache lifetime and fetch timeout. */
@@ -128,4 +130,33 @@ export async function loadInitialLocale(request: {
     return { registry: disk.registry, catalog: serializeCatalog(catalog), source: "fallback" };
   }
   return { registry: disk.registry, catalog: serializeCatalog(catalog), source: resolved.source };
+}
+
+/**
+ * Server-side translator for text rendered outside the client provider, such as page titles in
+ * `generateMetadata`. Uses the same locale resolution as the root layout and loads the shell
+ * namespaces plus `namespaces` (English fallback when the chosen package is broken). Returns null
+ * when no valid bundle is installed, so callers keep a static fallback.
+ */
+export async function serverTranslator(
+  request: { cookieHeader: string | null; acceptLanguage: string | null },
+  namespaces: readonly LocaleNamespace[],
+): Promise<Translator | null> {
+  const disk = await diskLoader();
+  if (disk === null) return null;
+  const wanted = [...new Set([...SHELL_NAMESPACES, ...namespaces])];
+  const resolved = resolveLocale({
+    installed: disk.loader.installed,
+    cookie: readLocaleCookie(request.cookieHeader),
+    acceptLanguage: request.acceptLanguage,
+    instanceDefault: await instanceDefaultLocale(),
+  });
+  for (const tag of [resolved.locale, "en"]) {
+    try {
+      return createTranslator(await disk.loader.load(tag, wanted));
+    } catch {
+      // Try the English fallback next.
+    }
+  }
+  return null;
 }

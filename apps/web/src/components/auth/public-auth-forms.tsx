@@ -586,7 +586,7 @@ function RegisterForm({ status, returnTo, onAuthenticated }: FormProps) {
   );
 }
 
-/** New-password field showing the shared policy range (12–128) with a live counter. */
+/** New-password field showing the shared policy range (12–128) with a live counter; length errors repeat the range. */
 function PasswordField({
   id,
   label,
@@ -614,7 +614,13 @@ function PasswordField({
       limit={TEXT_LIMITS.passwordMaxCodePoints}
       value={value}
       onChange={onChange}
-      error={errorKey ? `${t(errorKey)} (${range})` : undefined}
+      error={
+        errorKey
+          ? errorKey === "validation.errors.outOfRange"
+            ? `${t(errorKey)} (${range})`
+            : t(errorKey)
+          : undefined
+      }
     />
   );
 }
