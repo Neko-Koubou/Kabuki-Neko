@@ -1438,3 +1438,31 @@
   - Full `pnpm test:e2e` (auth + join): 9/9 PASS. The only server warning is `next start` with `output: standalone`, which TASK-175 addresses with the standalone runtime.
   - Unit: `pin-join-scanner.spec.tsx` 8/8 (stable over three runs). Web suite 317/317 across 31 files. Lint, typecheck, prettier and build PASS; the E2E files type-check with strict tsc.
   - Chromium check of `/join` at 360 px in light and dark (offline error state): no overflow.
+
+## TASK-152 — 2026-11-10T20:31:17+07:00
+
+- **Scope note**: Part of the user-prioritized guest player flow. Dependencies TASK-151 and TASK-128 are done.
+- **Files**:
+  - `apps/web/src/components/player/connection-recovery.tsx` (CREATE): F17 `ConnectionRecovery({ role, store, sessionId, nextRetryInSec?, outage?, authExpired?, onRetry, onLeave, storage?, children })` and the pure `recoveryView(state, flags)`.
+    - empty (no credentials): join link.
+    - connecting (first sync): status only, the screen is not rendered.
+    - lost (no snapshot): error with Retry and Go to home.
+    - live: children plus a sr-only "Connected".
+    - stale (reconnecting with the backoff seconds, catching up after a sync request, state-store outage, lost after a snapshot): a sticky banner (status, or alert for outage/lost) with Retry/Leave; children kept visible but `inert` + aria-busy, so answer and host controls are locked. A pending submission says "Sending your answer… Catching up with the game…" and is never shown as accepted.
+    - terminal (KICKED / SESSION_REPLACED incl. invalid token / ROOM_EXPIRED / ROOM_LOST): S17 SessionFallback (`chrome={false}`). Player credentials are cleared exactly once and nothing reconnects.
+    - auth (host sign-in expired): authExpired fallback.
+  - `apps/web/src/components/player/connection-recovery.spec.tsx` (CREATE): 7 tests with a real `createGameStore`.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/web test -- src/components/player/connection-recovery.spec.tsx` runs the full suite: 324/324 across 32 files. The spec is 7/7 over three runs.
+  - Covered:
+    - empty, connecting and live (controls usable);
+    - reconnecting "(4 sec)" with stale content inert, Retry and Leave;
+    - catching up after a sync request, still locked;
+    - outage alert "The game service is temporarily unavailable…" with controls locked;
+    - pending answer not shown as accepted;
+    - lost before and after the first sync;
+    - terminal kicked / replaced / lost: storage cleared once (record and PIN pointer), no further removals or retries after state changes;
+    - host auth expired asks to sign in again;
+    - `recoveryView` derivation.
+  - Lint, typecheck (after a build refresh), prettier and build PASS.
+  - Chromium at 360 px with a temporary probe (removed): reconnecting banner over the dimmed, locked lobby (dark), and the kicked fallback (light).

@@ -2496,7 +2496,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:e2e -- tests/e2e/join.spec.ts` PIN000123/deep-link once, camera denied/foreign QR, friendly mode and duplicate nickname; five states.
 
-### - [ ] TASK-152: Bangun status koneksi dan pemulihan role
+### - [x] TASK-152: Bangun status koneksi dan pemulihan role
 - **Traceability**: `US-07`, `US-12`, `US-21`, [SA §6.4](03-system-analysis.md#64-cache-dan-client-state), [Design §6.4](02-design-spec.md#64-semua-feature-components)
 - **Depends On**: `TASK-151`, `TASK-128`
 - **Target Files**:
