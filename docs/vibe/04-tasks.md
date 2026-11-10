@@ -2314,7 +2314,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/host/host-config-dialog.spec.tsx` zero questions, dirty, stale revision, double submit and lost ACK one room; five dialog states.
 
-### - [ ] TASK-138: Bangun daftar kuis own/public
+### - [x] TASK-138: Bangun daftar kuis own/public
 - **Traceability**: `US-03`, `US-05`, `US-07`, `US-21`, [SA §4.3](03-system-analysis.md#43-kuis-dan-importexport), [Design §4.2](02-design-spec.md#42-kuis-dan-detail--s05s06)
 - **Depends On**: `TASK-137`, `TASK-121`
 - **Target Files**:

@@ -1277,3 +1277,29 @@
     - M03 edit at desktop size with the legacy track option;
     - M06 at 360 px, dark, after a lost ACK and failed reconciliation, showing the error and Try again;
     - M06 dirty at 360 px.
+
+## TASK-138 — 2026-11-10T16:04:30+07:00
+
+- **Files**:
+  - `apps/web/src/components/studio/quiz-library-detail.tsx` (CREATE): F02 library (S05).
+    - Helpers: `parseLibraryQuery` (scope own/public, page clamped to PAGING.maxPage, search 100 chars, sort) and `libraryHref` (defaults omitted).
+    - `QuizLibrary({ query, onQueryChange, navigate, createRoom?, onImport? })`:
+      - Header with Import (via `onImport`, disabled until the dialog lands) and Create (M03, then `/studio/:id`).
+      - Scope tabs, search form (role=search), sort select.
+      - Cards (ContentCard) with title link to the detail, cover with fallback, question count (plural), visibility, last saved, owner on public scope, an invalid-draft notice and "Read only".
+      - Capability actions: Host (playable → M06 with a short-lived host socket via `createGameSocket`; invalid → detail page), Edit link, menu with Duplicate (POST with Idempotency-Key; a lost response is reconciled via `quiz.duplicate`, then the studio opens) and Delete (M09 via `useConfirmAction`: `If-Match` revision, reconcile by GET where 404 = deleted, `onDone` re-fetches).
+      - Pagination is shown only for more than one page; an out-of-range page is clamped through `onQueryChange`.
+      - Requests: `createLatestRequest` (stale responses dropped, aborted on unmount) and a version counter re-fetches after mutations.
+      - States: loading skeleton grid; empty (own: create CTA; search: "No quizzes match" + Clear search); ideal; partial (refresh failed: "May be out of date" + retry, list kept); error (StatusNotice with reference + retry).
+    - `QuizLibraryRoute` reads the query from params and pushes changes into the URL.
+  - `apps/web/src/app/(dashboard)/dashboard/quizzes/page.tsx` (CREATE): the server page passes the first values of `scope/page/search/sort` to `QuizLibraryRoute`.
+  - Supporting: `apps/web/src/providers/auth-provider.tsx` adds `getAccessToken()` (in-memory token getter) to the auth context for the game-socket handshake.
+  - `apps/web/src/components/studio/quiz-library-detail.spec.tsx` (CREATE): 8 tests.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/web test -- src/components/studio/quiz-library-detail.spec.tsx` runs the full suite: 283/283 across 27 files. The spec is 8/8 over three runs with no act warnings.
+  - Covered: loading skeleton then cards and the 12-per-page query; owner controls (Host / Edit / menu Duplicate+Delete); public read-only (no Edit/Delete, owner shown, read-only note); invalid draft Host goes to the detail page; empty own vs. empty search (Clear search) vs. error with reference and retry; delete with `If-Match "3"` removes the card through a re-fetch; REVISION_CONFLICT is blocked, not a success; a failed refresh after a delete gives the partial "May be out of date" with the list kept; stale responses after a scope change are dropped; pagination Next sends page 2 and page 5 of 3 is clamped to 3; duplicate opens the studio with an idempotency key; Host opens M06 and then `/host/:sessionId`; URL helpers.
+  - Lint, typecheck, prettier and build PASS.
+  - Chromium against `next start` with a route-faked API:
+    - desktop owner grid with pagination;
+    - 360 px dark public read-only view (horizontal overflow fixed from 6 px to 0 by making the search form fluid);
+    - empty library.

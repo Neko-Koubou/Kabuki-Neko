@@ -66,6 +66,8 @@ export interface AuthContextValue {
   /** Stores a successful sign-in/setup/register response. */
   acceptSession: (response: AuthResponse) => void;
   signOut: () => Promise<void>;
+  /** Current in-memory access token (e.g. for the game socket handshake); never stored. */
+  getAccessToken: () => string | null;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -329,6 +331,8 @@ export function AuthProvider({
     return () => coordinator.close();
   }, [coordinator]);
 
+  const getAccessToken = useCallback(() => token.current?.accessToken ?? null, []);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       status,
@@ -338,8 +342,9 @@ export function AuthProvider({
       ensureSession,
       acceptSession,
       signOut,
+      getAccessToken,
     }),
-    [status, user, api, sessionController, ensureSession, acceptSession, signOut],
+    [status, user, api, sessionController, ensureSession, acceptSession, signOut, getAccessToken],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
