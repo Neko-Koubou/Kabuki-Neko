@@ -2354,7 +2354,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/studio/import-export.spec.tsx` malformed CSV/location/unsupported version/missing media and lost response reconciliation; full five-state dialog.
 
-### - [ ] TASK-141: Bangun asset library, upload dan metadata editor
+### - [x] TASK-141: Bangun asset library, upload dan metadata editor
 - **Traceability**: `US-06`, `US-18`, `US-21`, [SA §4.4](03-system-analysis.md#44-media-system-et-locales), [Design §4.4](02-design-spec.md#44-media-dan-laporan--s08s10)
 - **Depends On**: `TASK-140`, `TASK-069`, `TASK-122`
 - **Target Files**:

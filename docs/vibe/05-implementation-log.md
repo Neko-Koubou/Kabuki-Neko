@@ -1584,3 +1584,28 @@
   - Web suite: 36 files / 359 tests passed.
   - typecheck, lint, prettier and build → OK.
   - 360px screenshots (light and dark) of lobby, answering, accepted, reveal, leaderboard, puzzle, final, projector and kicked, taken through a temporary spec copy (deleted afterwards).
+
+## TASK-141 — 2026-11-10T21:34:37+07:00
+
+- **Files**:
+  - `CREATE` `apps/web/src/components/media/asset-library-picker-upload.tsx`:
+    - components: AssetLibrary, AssetLibraryRoute, MediaMetadataDialog;
+    - upload: createXhrUpload, UploadFn, UploadItem;
+    - helpers: mediaKind, fileProblem, folderFor, parseMediaQuery, mediaHref, assetOf, missingAlternatives, secondsToMs.
+  - `CREATE` `apps/web/src/app/(dashboard)/dashboard/media/page.tsx`
+  - `CREATE` `apps/web/src/components/media/asset-library-picker-upload.spec.tsx`: 9 tests.
+- **Notes**:
+  - List: 24 per page, with type tabs and search in the URL; only the latest response is applied.
+  - Cards show the image (or a type icon), size, an "In use" badge and missing alternatives.
+  - Upload:
+    - Allowed MIME types only (no SVG) and the per-type limit from public-config, both checked before sending.
+    - XHR progress, then "Processing…" until 201 READY. Concurrency is 2. Per-file failures with retry (new key).
+    - A lost response is reconciled through `/operations/:key?operation=media.upload`.
+    - An expired token is refreshed through `/auth/me` and retried with the same key.
+  - Metadata: full preview plus alt text/visual description (image), transcript (audio), or transcript, visual description and captions (video). Saved with PATCH + If-Match; a revision conflict shows the message with reload. Caption ranges are validated.
+  - Delete uses M09 (MEDIA_IN_USE becomes a blocked notice); in-use media is disabled with a reason.
+  - Picker mode locks the kind and selects READY items (for TASK-142).
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/web test -- src/components/media/asset-library-picker-upload.spec.tsx` → 37 files / 368 tests passed.
+  - typecheck, lint, prettier and build → OK.
+  - Chromium check with a route-faked API at 1280px light, 360px dark, empty, the edit dialog with captions, and refused uploads at 360px. The upload row layout was fixed after the first shot broke a short file name per character. No horizontal overflow.
