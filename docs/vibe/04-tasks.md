@@ -2548,7 +2548,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/host/result-chart.spec.tsx` partial475 shows375+100, poll no correctness, no answers and text/puzzle distinct; five states.
 
-### - [ ] TASK-156: Bangun leaderboard, climber dan podium
+### - [x] TASK-156: Bangun leaderboard, climber dan podium
 - **Traceability**: `US-13`, `US-18`, `US-21`, [SA §5.5](03-system-analysis.md#55-transisi-timing-scoring-ranking), [Design §7.3](02-design-spec.md#73-motion-dan-feedback)
 - **Depends On**: `TASK-155`
 - **Target Files**:

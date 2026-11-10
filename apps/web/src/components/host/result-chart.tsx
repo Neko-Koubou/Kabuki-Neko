@@ -84,14 +84,17 @@ export function cuePlan(
 /**
  * The cue plan for one phase, computed once per `phaseKey` (session + phaseVersion), so re-renders
  * and unchanged snapshots never restart an animation. Switching to reduced motion settles at once.
+ * `reducedMotionOverride` replaces the system preference (tests, explicit F16 `reducedMotion`).
  */
 export function useCuePlan(
   phaseKey: string,
   phaseStartedAt: number,
   offsetMs: number,
   now: () => number,
+  reducedMotionOverride?: boolean,
 ): CuePlan {
-  const reducedMotion = useReducedMotion() ?? false;
+  const systemReduced = useReducedMotion() ?? false;
+  const reducedMotion = reducedMotionOverride ?? systemReduced;
   const [entry, setEntry] = useState(() => ({
     key: phaseKey,
     plan: cuePlan(phaseStartedAt, offsetMs, now(), reducedMotion),

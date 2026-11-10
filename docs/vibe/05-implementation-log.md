@@ -1538,3 +1538,28 @@
     - Multiple select at 1024px dark; text and puzzle reveals at 360px.
     - Personal partial 475 = 375 + 100 in light and dark; explanation dialog with long text.
     - No horizontal overflow.
+
+## TASK-156 — 2026-11-10T21:01:54+07:00
+
+- **Files**:
+  - `CREATE` `apps/web/src/components/host/leaderboard.tsx`: Leaderboard, LeaderboardData, LeaderboardEntry, RankChange.
+  - `CREATE` `apps/web/src/components/host/podium.tsx`: Podium, podiumStage, podiumOffset, PODIUM_OFFSETS, ReportStatus.
+  - `CREATE` `apps/web/src/components/host/confetti-burst.tsx`: ConfettiBurst, CONFETTI_MS. This is an extra file so that confetti is a lazily loaded chunk (React.lazy), as the spec requires.
+  - `CREATE` `apps/web/src/components/host/podium.spec.tsx`: 8 tests.
+  - `MODIFY` `apps/web/src/components/host/result-chart.tsx`: useCuePlan gains an optional reduced-motion override (the F16 `reducedMotion` prop).
+- **Notes**:
+  - Leaderboard:
+    - Server top five in server order (never re-sorted, ties kept), with avatar, wrapping nickname and score.
+    - Rank change shown as an arrow plus a signed number (positive = up, matching the API's `previousRank - rank`). No catalog key exists for rank-change wording, so the signed number is the accessible text.
+    - Biggest climber from the server; own row marked with `aria-current` plus the server rank.
+    - 300 ms row fade-in.
+  - Podium:
+    - Only real winners, in server order. Ties share a rank and are revealed together; absent ranks are skipped.
+    - Reveal timing comes from AUDIO_TIMING (1,200 / 3,500 / 6,500 ms) with the audio engine's CUE_TOLERANCE_MS. Cues seen late are shown without animation.
+    - Confetti only when the first-place cue is seen live, at most 2 s, never under reduced motion or FINISHED, and never repeated for the same phaseKey.
+    - Desktop columns 2/1/3; mobile stacks 1/2/3.
+    - The report status is host-only.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/web test -- src/components/host/podium.spec.tsx` → 36 files / 359 tests passed.
+  - typecheck, lint, prettier and build → OK.
+  - Chromium check with a temporary probe (deleted afterwards): podium at 1024px light and 360px dark, FINISHED at 360px, a live first-place reveal with confetti pieces confirmed in the DOM and on screen, and the leaderboard at 360px light and 1024px dark. No horizontal overflow.
