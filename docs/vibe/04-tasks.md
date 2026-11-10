@@ -2327,7 +2327,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/studio/quiz-library-detail.spec.tsx` L/E/I/P/X, own/public permission controls, safe delete revision and stale list responses.
 
-### - [ ] TASK-139: Bangun detail kuis dan export
+### - [x] TASK-139: Bangun detail kuis dan export
 - **Traceability**: `US-03`, `US-05`, `US-07`, `US-21`, [SA §4.3](03-system-analysis.md#43-kuis-dan-importexport), [Design §4.2](02-design-spec.md#42-kuis-dan-detail--s05s06)
 - **Depends On**: `TASK-138`, `TASK-065`
 - **Target Files**:

@@ -1303,3 +1303,36 @@
     - desktop owner grid with pagination;
     - 360 px dark public read-only view (horizontal overflow fixed from 6 px to 0 by making the search form fluid);
     - empty library.
+
+## TASK-139 — 2026-11-10T16:09:57+07:00
+
+- **Files**:
+  - `apps/web/src/components/studio/quiz-detail.tsx` (CREATE): S06 `QuizDetailView({ quizId, navigate, createRoom?, save? })` plus `QuizDetailRoute`; helpers `exportFallbackName` (`<id>.kabukineko.json`) and `issueQuestionIndex`.
+    - Loads `GET /quizzes/:id` (abortable). 404 and 403 show a single fixed "This quiz isn't available…" message with no title or owner; other errors show the s06 error with reference and retry.
+    - Content: cover (placeholder when missing or broken), title (wraps), owner, visibility, plural question count, description (pre-line), and ordered questions (position · localized type · time limit in seconds via Intl unit · prompt, or "Nothing here yet").
+    - Capability actions:
+      - Edit link.
+      - Duplicate: shared `duplicateQuiz` with reconcile; pending, failed or uncertain stays visible.
+      - Download JSON: `api.download` + `saveBlob` with the server filename; an empty Blob or a failure gives "The export failed…", never success; "Preparing download…" while pending.
+      - Delete: M09 with `If-Match`, reconciliation by GET (404 = done), then back to the library.
+      - Host: M06 over a short-lived host socket; disabled with a reason for invalid or empty drafts.
+    - Invalid draft: issue region "Slide n of N: <message>". Empty quiz: s06.empty plus the owner's Edit CTA.
+  - `apps/web/src/app/(dashboard)/dashboard/quizzes/[quizId]/page.tsx` (CREATE): a non-UUID id goes to `notFound()`; otherwise the lower-cased id is passed to `QuizDetailRoute`.
+  - Supporting: `apps/web/src/components/studio/quiz-library-detail.tsx` now exports `duplicateQuiz(api, quizId)` (Idempotency-Key + `quiz.duplicate` reconcile), reused by the library and the detail.
+  - `apps/web/src/components/studio/quiz-detail.spec.tsx` (CREATE): 9 tests.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/web test -- src/components/studio/quiz-detail.spec.tsx` runs the full suite: 292/292 across 28 files. The spec is 9/9 over three runs with no act warnings.
+  - Covered:
+    - Loading, then the ideal owner view with ordered questions ("1 · Single choice · Time limit: 20 sec").
+    - Public read-only: no Edit or Delete.
+    - Hidden 404 and forbidden 403 show a fixed message without the title or a retry.
+    - A 500 shows the error with a reference, and retry loads.
+    - An empty quiz shows the owner CTA with Host disabled.
+    - An invalid draft lists "Slide 2 of 2: The question needs text." with Host disabled.
+    - A broken cover falls back to the placeholder.
+    - Export: pending, then save with the server filename; a 500 or an empty Blob gives the failure message and save is not called again.
+    - Duplicate opens the studio, and a 403 shows the failure.
+    - Delete sends If-Match "5" and navigates to the library.
+    - Helpers.
+  - Lint, typecheck, prettier and build PASS.
+  - Chromium against `next start` with a route-faked API: owner detail on desktop, invalid draft on 360 px in dark mode (issue list, Host disabled), and the 404 state. No horizontal overflow. The Host button was kept on one line with `shrink-0`.

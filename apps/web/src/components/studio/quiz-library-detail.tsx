@@ -111,6 +111,31 @@ function socketCreateRoom(getToken: () => string | null): CreateRoomFn {
   };
 }
 
+/** Outcome of a duplicate request. */
+export type DuplicateOutcome =
+  { status: "done"; id: string } | { status: "failed" } | { status: "uncertain" };
+
+/** Duplicates a quiz once (Idempotency-Key); a lost response is reconciled via `quiz.duplicate`. */
+export async function duplicateQuiz(api: ApiClient, quizId: string): Promise<DuplicateOutcome> {
+  const key = crypto.randomUUID();
+  try {
+    const { data } = await api.request({
+      method: "POST",
+      path: `/quizzes/${quizId}/duplicate`,
+      body: {},
+      schema: quizDetailSchema,
+      idempotencyKey: key,
+    });
+    return { status: "done", id: data.id };
+  } catch (error) {
+    if (error instanceof ApiError && !error.uncertain) return { status: "failed" };
+    const outcome = await api.reconcileOperation(key, "quiz.duplicate").catch(() => null);
+    return outcome?.status === "done" && outcome.resourceId
+      ? { status: "done", id: outcome.resourceId }
+      : { status: "uncertain" };
+  }
+}
+
 /** List load state. */
 type ListState =
   | { status: "loading" }
@@ -223,28 +248,16 @@ export function QuizLibrary({
   /** Duplicates a quiz and opens the copy in the studio (reconciling a lost response). */
   const duplicate = async (quiz: QuizSummary) => {
     setNotice(null);
-    const key = crypto.randomUUID();
-    try {
-      const { data } = await api.request({
-        method: "POST",
-        path: `/quizzes/${quiz.id}/duplicate`,
-        body: {},
-        schema: quizDetailSchema,
-        idempotencyKey: key,
-      });
+    const outcome = await duplicateQuiz(api, quiz.id);
+    if (outcome.status === "done") {
       invalidate();
-      navigate(`/studio/${data.id}`);
-    } catch (error) {
-      if (error instanceof ApiError && !error.uncertain) {
-        setNotice(t("common.inventory.b01.error"));
-        return;
-      }
-      const outcome = await api.reconcileOperation(key, "quiz.duplicate").catch(() => null);
-      if (outcome?.status === "done" && outcome.resourceId) {
-        invalidate();
-        navigate(`/studio/${outcome.resourceId}`);
-      } else setNotice(t("auth.recovery.uncertainRequest"));
-    }
+      navigate(`/studio/${outcome.id}`);
+    } else
+      setNotice(
+        outcome.status === "failed"
+          ? t("common.inventory.b01.error")
+          : t("auth.recovery.uncertainRequest"),
+      );
   };
 
   const confirmDelete = useConfirmAction({
