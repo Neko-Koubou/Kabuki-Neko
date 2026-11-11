@@ -2641,7 +2641,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/reports/report-list.spec.tsx` L/E/I/P/X, pagination, timezone visible and safe404/401 handling.
 
-### - [ ] TASK-162: Bangun detail jawaban peserta
+### - [x] TASK-162: Bangun detail jawaban peserta
 - **Traceability**: `US-14`, `US-18`, `US-21`, [SA §4.5](03-system-analysis.md#45-reports), [Design §4.9](02-design-spec.md#49-dialog--m01m12)
 - **Depends On**: `TASK-161`
 - **Target Files**:

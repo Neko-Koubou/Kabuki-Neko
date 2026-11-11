@@ -1900,3 +1900,22 @@
 - **Verification**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/reports/report-list.spec.tsx`: 7 passed. Covers L/E/I/P/X, pagination and clamping, the time zone shown, abort/latest-only, a 401 refresh followed by a retry, and a 404 error.
   - Full web suite: 47 files / 431 tests passed. typecheck, lint, prettier and build (route `/dashboard/reports`): OK.
+
+## TASK-162 — 2026-11-11T16:35:58+07:00
+
+- **Files**:
+  - `CREATE` `apps/web/src/components/reports/answer-detail-dialog.tsx`: AnswerDetailDialog, readableAnswer, readableSolution, ANSWERS_PAGE_SIZE.
+  - `CREATE` `apps/web/src/components/reports/answer-detail-dialog.spec.tsx`: 5 tests.
+- **Notes**:
+  - M12 loads paged answers (`/reports/:id/players/:playerId/answers`, 20 per page, question_asc) and matches them against the report's immutable question snapshots.
+  - Payloads are shown as readable text: option texts, typed text, a numbered order for puzzles. The correct answer comes from the snapshot (none for polls).
+  - Outcome badges:
+    - Correct, Partly correct, Incorrect, Answered/No answer for polls.
+    - "No points" for m0 questions.
+    - NOT_PLAYED, NOT_ELIGIBLE and UNANSWERED stay separate.
+  - Each answer shows response time, base, bonus and total. `0` is a value and "—" means missing.
+  - The report contract has no media URLs and there is no GET media/:id endpoint. The parent passes an optional media map; when an asset is missing or fails to load, "This media is no longer available." is shown.
+  - Errors show the m12 error with Retry, never an empty list. Pagination moves focus to the "Answers" heading.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/web test -- src/components/reports/answer-detail-dialog.spec.tsx`: 5 passed. Covers the five states, partial/poll/m0/unplayed, and pagination with keyboard and focus.
+  - Full web suite: 48 files / 436 tests passed. typecheck, lint and prettier: OK.
