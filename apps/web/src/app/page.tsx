@@ -85,7 +85,7 @@ function Landing() {
         {canRegister && (
           <Link
             href="/register"
-            className="inline-flex min-h-11 items-center self-start text-label text-primary underline"
+            className="inline-flex min-h-11 items-center self-start text-label text-primary-text underline"
           >
             {t("auth.login.registrationLink")}
           </Link>

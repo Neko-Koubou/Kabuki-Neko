@@ -219,7 +219,7 @@ export function LocalePicker({ guideHref = "/help/languages" }: LocalePickerProp
               </button>
             </div>
           )}
-          <a href={guideHref} className="text-label text-primary underline">
+          <a href={guideHref} className="text-label text-primary-text underline">
             {t("common.language.addLanguage")}
           </a>
         </div>

@@ -2167,3 +2167,16 @@
   - `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/localization-roundtrip.spec.ts` → 3/3
   - `pnpm test:e2e tests/e2e/localization.spec.ts` → 8/8 (incl. first-run); full `pnpm test:e2e` → 46/46
   - web typecheck, lint, unit tests 436/436; shipped registry unchanged (6 locales, buildId caa1a1e1…)
+
+## TASK-173 — 2026-11-12T04:36:02+07:00
+
+- **Files**:
+  - `tests/e2e/accessibility.spec.ts` (axe WCAG 2.0/2.1/2.2 A+AA on public/auth/dashboard/studio pages in light and dark themes and a rejected sign-in; M09 starts on Cancel, traps Tab, returns focus; studio slide reorder by keyboard; whole game by keyboard only: join, six answer types, puzzle move buttons, host Remove via M09 and phase controls, axe on every phase and the report)
+  - `tests/e2e/responsive.spec.ts` (no horizontal scroll at 320/390/768/1280 px and 200% zoom for public/auth/dashboard/studio; ja and zh-Hans at 320 px; projector stage at 1280×720 and 1920×1080 with question and all answers in view; reduced motion leaves no running animation)
+  - `docs/accessibility-verification.md` (dated automated evidence, fixes, manual screen-reader/IME/virtual-keyboard/forced-colors items marked not verified, creator media-alternative gap and essential-timing exception; not a WCAG certification)
+  - `apps/web/src/app/globals.css` + 9 components (fix found by axe: primary used as text was 4.43:1/4.21:1; new `--primary-text` token #C2311A light / #FF8A75 dark for links and active navigation; buttons keep the brand crimson)
+  - `apps/web/src/providers/theme-provider.spec.tsx` (guards the new token's AA contrast on every surface)
+- **Verification**:
+  - `pnpm test:e2e tests/e2e/accessibility.spec.ts tests/e2e/responsive.spec.ts` → 6/6 and 8/8 (incl. first-run); full `pnpm test:e2e` → 54/54
+  - web typecheck, lint, unit tests 436/436
+  - Manual assistive-technology items: not verified (recorded as such)

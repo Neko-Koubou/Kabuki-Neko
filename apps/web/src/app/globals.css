@@ -46,6 +46,12 @@
   /* Semantic colors — light theme (Design §2.1). */
   --primary: #d9381e;
   --primary-foreground: #ffffff;
+  /*
+   * Primary used as text (links, active navigation) on canvas, panel or subtle. The CTA crimson is
+   * 4.43:1 on the canvas and 4.21:1 on subtle, below WCAG AA for normal text, so text uses this
+   * darker crimson: 5.36:1 on canvas, 5.10:1 on subtle and 5.60:1 on panel (TASK-173 axe audit).
+   */
+  --primary-text: #c2311a;
   --secondary: #f59e0b;
   --secondary-foreground: #18181b;
   --background: #fafaf9;
@@ -138,6 +144,7 @@
   color-scheme: dark;
   --primary: #ff8a75;
   --primary-foreground: #18181b;
+  --primary-text: #ff8a75;
   --secondary: #fbbf24;
   --secondary-foreground: #18181b;
   --background: #18181b;
@@ -164,6 +171,7 @@
     color-scheme: dark;
     --primary: #ff8a75;
     --primary-foreground: #18181b;
+    --primary-text: #ff8a75;
     --secondary: #fbbf24;
     --secondary-foreground: #18181b;
     --background: #18181b;
@@ -205,6 +213,7 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-text: var(--primary-text);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);

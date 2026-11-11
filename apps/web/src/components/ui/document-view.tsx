@@ -143,12 +143,12 @@ export function AboutDocument({ loadVersion, loadLicense, loadCredits }: AboutDo
         </h2>
         <ul className="flex flex-col gap-2">
           <li>
-            <a href={LEGAL_LICENSE_URL} className="text-primary underline">
+            <a href={LEGAL_LICENSE_URL} className="text-primary-text underline">
               {t("about.document.codeLicense")}
             </a>
           </li>
           <li>
-            <a href={LEGAL_NOTICES_URL} className="text-primary underline">
+            <a href={LEGAL_NOTICES_URL} className="text-primary-text underline">
               {t("about.document.thirdPartyNotices")}
             </a>
           </li>
@@ -184,7 +184,7 @@ export function AboutDocument({ loadVersion, loadLicense, loadCredits }: AboutDo
               />
               <a
                 href={LEGAL_LICENSE_URL}
-                className="inline-flex min-h-11 items-center text-primary underline"
+                className="inline-flex min-h-11 items-center text-primary-text underline"
               >
                 {t("about.document.officialSource")}
               </a>
@@ -207,7 +207,7 @@ export function AboutDocument({ loadVersion, loadLicense, loadCredits }: AboutDo
           {t("about.languages.title")}
         </h2>
         <p className="text-small">{t("about.languages.introduction")}</p>
-        <Link href="/help/languages" className="text-primary underline">
+        <Link href="/help/languages" className="text-primary-text underline">
           {t("about.languages.title")}
         </Link>
       </section>

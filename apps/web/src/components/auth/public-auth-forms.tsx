@@ -374,7 +374,7 @@ function LoginForm({ status, returnTo, onAuthenticated }: FormProps) {
       {canRegister && (
         <Link
           href="/register"
-          className="inline-flex min-h-11 items-center self-start text-label text-primary underline"
+          className="inline-flex min-h-11 items-center self-start text-label text-primary-text underline"
         >
           {t("auth.login.registrationLink")}
         </Link>
@@ -578,7 +578,7 @@ function RegisterForm({ status, returnTo, onAuthenticated }: FormProps) {
       </p>
       <Link
         href="/login"
-        className="inline-flex min-h-11 items-center self-start text-label text-primary underline"
+        className="inline-flex min-h-11 items-center self-start text-label text-primary-text underline"
       >
         {t("auth.register.signInLink")}
       </Link>

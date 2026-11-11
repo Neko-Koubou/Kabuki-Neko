@@ -182,7 +182,7 @@ export function ThemeMenu() {
 }
 
 /** Footer link style. */
-const FOOTER_LINK = "inline-flex min-h-11 items-center rounded-md px-2 text-primary underline";
+const FOOTER_LINK = "inline-flex min-h-11 items-center rounded-md px-2 text-primary-text underline";
 
 /** Legal/attribution footer shared by the public and dashboard shells. */
 export function SiteFooter({

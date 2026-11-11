@@ -213,7 +213,7 @@ export function ChoiceGroup(props: ChoiceGroupProps) {
                   )}
                 </span>
                 {selected && (
-                  <Check aria-hidden="true" className="mt-1 size-5 shrink-0 text-primary" />
+                  <Check aria-hidden="true" className="mt-1 size-5 shrink-0 text-primary-text" />
                 )}
               </label>
             );

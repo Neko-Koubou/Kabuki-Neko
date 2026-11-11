@@ -247,6 +247,14 @@ describe("design tokens", () => {
     expect(token(':root[data-theme="dark"]', "--ring")).toBe("#93c5fd");
     expect(contrast("#D9381E", "#FFFFFF")).toBeCloseTo(4.63, 2);
     expect(contrast("#FF8A75", "#18181B")).toBeCloseTo(7.71, 2);
+    // Primary as text (links, active navigation) meets AA on every surface it is used on.
+    expect(token(":root", "--primary-text")).toBe("#c2311a");
+    expect(token(':root[data-theme="dark"]', "--primary-text")).toBe("#ff8a75");
+    for (const surface of ["#FAFAF9", "#FFFFFF", "#F4F4F5"])
+      expect(contrast("#C2311A", surface)).toBeGreaterThanOrEqual(4.5);
+    for (const surface of ["#18181B", "#27272A", "#3F3F46"])
+      expect(contrast("#FF8A75", surface)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast("#D9381E", "#F4F4F5")).toBeLessThan(4.5);
     expect(css).toContain('@import "tailwindcss";');
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)/u);
     expect(css).toMatch(

@@ -2785,7 +2785,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:e2e -- tests/e2e/localization.spec.ts` dan `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/localization-roundtrip.spec.ts` satisfy AC-21-01..04; pseudo locales cannot enter production bundle.
 
-### - [ ] TASK-173: Verifikasi aksesibilitas dan responsive layouts
+### - [x] TASK-173: Verifikasi aksesibilitas dan responsive layouts
 - **Traceability**: `US-09`, `US-18`, `US-21`, [SA §8.3](03-system-analysis.md#83-budget-qr-font-dan-accessible-media)
 - **Depends On**: `TASK-172`
 - **Target Files**:

@@ -218,7 +218,7 @@ export function ReportList({ query, onQueryChange }: ReportListProps) {
         <Link
           href={`/dashboard/reports/${session.id}`}
           dir="auto"
-          className="font-semibold break-words text-primary underline-offset-2 hover:underline"
+          className="font-semibold break-words text-primary-text underline-offset-2 hover:underline"
         >
           {session.quizTitle}
         </Link>

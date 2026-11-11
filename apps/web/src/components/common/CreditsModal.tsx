@@ -64,7 +64,7 @@ export function renderInline(text: string, keyPrefix = "i"): ReactNode[] {
             key={key}
             href={target.href}
             {...(target.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-            className="text-primary underline"
+            className="text-primary-text underline"
           >
             {label}
           </a>
@@ -302,17 +302,20 @@ export function CreditsModal({ open, onClose, loadCredits }: CreditsModalProps) 
           <a
             href={AUDIO_CREDITS_URL}
             download="CREDITS.md"
-            className="min-h-11 content-center text-primary underline"
+            className="min-h-11 content-center text-primary-text underline"
           >
             {t("about.audio.downloadCredits")}
           </a>
           <a
             href="/legal/THIRD-PARTY-NOTICES.txt"
-            className="min-h-11 content-center text-primary underline"
+            className="min-h-11 content-center text-primary-text underline"
           >
             {t("about.document.thirdPartyNotices")}
           </a>
-          <a href="/legal/LICENSE.txt" className="min-h-11 content-center text-primary underline">
+          <a
+            href="/legal/LICENSE.txt"
+            className="min-h-11 content-center text-primary-text underline"
+          >
             {t("about.document.codeLicense")}
           </a>
         </nav>
@@ -326,7 +329,7 @@ export function CreditsModal({ open, onClose, loadCredits }: CreditsModalProps) 
 /** Footer/admin trigger that opens the credits dialog (focus returns here on close). */
 export function CreditsButton({
   loadCredits,
-  className = "min-h-11 rounded-md px-2 text-label text-primary underline hover:bg-subtle",
+  className = "min-h-11 rounded-md px-2 text-label text-primary-text underline hover:bg-subtle",
 }: {
   loadCredits?: () => Promise<string>;
   /** Trigger styling, so footers can match their link style. */
