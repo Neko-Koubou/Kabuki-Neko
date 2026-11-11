@@ -2131,3 +2131,14 @@
   - `pnpm test:integration --runInBand --runTestsByPath tests/integration/finalization-failures.spec.ts` → 12/12 (sqlite, postgres, mysql)
   - `pnpm test:integration --runInBand --runTestsByPath tests/integration/room-retention.spec.ts` → 18/18
   - API jest room-scheduler 5/5, API typecheck, eslint and prettier clean
+
+## TASK-170 — 2026-11-11T23:47:09+07:00
+
+- **Files**:
+  - `tests/contracts/driver-matrix.spec.ts` (12 single-node DB×state×storage combinations with real engines and the built API; 2 multi-node topologies; 3 invalid multi-node configurations refused; versions + pass/fail evidence JSON)
+  - `tests/contracts/cloud-storage.spec.ts` (independent AWS S3 / R2 / Spaces smoke with operator credentials; missing credentials recorded NOT RUN, skipped, never passed)
+  - `docs/driver-verification.md` (scope, how to run, latest recorded run with engine versions and results)
+- **Verification**:
+  - `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/driver-matrix.spec.ts` → 18/18 (12/12 single-node, 2 multi-node, 3 refusals)
+  - `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/cloud-storage.spec.ts` → 1 passed, 3 skipped; evidence records all three providers as NOT RUN (no credentials supplied). The configured path was self-checked against a throwaway MinIO (not provider evidence).
+  - eslint and prettier clean

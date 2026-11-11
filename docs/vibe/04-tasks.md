@@ -2746,7 +2746,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:integration --runInBand --runTestsByPath tests/integration/finalization-failures.spec.ts` dan `pnpm test:integration --runInBand --runTestsByPath tests/integration/room-retention.spec.ts` real DB queue resumes and no partial/duplicate report across3 engines.
 
-### - [ ] TASK-170: Jalankan parity matrix seluruh adapter
+### - [x] TASK-170: Jalankan parity matrix seluruh adapter
 - **Traceability**: `US-06`, `US-16`, `US-17`, [SA §11.2](03-system-analysis.md#112-implementationqa-coverage-required)
 - **Depends On**: `TASK-169`
 - **Target Files**:
