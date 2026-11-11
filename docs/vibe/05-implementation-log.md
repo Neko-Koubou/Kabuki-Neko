@@ -1721,3 +1721,19 @@
     - auth 3, join 6, player 3, studio 3;
     - studio covers six types, reorder, duplicate, delete, Ctrl+S, refresh, the language switch staying clean, a conflict from another tab with reload, a zero-slide draft saved and reloaded, the M10 guard, and 320/768/1280 layouts without overflow.
   - Web suite 41 files / 394 tests; typecheck, lint, prettier, E2E tsc and build → OK.
+
+## TASK-147 — 2026-11-11T10:58:53+07:00
+
+- **Files**:
+  - `CREATE` `apps/web/src/components/admin/admin-settings-health.tsx`: AdminSettingsHealth, SettingsPanel, HealthPanel, formOf, changedFields, HealthLoader.
+  - `CREATE` `apps/web/src/app/(dashboard)/dashboard/settings/page.tsx`
+  - `CREATE` `apps/web/src/components/admin/admin-settings-health.spec.tsx`: 7 tests.
+- **Notes**:
+  - Superadmin guard: other roles get a permission notice and no request.
+  - Settings PATCH sends only the changed fields with If-Match; a conflict keeps the entries and offers a reload. Default language comes from the installed `/system/locales`.
+  - Storage keeps stale and unavailable distinct from zero. Cleanup goes through M09 with a new Idempotency-Key per batch, and reports partial failures and "more remain".
+  - Health reads 200 and 503 bodies via raw fetch, shows per-service status with check times and read-only drivers, and loads and retries independently.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/web test -- src/components/admin/admin-settings-health.spec.tsx` → 42 files / 401 tests passed.
+  - typecheck, lint, prettier and build → OK.
+  - Chromium check at 1280px light and 360px dark with a route-faked API (stale metrics, degraded 503 health). The duplicate "Settings" heading became "Administration". No overflow.

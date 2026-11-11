@@ -2429,7 +2429,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:e2e -- tests/e2e/studio.spec.ts` create6 types/reorder/duplicate/delete/save/refresh, conflict tab, zero-slide draft,320/768/1280 layouts and language switch dirty.
 
-### - [ ] TASK-147: Bangun settings, health dan cleanup UI
+### - [x] TASK-147: Bangun settings, health dan cleanup UI
 - **Traceability**: `US-02`, `US-15`, `US-16`, `US-20`, `US-21`, [SA §4.4](03-system-analysis.md#44-media-system-et-locales), [Design §4.5](02-design-spec.md#45-admin-pengguna-about--s11s13)
 - **Depends On**: `TASK-146`, `TASK-074`
 - **Target Files**:
