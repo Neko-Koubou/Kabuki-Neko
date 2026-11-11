@@ -2707,7 +2707,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:integration --runInBand --runTestsByPath tests/integration/content-races.spec.ts` dan `pnpm test:integration --runInBand --runTestsByPath tests/integration/media-failures.spec.ts` verify no partial quiz, phantom Media201 or deletion of active refs.
 
-### - [ ] TASK-167: Sediakan fixture Redis Cluster dan failover contracts
+### - [x] TASK-167: Sediakan fixture Redis Cluster dan failover contracts
 - **Traceability**: `US-10`, `US-12`, `US-16`, [SA §6.1](03-system-analysis.md#61-adapter-contract-dan-redis-cluster)
 - **Depends On**: `TASK-166`, `TASK-050`
 - **Target Files**:

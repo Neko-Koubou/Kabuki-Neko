@@ -2057,3 +2057,28 @@
   - `… --runTestsByPath tests/integration/media-failures.spec.ts`: 13/13 passed.
   - `authorization.spec.ts` re-run: 18/18. The existing media.spec MinIO test also passes with the prebuilt image.
   - eslint and prettier: OK.
+
+## TASK-167 — 2026-11-11T22:27:57+07:00
+
+- **Files**:
+  - `CREATE` `docker/docker-compose.test-cluster.yml`: six Redis 7 nodes (3 masters + 3 replicas) with cluster mode, AOF everysec and node timeout 2 s.
+    - Host networking on loopback ports KN_CLUSTER_PORT_0..5, so the announced addresses work from tests.
+    - A one-shot `init` service creates the cluster.
+    - Labels `com.kabuki-neko.purpose=test-cluster`.
+  - `CREATE` `tests/helpers/redis-cluster.ts`: startRedisCluster runs the Compose file under a unique project with free ports, then waits for slots OK and replicas attached with `master_link_status:up`. It exposes cli, masterFor, waitHealthy, kill (SIGKILL), start, wipe, and stop (`down -v` of that project only).
+  - `CREATE` `tests/contracts/redis-cluster.spec.ts`: 6 contracts against the production StateConnections/RedisStateStore.
+  - `MODIFY` `tests/helpers/runtime.ts`: `runtime.redisCluster()` plus deferred cleanups, so cleanup removes only the test's Compose project.
+- **Notes**:
+  - Contracts:
+    - every key of a PIN hashes to one slot; rooms on all three masters run create/join/command/snapshot/release with no CROSSSLOT;
+    - SCRIPT FLUSH on all 6 nodes → NOSCRIPT reload;
+    - two instances racing admitAnswer for one submission → identical results, then ALREADY_ANSWERED, with one stored answer; an old generation → SESSION_REPLACED; a stale skip_timer → STALE_PHASE with revision and lock unchanged;
+    - Socket.io server events cross nodes between two instances' adapters;
+    - master failover: commands fail closed while the slot has no master; the replica is promoted; the client follows (MOVED); the surviving room is one committed state (revision parity matches the lock flag; revision ≤ last ack, so no zero-RPO claim); the old master rejoins;
+    - lost AOF tail: with the replica down and the master's appendonly turned off before the write, a master crash and restart leaves the room absent (null → ROOM_LOST); reads are refused while the slot has no master.
+  - Fixture bug found while debugging: replicas must finish their initial sync before failover tests (otherwise "Disconnected from master for longer than allowed").
+- **Verification**:
+  - `docker compose -f docker/docker-compose.test-cluster.yml config --quiet`: OK.
+  - `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/redis-cluster.spec.ts`: 6/6 passed, and no `test-cluster` containers are left afterwards.
+  - `state-parity.spec.ts` (shares the runtime helper): 22/22 passed.
+  - eslint and prettier: OK.

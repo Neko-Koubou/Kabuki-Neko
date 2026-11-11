@@ -10,6 +10,7 @@ import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { MySqlContainer } from "@testcontainers/mysql";
 import { RedisContainer } from "@testcontainers/redis";
 import { CreateBucketCommand, S3Client } from "@aws-sdk/client-s3";
+import { startRedisCluster, type RedisClusterFixture } from "./redis-cluster";
 
 const marker = ".kabuki-test-owned";
 const prefix = "kabuki-neko-test-";
@@ -48,6 +49,8 @@ export async function createTestRuntime() {
   const directory = await mkdtemp(path.join(tmpdir(), prefix));
   await writeFile(path.join(directory, marker), path.basename(directory), { mode: 0o600 });
   const containers: StartedTestContainer[] = [];
+  /** Extra fixtures (Compose projects) removed by `cleanup`, newest first. */
+  const deferred: (() => Promise<void>)[] = [];
   let disposed = false;
   let cleanupPromise: Promise<void> | undefined;
   const env: Record<string, string> = {
@@ -67,7 +70,10 @@ export async function createTestRuntime() {
     if (cleanupPromise) return cleanupPromise;
     disposed = true;
     cleanupPromise = (async () => {
-      const results = await Promise.allSettled(containers.reverse().map((c) => c.stop()));
+      const results = [
+        ...(await Promise.allSettled(deferred.reverse().map((stop) => stop()))),
+        ...(await Promise.allSettled(containers.reverse().map((c) => c.stop()))),
+      ];
       await removeTestDirectory(directory);
       const errors = results.flatMap((result) =>
         result.status === "rejected" ? [result.reason as unknown] : [],
@@ -115,6 +121,13 @@ export async function createTestRuntime() {
           .start(),
       ),
     redis: () => start(() => new RedisContainer("redis:7-alpine").start()),
+    /** Six-node Redis 7 Cluster from `docker/docker-compose.test-cluster.yml`, removed by cleanup. */
+    redisCluster: async (): Promise<RedisClusterFixture> => {
+      if (disposed) throw new Error("Test runtime already disposed");
+      const cluster = await startRedisCluster();
+      deferred.push(() => cluster.stop());
+      return cluster;
+    },
     minio: async () => {
       const accessKeyId = `test${randomBytes(8).toString("hex")}`;
       const secretAccessKey = randomBytes(32).toString("hex");

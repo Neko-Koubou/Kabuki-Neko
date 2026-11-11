@@ -1,0 +1,210 @@
+# Isolated Redis 7 Cluster for contract tests only (SA §6.1; TASK-167). Never used by the app.
+#
+# Six nodes (three masters, three replicas) with cluster mode, append-only files and a short
+# node timeout so failover happens within seconds. Nodes use host networking on loopback ports
+# (KN_CLUSTER_PORT_0..5, defaults 17000-17005), so the test process reaches every node at the same
+# address the cluster announces; nothing listens on other interfaces. The one-shot `init` service
+# creates the cluster once all nodes are healthy.
+#
+# Tests start it with a unique project name and remove exactly that project afterwards:
+#   docker compose -p <project> -f docker/docker-compose.test-cluster.yml up -d node-0 ... node-5
+#   docker compose -p <project> -f docker/docker-compose.test-cluster.yml run --rm init
+#   docker compose -p <project> -f docker/docker-compose.test-cluster.yml down -v --remove-orphans
+# Durability is AOF everysec with asynchronous replication: a failover can lose the newest
+# acknowledged writes. The contract tests check atomicity of what survives; they make no
+# zero-RPO claim.
+
+x-node: &node
+  image: redis:7-alpine
+  network_mode: host
+  restart: "no"
+  labels:
+    com.kabuki-neko.purpose: test-cluster
+
+services:
+  node-0:
+    <<: *node
+    command:
+      - redis-server
+      - --port
+      - "${KN_CLUSTER_PORT_0:-17000}"
+      - --bind
+      - 127.0.0.1
+      - --protected-mode
+      - "no"
+      - --cluster-enabled
+      - "yes"
+      - --cluster-config-file
+      - nodes-0.conf
+      - --cluster-node-timeout
+      - "2000"
+      - --cluster-announce-ip
+      - 127.0.0.1
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "${KN_CLUSTER_PORT_0:-17000}", "ping"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+  node-1:
+    <<: *node
+    command:
+      - redis-server
+      - --port
+      - "${KN_CLUSTER_PORT_1:-17001}"
+      - --bind
+      - 127.0.0.1
+      - --protected-mode
+      - "no"
+      - --cluster-enabled
+      - "yes"
+      - --cluster-config-file
+      - nodes-1.conf
+      - --cluster-node-timeout
+      - "2000"
+      - --cluster-announce-ip
+      - 127.0.0.1
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "${KN_CLUSTER_PORT_1:-17001}", "ping"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+  node-2:
+    <<: *node
+    command:
+      - redis-server
+      - --port
+      - "${KN_CLUSTER_PORT_2:-17002}"
+      - --bind
+      - 127.0.0.1
+      - --protected-mode
+      - "no"
+      - --cluster-enabled
+      - "yes"
+      - --cluster-config-file
+      - nodes-2.conf
+      - --cluster-node-timeout
+      - "2000"
+      - --cluster-announce-ip
+      - 127.0.0.1
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "${KN_CLUSTER_PORT_2:-17002}", "ping"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+  node-3:
+    <<: *node
+    command:
+      - redis-server
+      - --port
+      - "${KN_CLUSTER_PORT_3:-17003}"
+      - --bind
+      - 127.0.0.1
+      - --protected-mode
+      - "no"
+      - --cluster-enabled
+      - "yes"
+      - --cluster-config-file
+      - nodes-3.conf
+      - --cluster-node-timeout
+      - "2000"
+      - --cluster-announce-ip
+      - 127.0.0.1
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "${KN_CLUSTER_PORT_3:-17003}", "ping"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+  node-4:
+    <<: *node
+    command:
+      - redis-server
+      - --port
+      - "${KN_CLUSTER_PORT_4:-17004}"
+      - --bind
+      - 127.0.0.1
+      - --protected-mode
+      - "no"
+      - --cluster-enabled
+      - "yes"
+      - --cluster-config-file
+      - nodes-4.conf
+      - --cluster-node-timeout
+      - "2000"
+      - --cluster-announce-ip
+      - 127.0.0.1
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "${KN_CLUSTER_PORT_4:-17004}", "ping"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+  node-5:
+    <<: *node
+    command:
+      - redis-server
+      - --port
+      - "${KN_CLUSTER_PORT_5:-17005}"
+      - --bind
+      - 127.0.0.1
+      - --protected-mode
+      - "no"
+      - --cluster-enabled
+      - "yes"
+      - --cluster-config-file
+      - nodes-5.conf
+      - --cluster-node-timeout
+      - "2000"
+      - --cluster-announce-ip
+      - 127.0.0.1
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "${KN_CLUSTER_PORT_5:-17005}", "ping"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+  init:
+    image: redis:7-alpine
+    network_mode: host
+    restart: "no"
+    labels:
+      com.kabuki-neko.purpose: test-cluster
+    depends_on:
+      node-0:
+        condition: service_healthy
+      node-1:
+        condition: service_healthy
+      node-2:
+        condition: service_healthy
+      node-3:
+        condition: service_healthy
+      node-4:
+        condition: service_healthy
+      node-5:
+        condition: service_healthy
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        redis-cli --cluster create 127.0.0.1:${KN_CLUSTER_PORT_0:-17000} 127.0.0.1:${KN_CLUSTER_PORT_1:-17001} 127.0.0.1:${KN_CLUSTER_PORT_2:-17002} 127.0.0.1:${KN_CLUSTER_PORT_3:-17003} 127.0.0.1:${KN_CLUSTER_PORT_4:-17004} 127.0.0.1:${KN_CLUSTER_PORT_5:-17005}
+        --cluster-replicas 1 --cluster-yes
