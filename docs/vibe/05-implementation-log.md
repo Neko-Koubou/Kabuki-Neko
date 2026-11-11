@@ -1791,3 +1791,27 @@
   - `pnpm --filter @kabuki-neko/web test -- src/components/host/host-stage-lobby.spec.tsx` → 45 files / 416 tests passed.
   - typecheck, lint, prettier and build → OK.
   - Chromium probe (deleted) at 1280px light and 360px dark. No overflow.
+
+## TASK-159 — 2026-11-11T11:20:19+07:00
+
+- **Files**:
+  - `CREATE` `apps/web/src/components/host/question-projector.tsx`: QuestionProjector, LONG_PROMPT.
+  - `CREATE` `apps/web/src/components/host/host-phase-controls.tsx`: HostPhaseControls, HostPhaseCommands, nextLabelKey.
+  - `CREATE` `apps/web/src/components/host/question-projector.spec.tsx`: 5 tests.
+- **Notes**:
+  - The projector renders countdown, preview and answering from the host sync.
+    - Countdown is server-synced.
+    - Preview shows the full prompt only.
+    - Answering shows the timer, the answer count, public media (with a failure notice that does not block anything) and options with shapes and colours.
+    - No correct key is shown before the reveal.
+  - Prompts over 160 characters get a focusable scroll region with an Open/Close toggle.
+  - Layout is 16:9 at 1280 and 1920; it becomes vertical on mobile.
+  - Controls cover Start, Skip, Next and End.
+    - They follow capabilities and run one pending command at a time (a ref guard) with expectedPhaseVersion.
+    - The phase is never changed optimistically.
+    - The Next label comes from server state: leaderboard, next question or podium.
+    - End is confirmed through M09, and the controls lock while offline.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/web test -- src/components/host/question-projector.spec.tsx` → 46 files / 421 tests passed.
+  - typecheck, lint, prettier and build → OK.
+  - Chromium probe (deleted) at 1280 and 1920 dark, and at 360 light: no overflow.

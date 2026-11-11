@@ -2588,7 +2588,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/host/host-stage-lobby.spec.tsx` five states,0/200 roster, touch/keyboard kick, copy unavailable and lock failure rollback.
 
-### - [ ] TASK-159: Bangun panggung pertanyaan dan kontrol fase host
+### - [x] TASK-159: Bangun panggung pertanyaan dan kontrol fase host
 - **Traceability**: `US-07`, `US-10`, `US-13`, `US-18`, `US-21`, [SA §5.5](03-system-analysis.md#55-transisi-timing-scoring-ranking), [Design §4.7](02-design-spec.md#47-panggung-host--s16)
 - **Depends On**: `TASK-158`
 - **Target Files**:
