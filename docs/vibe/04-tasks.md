@@ -2442,7 +2442,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/admin/admin-settings-health.spec.tsx` five states per panel, no default placeholder saved, partial200 vs503, admin guard and stale revision.
 
-### - [ ] TASK-148: Bangun pengguna dan undangan UI
+### - [x] TASK-148: Bangun pengguna dan undangan UI
 - **Traceability**: `US-01`, `US-02`, `US-15`, `US-21`, [SA §4.2](03-system-analysis.md#42-setup-auth-users-dan-undangan), [Design §4.5](02-design-spec.md#45-admin-pengguna-about--s11s13)
 - **Depends On**: `TASK-147`, `TASK-060`
 - **Target Files**:

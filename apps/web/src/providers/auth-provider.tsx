@@ -68,6 +68,8 @@ export interface AuthContextValue {
   signOut: () => Promise<void>;
   /** Current in-memory access token (e.g. for the game socket handshake); never stored. */
   getAccessToken: () => string | null;
+  /** Reloads `GET /auth/me` (e.g. after a 403 changed what the user may do); true when signed in. */
+  reloadPrincipal: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -344,8 +346,19 @@ export function AuthProvider({
       acceptSession,
       signOut,
       getAccessToken,
+      reloadPrincipal: loadPrincipal,
     }),
-    [status, user, api, sessionController, ensureSession, acceptSession, signOut, getAccessToken],
+    [
+      status,
+      user,
+      api,
+      sessionController,
+      ensureSession,
+      acceptSession,
+      signOut,
+      getAccessToken,
+      loadPrincipal,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

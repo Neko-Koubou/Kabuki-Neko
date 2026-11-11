@@ -1737,3 +1737,21 @@
   - `pnpm --filter @kabuki-neko/web test -- src/components/admin/admin-settings-health.spec.tsx` → 42 files / 401 tests passed.
   - typecheck, lint, prettier and build → OK.
   - Chromium check at 1280px light and 360px dark with a route-faked API (stale metrics, degraded 503 health). The duplicate "Settings" heading became "Administration". No overflow.
+
+## TASK-148 — 2026-11-11T11:05:29+07:00
+
+- **Files**:
+  - `CREATE` `apps/web/src/components/admin/user-invites.tsx`: UserInvites, UsersPanel, InvitationsPanel, InviteDialog, Pager, ClipboardWriter.
+  - `CREATE` `apps/web/src/app/(dashboard)/dashboard/users/page.tsx`
+  - `CREATE` `apps/web/src/components/admin/user-invites.spec.tsx`: 6 tests.
+  - `MODIFY` `apps/web/src/providers/auth-provider.tsx`: the context exposes `reloadPrincipal` (the existing loadPrincipal), needed for "403 refetch principal".
+- **Notes**:
+  - Superadmin guard.
+  - Users tab: paged at 20, with search and role/status filters (an explicit "all" value, fixed after a screenshot showed blank selects).
+  - Role and activation changes go through M09 with If-Match. LAST_SUPERADMIN is shown as blocked; a 403 reloads the principal and the list. Admins can't deactivate themselves.
+  - Invitations tab: status filter, status badges, revoke for active codes only (M09).
+  - M11: 1–720 h (default 168) with an Idempotency-Key. The one-time code is shown only in the dialog (read-only, select on focus). Copy has copied/failed/unavailable states with manual copy. A lost or replayed response says the outcome is unknown and refreshes the list. The code is forgotten on close, and nothing is emailed.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/web test -- src/components/admin/user-invites.spec.tsx` → 43 files / 407 tests passed.
+  - typecheck, lint, prettier and build → OK.
+  - Chromium check with a route-faked API: users at 1280px light and 360px dark, invitations list and code dialog at 360px. No overflow.
