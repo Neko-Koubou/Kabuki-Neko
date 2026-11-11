@@ -20,6 +20,7 @@
  *   component remounts never reset it.
  */
 import { createStore, useStore, type StoreApi } from "zustand";
+import { GAME_TIMING } from "@kabuki-neko/shared/constants/game";
 import type { Answer } from "@kabuki-neko/shared/schemas/question.schema";
 import type {
   HostRoomSync,
@@ -129,6 +130,23 @@ function patch(snapshot: RoomSnapshot, changes: Record<string, unknown>): RoomSn
   return { ...snapshot, ...changes } as RoomSnapshot;
 }
 
+/**
+ * Timing of a phase whose push carries no timing (reveal, leaderboard, podium, finished). The
+ * server starts these phases when it publishes them, so the envelope's `serverTime` is the phase
+ * start, as `room:sync` would report it (within the publish latency). Keeping the previous
+ * phase's timing would date the new phase seconds back, so cues and animations measured from
+ * `phaseStartedAt` would be treated as already past and skipped.
+ */
+function phaseTiming(serverTime: number, durationMs: number | null): RoomSnapshot["timing"] {
+  return {
+    phaseStartedAt: serverTime,
+    phaseEndsAt: durationMs === null ? null : serverTime + durationMs,
+    questionStartedAt: null,
+    inputClosesAt: null,
+    acceptanceClosesAt: null,
+  };
+}
+
 /** Applies a validated event payload to the snapshot; returns null for unknown events. */
 function reduce(
   snapshot: RoomSnapshot,
@@ -226,6 +244,7 @@ function reduce(
       return patch(snapshot, {
         ...base,
         phase: "ANSWER_REVEAL",
+        timing: phaseTiming(envelope.serverTime, null),
         reveal: data.reveal,
         ...(snapshot.role === "player" && result
           ? {
@@ -245,6 +264,7 @@ function reduce(
       return patch(snapshot, {
         ...base,
         phase: "LEADERBOARD",
+        timing: phaseTiming(envelope.serverTime, null),
         leaderboard,
         ...(snapshot.role === "player" && selfRank !== undefined
           ? { self: { ...snapshot.self, rank: selfRank } }
@@ -255,6 +275,7 @@ function reduce(
       return patch(snapshot, {
         ...base,
         phase: "PODIUM",
+        timing: phaseTiming(envelope.serverTime, GAME_TIMING.podiumMs),
         podium: data.podium,
         ...(snapshot.role === "host" ? { finalization: data.finalization } : {}),
         ...(snapshot.role === "player" && data.result
@@ -262,7 +283,12 @@ function reduce(
           : {}),
       });
     case "game:finished":
-      return patch(snapshot, { ...base, phase: "FINISHED", endReason: data.endReason });
+      return patch(snapshot, {
+        ...base,
+        phase: "FINISHED",
+        timing: phaseTiming(envelope.serverTime, null),
+        endReason: data.endReason,
+      });
     case "report:status_changed":
       return snapshot.role === "host"
         ? patch(snapshot, { ...base, finalization: data })

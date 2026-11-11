@@ -1852,3 +1852,35 @@
     - a finalization failure (status frames rewritten to failed) followed by a real retry that returns ready;
     - the 404, sign-in redirect and terminal fallback.
   - Full E2E suite: 18/18 passed. Web unit tests: 46 files / 421 tests passed. typecheck, lint, prettier, e2e tsc and the production build: OK.
+
+## TASK-160A — 2026-11-11T16:26:06+07:00
+
+- **Files**:
+  - `CREATE` `tests/helpers/audio-observer.ts`: installAudioObserver, forceMp3, readAudioLog, anythingPlaying, sfxOf, sfxCalls, loopIntervals, maxLoopOverlap, loadErrors, SFX_FILES.
+  - `CREATE` `tests/e2e/audio.spec.ts`: 3 E2E tests.
+  - `MODIFY` `apps/web/src/stores/game.store.ts` (+ spec): bug found by the suite.
+    - Reveal, leaderboard, podium and finished pushes carry no timing, and the reducer kept the previous phase's timing. Their `phaseStartedAt` was therefore seconds old, so the reveal gong, revealBar, answerCorrect/Wrong, podium spotlights and the podium animation were skipped as "too late".
+    - Timing is now derived from the envelope's serverTime, exactly as the server stores it (podium +8000 ms).
+  - `MODIFY` `apps/web/src/lib/audio-manager.ts` (+ spec): two bugs.
+    - Howler emits `loaderror` for a Howl that is unloaded while decoding. The manager then built a stray MP3 replacement and could show a false "Sound couldn't play". Disposed handles are now ignored.
+    - A cue requested before any screen set the manifest (join page dice / own join) is now played by lazily loading the manifest once.
+  - `MODIFY` `apps/web/src/components/player/avatar-customizer.tsx`: the player's own new join plays one nekoPop (deduplicated per player id). This signal was missing.
+  - `MODIFY` `playwright.config.ts`: the auth spec runs first as project `first-run` (it owns first-run setup); every other spec depends on it, whatever its file name.
+- **Notes**:
+  - The real Howler is observed through a `window.Howl` trap with a prototype wrapper. Nothing is faked: codec choice, decoding and playback come from the browser.
+  - `play(id)` replays by Howler are kept apart from the app's `play()`. Events after unload are ignored for loop intervals and load errors.
+  - Browser evidence:
+    - Run: Chromium only.
+    - Not run: Firefox and WebKit, which are not installed in this environment (installing other browsers is not allowed here).
+    - Not run: manual iOS autoplay and gapless-loop observations, which need devices.
+- **Verification**:
+  - `pnpm test:e2e -- tests/e2e/audio.spec.ts`: 3 passed.
+    - All 40 manifest sources return 200.
+    - Gesture unlock; M mute stored and gain 0; random lobby pick plus Next track crossfade; burst join pops at least 140 ms apart.
+    - Role matrix covers all 10 SFX:
+      - host: hyoshigi ×1, gong ×5, revealBar ×5 at about 450 ms, tick ×5, rate 1.22 once then reset to 1, spotlights;
+      - player: correct ×4 (including the podium rank), streak ×1, wrong ×1, no POLL feedback, no BGM or ticks.
+    - Loop sequence lobby → sprint → groove → buildup → victory (victory once). Loop overlap stays within the 800 ms budget; no real load errors.
+    - Teardown leaves nothing playing and no late cues.
+    - With WebM forced off, the specific `matcha` track and the SFX load as MP3.
+  - Full E2E suite: 21/21 passed. Web unit tests: 46 files / 424 tests passed. typecheck, lint, prettier and e2e tsc/eslint: OK.

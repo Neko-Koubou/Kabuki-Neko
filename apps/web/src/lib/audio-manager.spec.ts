@@ -3,7 +3,7 @@
  * composition and mute, one steady BGM with no orphan loops, a crossfade capped at 500 ms that is
  * cleaned up on completion and when interrupted, rate reset per track, throttled/deduplicated SFX
  * bursts, blocked autoplay with unlock/retry, MP3 fallback after a decode error then an error
- * status, stale async work after stop, exclusive previews, stop/unload of everything, and
+ * status, no fallback or error for a late load error of an unloaded track, stale async work after stop, a lazily loaded manifest for early cues, exclusive previews, stop/unload of everything, and
  * StrictMode/route lease ownership.
  */
 import { describe, expect, it, vi } from "vitest";
@@ -231,6 +231,25 @@ describe("SFX", () => {
     expect(await manager.playSfx("timeupGong", { eventId: "reveal-q1" })).toBe(true);
     expect(await manager.playSfx("timeupGong", { eventId: "reveal-q1" })).toBe(false);
   });
+
+  it("loads the manifest once for a cue requested before any screen set it", async () => {
+    const { engine } = setup();
+    const loadManifest = vi.fn(async () => manifest());
+    const manager = new AudioManager({ loadHowler: async () => engine, loadManifest });
+    const [first, second] = await Promise.all([
+      manager.playSfx("nekoPop", { eventId: "ownJoin:a" }),
+      manager.playSfx("answerCorrect"),
+    ]);
+    expect(first).toBe(true);
+    expect(second).toBe(true);
+    expect(loadManifest).toHaveBeenCalledTimes(1);
+
+    const missing = new AudioManager({
+      loadHowler: async () => engine,
+      loadManifest: async () => null,
+    });
+    expect(await missing.playSfx("nekoPop")).toBe(false);
+  });
 });
 
 describe("errors and lifecycle", () => {
@@ -260,6 +279,17 @@ describe("errors and lifecycle", () => {
     expect(playing()).toEqual([howls[1]]);
     howls[1]?.emit("loaderror");
     expect(manager.getStatus()).toBe("error");
+  });
+
+  it("ignores the late load error Howler reports for a track unloaded while decoding", async () => {
+    const { manager, howls, playing } = setup();
+    await manager.playBgm({ kind: "leaderboard" });
+    await manager.playBgm({ kind: "thinking", variant: "sprint" });
+    expect(howls[0]?.unloaded).toBe(true);
+    howls[0]?.emit("loaderror"); // decode finished after unload
+    expect(howls).toHaveLength(2); // no MP3 replacement for the departed track
+    expect(playing()).toEqual([howls[1]]);
+    expect(manager.getStatus()).not.toBe("error");
   });
 
   it("previews exclusively and stops previews for live music", async () => {

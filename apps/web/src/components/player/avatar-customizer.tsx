@@ -8,6 +8,8 @@
  *   new local seed and plays the "nekoPop" cue through the audio manager singleton (the user
  *   gesture unlocks audio; presses are throttled to one cue per 150 ms; no new sound object per
  *   render).
+ * - A successful new join (not a recovery) plays one "nekoPop" for the player's own join,
+ *   deduplicated per player id.
  * - Nickname: up to 15 user-perceived characters (shared `nicknameSchema`, any script or emoji).
  *   In rooms with friendly nicknames there is no free field: the server picks a safe name
  *   (`player:request_friendly_name`) and returns a ticket that the join sends back.
@@ -58,7 +60,7 @@ export const DICE_SOUND_THROTTLE_MS = 150;
 
 /** Audio surface used for the dice cue (injectable in tests). */
 export interface DiceAudio {
-  playSfx(id: "nekoPop"): Promise<boolean>;
+  playSfx(id: "nekoPop", options?: { eventId?: string }): Promise<boolean>;
   unlock(): Promise<boolean>;
 }
 
@@ -318,6 +320,15 @@ function JoinCustomizer({
         storage === undefined ? undefined : storage,
       );
       requestId.current = crypto.randomUUID();
+      // Own successful (new) join: one nekoPop, deduplicated per player.
+      if (!result.data.recovered) {
+        const player = audio ?? getAudioManager();
+        void player
+          .unlock()
+          .catch(() => false)
+          .then(() => player.playSfx("nekoPop", { eventId: `ownJoin:${result.data.playerId}` }))
+          .catch(() => false);
+      }
       onJoined(result.data);
       return;
     }

@@ -15,14 +15,22 @@
  * - SFX: one cached Howl per cue; duplicate `eventId`s are ignored and a per-cue throttle (nekoPop
  *   150 ms) uses a monotonic clock.
  * - Sources are `[webm, mp3]`; a load/decode error retries with the MP3 alone once, then reports
- *   `error` while the game continues. A blocked autoplay reports `blocked`; `unlock()` (after a
+ *   `error` while the game continues. A handle the manager already stopped and unloaded is
+ *   ignored: Howler reports a decode that completes after `unload()` as a load error, which must
+ *   neither start a replacement for a track that is gone nor show a false error. A blocked autoplay reports `blocked`; `unlock()` (after a
  *   user gesture) resumes the audio context and restarts the current BGM.
  * - Ownership: `acquire()` returns a lease; only the current lease's `release()` stops audio, so a
  *   stale cleanup from StrictMode or a previous route cannot silence the new owner.
  * - Preview (studio) is exclusive: a new preview stops the previous one and live BGM stops it.
+ * - A one-shot cue requested before any screen set the manifest (the join page's dice and own-join
+ *   pop) loads the generated manifest once; a manifest set by a screen meanwhile wins.
  */
-import { SFX_DEFINITIONS, type SfxId } from "@kabuki-neko/shared/constants/audio";
-import type { AudioManifest } from "@kabuki-neko/shared/schemas/audio.schema";
+import {
+  AUDIO_MANIFEST_URL,
+  SFX_DEFINITIONS,
+  type SfxId,
+} from "@kabuki-neko/shared/constants/audio";
+import { audioManifestSchema, type AudioManifest } from "@kabuki-neko/shared/schemas/audio.schema";
 
 /** Minimal Howl surface used by the manager. */
 export interface HowlLike {
@@ -107,6 +115,22 @@ export interface AudioManagerOptions {
   loadHowler?: () => Promise<HowlerLike>;
   /** Monotonic clock in ms. */
   now?: () => number;
+  /**
+   * Loads the manifest when a one-shot cue is requested before any screen set it (e.g. the join
+   * page). Defaults to `GET /audio/audio-manifest.json`; resolves null when unavailable.
+   */
+  loadManifest?: () => Promise<AudioManifest | null>;
+}
+
+/** Fetches and validates the generated audio manifest; null when missing or invalid. */
+async function fetchManifest(): Promise<AudioManifest | null> {
+  try {
+    const response = await fetch(AUDIO_MANIFEST_URL, { cache: "force-cache" });
+    const parsed = audioManifestSchema.safeParse(await response.json());
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The audio manager (use {@link getAudioManager} for the app singleton). */
@@ -114,6 +138,8 @@ export class AudioManager {
   private engine: Promise<HowlerLike> | null = null;
   private readonly loadEngine: () => Promise<HowlerLike>;
   private readonly now: () => number;
+  private readonly loadManifest: () => Promise<AudioManifest | null>;
+  private manifestRequest: Promise<AudioManifest | null> | null = null;
   private manifest: AudioManifest | null = null;
   private prefs: AudioGainPreferences = {
     isMuted: false,
@@ -127,6 +153,8 @@ export class AudioManager {
   private readonly sfx = new Map<SfxId, HowlLike>();
   private readonly lastPlayed = new Map<SfxId, number>();
   private readonly seenEvents = new Set<string>();
+  /** Handles this manager stopped and unloaded (their late load errors are not failures). */
+  private readonly disposed = new WeakSet<HowlLike>();
   private generation = 0;
   private leaseCounter = 0;
   private currentLease: number | null = null;
@@ -136,6 +164,19 @@ export class AudioManager {
   constructor(options: AudioManagerOptions = {}) {
     this.loadEngine = options.loadHowler ?? loadHowler;
     this.now = options.now ?? (() => performance.now());
+    this.loadManifest = options.loadManifest ?? fetchManifest;
+  }
+
+  /** The manifest, loading it once when no screen has set it yet. */
+  private async ensureManifest(): Promise<AudioManifest | null> {
+    if (this.manifest) return this.manifest;
+    this.manifestRequest ??= this.loadManifest().then((loaded) => {
+      // A manifest set meanwhile by a screen wins.
+      this.manifest ??= loaded;
+      if (!loaded) this.manifestRequest = null; // allow a later retry
+      return this.manifest;
+    });
+    return this.manifestRequest;
   }
 
   /** Lazily loads Howler once. */
@@ -161,6 +202,7 @@ export class AudioManager {
   /** Stops and unloads a handle, ignoring errors from an already-unloaded Howl. */
   private dispose(howl: HowlLike | null | undefined) {
     if (!howl) return;
+    this.disposed.add(howl);
     try {
       howl.stop();
       howl.unload();
@@ -188,11 +230,15 @@ export class AudioManager {
     const howl = engine.createHowl({ src: [...src], loop, volume, preload: true });
     howl.on("playerror", () => this.setStatus("blocked"));
     howl.on("loaderror", () => {
+      // Howler reports a decode that finishes after unload as a load error: not a failure.
+      if (this.disposed.has(howl)) return;
       const mp3 = src.filter((url) => url.endsWith(".mp3"));
       if (src.length > 1 && mp3.length === 1) {
         const replacement = engine.createHowl({ src: mp3, loop, volume, preload: true });
         replacement.on("playerror", () => this.setStatus("blocked"));
-        replacement.on("loaderror", () => this.setStatus("error"));
+        replacement.on("loaderror", () => {
+          if (!this.disposed.has(replacement)) this.setStatus("error");
+        });
         this.dispose(howl);
         onReplace(replacement);
       } else this.setStatus("error");
@@ -332,7 +378,7 @@ export class AudioManager {
 
   /** Plays a one-shot SFX; returns false when deduplicated, throttled or unavailable. */
   async playSfx(id: SfxId, options: { eventId?: string; volume?: number } = {}): Promise<boolean> {
-    const descriptor = this.manifest?.sfx[id];
+    const descriptor = (this.manifest ?? (await this.ensureManifest()))?.sfx[id];
     if (!descriptor) return false;
     if (options.eventId !== undefined) {
       if (this.seenEvents.has(options.eventId)) return false;

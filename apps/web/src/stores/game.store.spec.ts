@@ -3,7 +3,7 @@
  * phases, out-of-order revisions within a phase), distinct events and role projections sharing one
  * revision, a new session that reuses the PIN (fences and drafts reset, old-session events dropped),
  * accepted-answer recovery after reconnect (locked, never re-sent) and the retry window, heartbeat
- * driven sync intent, terminal events, no optimistic phase/score, and a store that survives React
+ * driven sync intent, phase timing derived from timing-less pushes, terminal events, no optimistic phase/score, and a store that survives React
  * remounts and locale providers. Fixtures are validated with the shared room schemas.
  */
 import { act, screen } from "@testing-library/react";
@@ -295,6 +295,45 @@ describe("event fencing", () => {
         push({ topPlayers: [], biggestClimber: null, selfRank: 2 }, 13, 5),
       );
     expect((player.getState().snapshot as PlayerRoomSync).self.rank).toBe(2);
+  });
+
+  it("dates reveal, leaderboard, podium and finished from the push, not the previous phase", () => {
+    const host = createGameStore();
+    host.getState().applySync(hostSnapshot(10, 3));
+    const answeringStart = host.getState().snapshot?.timing.phaseStartedAt;
+    host.getState().applyEvent("game:answer_reveal", push({ reveal }, 12, 4));
+    expect(host.getState().snapshot?.timing).toEqual({
+      phaseStartedAt: T0 + 12,
+      phaseEndsAt: null,
+      questionStartedAt: null,
+      inputClosesAt: null,
+      acceptanceClosesAt: null,
+    });
+    expect(host.getState().snapshot?.timing.phaseStartedAt).not.toBe(answeringStart);
+    host
+      .getState()
+      .applyEvent("game:leaderboard", push({ topPlayers: [], biggestClimber: null }, 13, 5));
+    expect(host.getState().snapshot?.timing.phaseStartedAt).toBe(T0 + 13);
+    const finalization = {
+      sessionId: SESSION_A,
+      status: "pending",
+      reportId: null,
+      retryable: true,
+      errorCode: null,
+      updatedAt: T0 + 14,
+    };
+    host
+      .getState()
+      .applyEvent("game:podium", push({ podium: [], finalization, reportId: null }, 14, 6));
+    expect(host.getState().snapshot?.timing).toMatchObject({
+      phaseStartedAt: T0 + 14,
+      phaseEndsAt: T0 + 14 + GAME_TIMING.podiumMs,
+    });
+    host.getState().applyEvent("game:finished", push({ endReason: "COMPLETED" }, 15, 7));
+    expect(host.getState().snapshot?.timing).toMatchObject({
+      phaseStartedAt: T0 + 15,
+      phaseEndsAt: null,
+    });
   });
 });
 

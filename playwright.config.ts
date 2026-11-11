@@ -1,7 +1,8 @@
 /**
  * Playwright E2E configuration (00-project-context §2; TASK-135 wiring).
  *
- * - Chromium, one worker, specs in `tests/e2e`.
+ * - Chromium, one worker, specs in `tests/e2e`. The auth spec owns first-run setup, so it runs
+ *   first as the `first-run` project and every other spec depends on it.
  * - Two servers on fixed test ports, both bound to 127.0.0.1:
  *   - the API (dependencies + API build, then `start`) on 43101;
  *   - the web app (`next build`, then `next start`) on 43100. The production build is what
@@ -52,7 +53,17 @@ export default (async () => {
       screenshot: "only-on-failure",
       ...(executablePath ? { launchOptions: { executablePath } } : {}),
     },
-    projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+    // First-run setup belongs to the auth spec: it needs an uninitialized instance, so it runs as
+    // a dependency before every other spec (whatever their file names sort as).
+    projects: [
+      { name: "first-run", testMatch: "**/auth.spec.ts", use: { ...devices["Desktop Chrome"] } },
+      {
+        name: "chromium",
+        testIgnore: "**/auth.spec.ts",
+        dependencies: ["first-run"],
+        use: { ...devices["Desktop Chrome"] },
+      },
+    ],
     webServer: [
       {
         command:

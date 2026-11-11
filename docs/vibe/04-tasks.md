@@ -2616,7 +2616,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:e2e -- tests/e2e/host.spec.ts` start→skip→next→podium, reconnect, early end empty lobby, finalization DB failure/retry; five states/no skipped question on duplicate next.
 
-### - [ ] TASK-160A: Verifikasi choreography dan fallback audio di browser
+### - [x] TASK-160A: Verifikasi choreography dan fallback audio di browser
 - **Traceability**: `US-07`, `US-13`, `US-18`, `US-19`, `US-21`, [Audio revision](audio-engine-revision.md); instruksi pengguna 2026-10-31.
 - **Depends On**: `TASK-160`, `TASK-130C`
 - **Target Files**:
