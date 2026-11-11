@@ -1695,3 +1695,29 @@
   - `pnpm --filter @kabuki-neko/web test -- src/components/studio/question-properties.spec.tsx` → 41 files / 394 tests passed.
   - typecheck, lint, prettier and build → OK.
   - Chromium probe (deleted): image at 360px light, and YouTube with an invalid range, incompatible effect and caption at 360px dark. Duplicate help/error text was removed after the check. No overflow.
+
+## TASK-146 — 2026-11-11T10:53:13+07:00
+
+- **Files**:
+  - `CREATE` `apps/web/src/components/studio/studio-editor.tsx`: StudioEditor, StudioWorkspace, StudioRoute, useStudioLayout, persistQuiz.
+  - `CREATE` `apps/web/src/app/(dashboard)/studio/[quizId]/page.tsx`: UUID check, localized title, DashboardShell (session gate).
+  - `CREATE` `tests/e2e/studio.spec.ts`: 3 tests.
+  - Supporting edits, recorded because they sit outside the target files:
+    - `studio.store.ts`: MAX_QUESTIONS uses QUIZ_LIMITS.questions (200) instead of a hard-coded 100.
+    - `media-picker.tsx`: the question selection carries the library `media` record, for the properties preview.
+    - `question-fields.tsx`: typeChangeLosesData no longer treats template-filled blanks as a loss, so a blank slide changes type without M09; spec updated.
+    - `auth-provider.tsx`: `/studio` is an allowed returnTo prefix.
+- **Notes**:
+  - Access gate: 404/403 show the fixed unavailable message; a read-only quiz shows a notice with a link to its detail.
+  - Layouts: desktop ≥1024 rail 224 | canvas | properties 288; tablet with a slides drawer (ModalSheet); mobile with Slides/Editor/Properties tabs. All panels are views of one store.
+  - Explicit save (button or Ctrl/Cmd+S) as a bulk PUT with If-Match. Status: unsaved, saving, "Saved at", all saved or failed.
+  - A 409 keeps the draft, with Reload saved version or Keep my draft (rebase).
+  - M10 guard plus beforeunload.
+  - Host only when clean, saved, playable and capable; it opens M06 and then /host/:sessionId.
+  - Media picks and saves update the local media map. The project has no shared query cache, so pages refetch on mount.
+  - The header title gets a minimum basis, fixed after 320/768 screenshots showed it squeezed.
+- **Verification**:
+  - `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium pnpm test:e2e` → 15/15 passed:
+    - auth 3, join 6, player 3, studio 3;
+    - studio covers six types, reorder, duplicate, delete, Ctrl+S, refresh, the language switch staying clean, a conflict from another tab with reload, a zero-slide draft saved and reloaded, the M10 guard, and 320/768/1280 layouts without overflow.
+  - Web suite 41 files / 394 tests; typecheck, lint, prettier, E2E tsc and build → OK.

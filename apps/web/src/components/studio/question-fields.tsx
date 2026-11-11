@@ -159,7 +159,10 @@ export function convertQuestionType(
   } as Question;
 }
 
-/** True when converting to `type` would drop any entered text or change any key. */
+/**
+ * True when converting to `type` would lose something the creator entered: a non-empty text
+ * removed or replaced, or a key removed. Blank options filled from a template are not a loss.
+ */
 export function typeChangeLosesData(
   question: Question,
   type: QuestionType,
@@ -167,10 +170,13 @@ export function typeChangeLosesData(
 ): boolean {
   const converted = convertQuestionType(question, type, labels);
   const after = new Map(converted.options.map((option) => [option.id, option]));
+  const keyed = question.type !== "TYPE_ANSWER" && question.type !== "ORDER_PUZZLE";
   return question.options.some((option) => {
     const kept = after.get(option.id);
-    if (!kept) return option.optionText.trim() !== "" || option.isCorrect;
-    return kept.optionText !== option.optionText || kept.isCorrect !== option.isCorrect;
+    const hadText = option.optionText.trim() !== "";
+    const hadKey = keyed && option.isCorrect;
+    if (!kept) return hadText || hadKey;
+    return (hadText && kept.optionText !== option.optionText) || (hadKey && !kept.isCorrect);
   });
 }
 

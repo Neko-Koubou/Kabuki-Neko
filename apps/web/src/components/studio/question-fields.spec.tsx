@@ -248,6 +248,7 @@ describe("QuestionFields", () => {
     expect(puzzle.options.map((option) => option.sortOrder)).toEqual([0, 1, 2, 3]);
     expect(typeChangeLosesData(single, "MULTIPLE_SELECT", LABELS)).toBe(false);
     expect(typeChangeLosesData(single, "POLL", LABELS)).toBe(true);
+    expect(typeChangeLosesData(blankQuestion("SINGLE_CHOICE"), "TRUE_FALSE", LABELS)).toBe(false);
     // A blank typed-answer question has a correct (empty) accepted answer, not a key-count problem.
     expect(
       questionPlayabilityIssues(blankQuestion("TYPE_ANSWER")).map((issue) => issue.code),

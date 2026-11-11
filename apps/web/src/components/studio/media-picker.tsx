@@ -69,6 +69,8 @@ export interface QuestionMediaSelection {
   accessibility: Accessibility;
   /** Playable preview of the selection. */
   preview: MediaAsset;
+  /** The chosen library record (null for YouTube). */
+  media: Media | null;
 }
 
 /** Picker tab. */
@@ -94,7 +96,7 @@ export function checkAttachment(input: {
   start: string;
   end: string;
 }):
-  | { ok: true; value: Omit<QuestionMediaSelection, "accessibility" | "preview"> }
+  | { ok: true; value: Omit<QuestionMediaSelection, "accessibility" | "preview" | "media"> }
   | { ok: false; problem: string } {
   let externalVideoUrl: string | null = null;
   if (input.youtubeUrl !== null) {
@@ -237,7 +239,12 @@ export function MediaPicker({
             endSec: value.videoEndSec,
             accessibility,
           };
-    onSelectQuestion?.({ ...value, accessibility, preview });
+    onSelectQuestion?.({
+      ...value,
+      accessibility,
+      preview,
+      media: fromYoutube ? null : selected,
+    });
     onClose();
   };
 

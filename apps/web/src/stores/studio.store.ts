@@ -18,6 +18,7 @@
  */
 import { createStore, useStore, type StoreApi } from "zustand";
 import type { QuestionType } from "@kabuki-neko/shared/constants/game";
+import { QUIZ_LIMITS } from "@kabuki-neko/shared/constants/limits";
 import { emptyAccessibility } from "@kabuki-neko/shared/schemas/media.schema";
 import type { Option, Question } from "@kabuki-neko/shared/schemas/question.schema";
 import type { QuizDetail, QuizWrite } from "@kabuki-neko/shared/schemas/quiz.schema";
@@ -55,8 +56,8 @@ export interface StudioState {
   rebaseDraft(detail: QuizDetail): void;
 }
 
-/** Maximum questions per quiz (shared limit). */
-const MAX_QUESTIONS = 100;
+/** Maximum questions per quiz (the shared quiz limit). */
+const MAX_QUESTIONS = QUIZ_LIMITS.questions;
 
 /** JSON with recursively sorted keys (stable structural comparison). */
 export function canonical(value: unknown): string {

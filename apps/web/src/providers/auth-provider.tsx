@@ -75,6 +75,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 /** App areas a `returnTo` may point at (never auth pages or other origins). */
 export const RETURN_TO_PREFIXES = [
   "/dashboard",
+  "/studio",
   "/host",
   "/reports",
   "/join",

@@ -2416,7 +2416,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/studio/question-properties.spec.tsx` range/reveal incompatibility, missing alternatives, valid draft persistence and all five states.
 
-### - [ ] TASK-146: Integrasikan studio responsif dan save revision
+### - [x] TASK-146: Integrasikan studio responsif dan save revision
 - **Traceability**: `US-03`, `US-04`, `US-06`, `US-07`, `US-18`, `US-21`, [SA §6.4](03-system-analysis.md#64-cache-dan-client-state), [Design §6.1](02-design-spec.md#61-semua-layar)
 - **Depends On**: `TASK-145`, `TASK-139`, `TASK-135`
 - **Target Files**:
