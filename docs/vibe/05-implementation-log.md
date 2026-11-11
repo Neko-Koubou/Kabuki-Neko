@@ -1919,3 +1919,33 @@
 - **Verification**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/reports/answer-detail-dialog.spec.tsx`: 5 passed. Covers the five states, partial/poll/m0/unplayed, and pagination with keyboard and focus.
   - Full web suite: 48 files / 436 tests passed. typecheck, lint and prettier: OK.
+
+## TASK-163 — 2026-11-11T20:53:17+07:00
+
+- **Files**:
+  - `CREATE` `apps/web/src/components/reports/report-analytics.tsx`: ReportAnalytics, REPORT_STATUS_POLL_MS, REPORT_PLAYERS_PAGE_SIZE. Internal parts: FinalizationGate, ReportView, Kpi, PlayersPanel, QuestionsPanel, HardestQuestions.
+  - `CREATE` `apps/web/src/app/(dashboard)/dashboard/reports/[sessionId]/page.tsx`: S10 route (UUID check, client-loaded report).
+  - `CREATE` `tests/e2e/reports.spec.ts`: 4 E2E tests with real socket-driven games.
+  - `MODIFY` `apps/web/src/components/reports/report-list.tsx`: loads the `media` namespace, because the filter's "All" label showed "Unavailable" (bug found by the E2E screenshot).
+- **Notes**:
+  - Gate:
+    - 409 FINALIZATION_PENDING / 503 REPORT_SAVE_FAILED: status polling every 5 s; failed + retryable shows "Try saving again" (Idempotency-Key, reconciled); lost shows a message.
+    - 404 shows a safe not-found for unknown sessions and other hosts.
+  - Snapshot data only:
+    - KPIs: players, played/total, accuracy with the server's numerator/denominator and its definition, unanswered.
+    - Tabs: Players (20 from the report, then `/players` paging; "—" rank for kicked players; Answers opens M12) and Questions (played/unplayed, no-points badge, per-question metrics, "—" without a denominator).
+    - Hardest questions from the server's indexes.
+  - CSV: `api.download` with the server's safe filename, then saveBlob. Export failures use their own message (detail.exportFailed).
+  - E2E fixtures:
+    - complete game: Ani answers everything (partial MS = a correct subset, per the server rule), Budi never answers, Caca is kicked after a wrong Q1; includes a poll and a zero-point question;
+    - early end with zero answers.
+    - The second host is registered by invite or public mode, depending on the current registration mode.
+    - The browser reuses the API sign-in's refresh cookie in one shared context.
+- **Verification**:
+  - `pnpm test:e2e -- tests/e2e/reports.spec.ts`: 4 passed (+3 first-run).
+    - Ready-only list ordering and badges; complete report KPIs; kicked "—"; M12 partial; poll/m0 "—"; hardest.
+    - The CSV download is byte-identical to the API export.
+    - Early end shows zero answers and 3 unplayed questions.
+    - Pending gate; another host gets 404 for the report and CSV; no token gets 401.
+  - Screenshots at 1280 and 360: no overflow.
+  - Full E2E suite: 25/25 passed. Web unit tests: 48 files / 436 tests passed. typecheck, lint and prettier: OK.

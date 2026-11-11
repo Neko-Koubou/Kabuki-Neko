@@ -128,7 +128,7 @@ export function ReportList({ query, onQueryChange }: ReportListProps) {
   const latest = useMemo(() => createLatestRequest(), []);
 
   useEffect(() => {
-    void ensureNamespaces(["reports", "quizzes", "validation"]);
+    void ensureNamespaces(["reports", "quizzes", "media", "validation"]);
   }, [ensureNamespaces]);
 
   // Keep the search box in sync with back/forward navigation.

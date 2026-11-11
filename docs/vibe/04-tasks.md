@@ -2653,7 +2653,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/reports/answer-detail-dialog.spec.tsx` five states, partial/poll/m0/unplayed and pagination keyboard/focus.
 
-### - [ ] TASK-163: Integrasikan analitik, hardest questions dan CSV
+### - [x] TASK-163: Integrasikan analitik, hardest questions dan CSV
 - **Traceability**: `US-14`, `US-21`, [SA §4.5](03-system-analysis.md#45-reports), [Design §6.1](02-design-spec.md#61-semua-layar)
 - **Depends On**: `TASK-162`
 - **Target Files**:
