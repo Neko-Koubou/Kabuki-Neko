@@ -18,6 +18,8 @@
 #    - the immutable static chunks (.next/static);
 #    - the public directory: brand, font, catalogs, audio, /legal/*.txt.
 #    It runs as the unprivileged user 10001 under tini. Only .next/cache and /tmp are writable.
+#    Its healthcheck is a catalog-pair readiness check: the web registry buildId must equal the
+#    API's (TASK-177).
 #
 # Base image and build-time CA handling: as in docker/Dockerfile.api.
 
@@ -73,6 +75,9 @@ ENV NODE_ENV=production \
   PORT=3000
 USER 10001:10001
 EXPOSE 3000
+# Ready only when the web and API catalogs are a matching pair: the buildId of the web's
+# /locales/registry.json equals the API's /system/locales buildId (API_INTERNAL_URL). A mismatched
+# deployment (or an unreachable API) stays unready until a matching pair is rolled out.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
-  CMD ["node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/legal/LICENSE.txt').then((r) => process.exit(r.status === 200 ? 0 : 1), () => process.exit(1))"]
+  CMD ["node", "-e", "const get = (url) => fetch(url).then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status))))); Promise.all([get('http://127.0.0.1:' + (process.env.PORT || 3000) + '/locales/registry.json'), get((process.env.API_INTERNAL_URL || 'http://api:3001') + '/api/v1/system/locales')]).then(([web, api]) => process.exit(web.buildId === api.buildId ? 0 : 1), () => process.exit(1))"]
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/kabuki-entrypoint", "web"]

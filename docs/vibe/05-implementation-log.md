@@ -2218,3 +2218,15 @@
   - `docker compose -f docker/docker-compose.yml config --quiet` → OK; `DEPLOYMENT_PROFILE=scale docker compose -f docker/docker-compose.yml --profile scale config --quiet` → OK; `pnpm deploy:scale config --quiet` → OK
   - Driver semantics: rendered API env through the real `parseEnvironment` → default sqlite/memory/local, scale postgres/redis/s3
   - Default profile smoke (`docker compose … up --no-build` with the TASK-175 images): api and web healthy, /join 200, health ok sqlite/memory/local; `down -v`
+
+## TASK-177 — 2026-11-12T05:07:10+07:00
+
+- **Files**:
+  - `tests/integration/deployment.spec.ts` (real Compose projects `kn-it-<random>` on free loopback ports from the production images; default: cold start, uid 10001 ownership, 0600 runtime secrets, setup/quiz/media reachable by the browser URL, durable report, live room; after recreate the old access token still verifies, quiz/media/report persist, in-memory room reported lost; bundle free of secrets/credential names. Scale: secrets-init/minio-init exit 0, generated files 0400 with per-service owners, postgres/redis/s3 health, MinIO anonymous GET 200 but listing/PUT 403, two API containers migrate a fresh database concurrently with one row per version, recreate keeps shared JWT secret and media, bundle free of DB password/S3 key/JWT; teardown `down -v` of that project only)
+  - `tests/integration/catalog-deployment.spec.ts` (matching pair → web healthy; API with a different valid bundle (de) → API healthy, web unhealthy; tampered bundle → API exits non-zero; rollback to the matching API → web healthy without restart; removes only its labelled containers/network)
+  - `docker/Dockerfile.web` (scope addition: healthcheck = catalog-pair readiness, web registry buildId must equal the API's)
+  - `docs/deployment.md` (migration lock and 60 s waiters, catalog-pair readiness and rollback, what restarts keep, verification commands)
+- **Verification**:
+  - `pnpm test:integration --runInBand --runTestsByPath tests/integration/deployment.spec.ts` → default and scale both pass (real runs)
+  - `pnpm test:integration --runInBand --runTestsByPath tests/integration/catalog-deployment.spec.ts` → 1/1
+  - no kn-it/kn-catalog containers, networks or volumes left; images rebuilt as `:local` (API with TASK-176 entrypoint, web with the readiness check)

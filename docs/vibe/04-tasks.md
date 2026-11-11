@@ -2841,7 +2841,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `docker compose -f docker/docker-compose.yml config --quiet` dan `DEPLOYMENT_PROFILE=scale docker compose -f docker/docker-compose.yml --profile scale config --quiet`; config driver selection matches env semantics without implicit data transfer.
 
-### - [ ] TASK-177: Verifikasi cold start, restart dan migrasi deployment
+### - [x] TASK-177: Verifikasi cold start, restart dan migrasi deployment
 - **Traceability**: `US-01`, `US-06`, `US-12`, `US-16`, `US-17`, `US-21`, [SA §10.2](03-system-analysis.md#102-environment-tambahan-dan-compose)
 - **Depends On**: `TASK-176`
 - **Target Files**:

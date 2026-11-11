@@ -121,3 +121,36 @@ Put a TLS-terminating reverse proxy in front of every published port and keep
   3. `minio-init` prepares the bucket;
   4. the API starts and applies migrations under its lock (`DB_AUTO_MIGRATE=true`);
   5. the web app starts once the API is healthy.
+
+## Upgrades, migrations and catalogs
+
+- **Migrations.** Every API process applies pending migrations at startup under a database lock:
+  a PostgreSQL advisory lock or a MySQL named lock, and SQLite's exclusive transaction. When
+  several API containers start together, one applies the migrations while the others wait (at
+  most 60 s, then they exit and are restarted) and find nothing left to do. Back up before
+  upgrading (see the backup guide).
+- **Catalog pair.** The web and API images each carry the locale bundle from the same build.
+  The web container's healthcheck is a readiness check: it reports healthy only when the buildId
+  of its `/locales/registry.json` equals the API's `/system/locales` buildId. During a mismatched
+  rollout, or while the API is unreachable, the web stays unhealthy, so do not route traffic to
+  it.
+- **Rollback.** Redeploy the previous matching pair of images. The running web becomes healthy
+  again as soon as the API serves its buildId. An API whose bundle fails its hashes refuses to
+  start, so a broken catalog never goes live.
+- **What a restart keeps.** Accounts, quizzes, media, reports and the finalization queue live in
+  the database and storage volumes and survive restarts and recreated containers. Games in
+  memory state (default profile) do not: their rooms are reported lost after a restart. Redis
+  state (scale profile) survives with AOF.
+
+## Verification
+
+These run the real images and Compose projects under unique names, and remove only their own
+containers, networks and volumes:
+
+```bash
+pnpm test:integration --runInBand --runTestsByPath tests/integration/deployment.spec.ts
+pnpm test:integration --runInBand --runTestsByPath tests/integration/catalog-deployment.spec.ts
+```
+
+They use `kabuki-neko-{api,web}:${KABUKI_TEST_IMAGE_TAG:-local}` (built when missing). Set
+`KABUKI_TEST_MINIO_IMAGE` to reuse a MinIO image built from the same pinned source.
