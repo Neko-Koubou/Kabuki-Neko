@@ -2142,3 +2142,15 @@
   - `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/driver-matrix.spec.ts` → 18/18 (12/12 single-node, 2 multi-node, 3 refusals)
   - `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/cloud-storage.spec.ts` → 1 passed, 3 skipped; evidence records all three providers as NOT RUN (no credentials supplied). The configured path was self-checked against a throwaway MinIO (not provider evidence).
   - eslint and prettier clean
+
+## TASK-171 — 2026-11-12T00:55:32+07:00
+
+- **Files**:
+  - `tests/e2e/fixtures/ui-state-cases.ts` (inventory of S01–S17, M01–M12, B01–B12, F01–F20 × L/E/I/P/X = 305 cells, each with the design expectation and existing tests by file + exact title; deterministic hold/offline/503 route fixtures; shared title constants and `declaresTest`)
+  - `tests/e2e/ui-states.spec.ts` (inventory completeness/reference check; S05/S08/S09 loading/real empty/offline error/retry/ideal; S06/S10/S17 safe fallbacks; S11/S12 per-panel failure and retry, empty search; S01/S13 503 and failed sources with static content kept)
+  - `tests/e2e/journeys.spec.ts` (setup→register→PUBLIC reuse→JSON import→WebP upload→six-type studio quiz hosted from the studio→browser + socket players→refresh recovery→podium→report + byte-identical CSV→admin orphan cleanup→About license; AC-01-01…AC-21-04 and PRD §9 scenarios 1–5 traced to existing tests or later tasks)
+- **Verification**:
+  - `pnpm test:e2e tests/e2e/journeys.spec.ts tests/e2e/ui-states.spec.ts` → 14/14 (incl. first-run dependency)
+  - full `pnpm test:e2e` → 41/41
+  - e2e typecheck, eslint and prettier clean
+- **Notes**: the creator-forbidden settings message briefly shows the generic "Unavailable" fallback while the `validation` namespace loads (cosmetic; correct text appears once loaded).

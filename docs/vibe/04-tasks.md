@@ -2759,7 +2759,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/driver-matrix.spec.ts` pass all 12 single-node combinations; `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/cloud-storage.spec.ts` actual configured providers, unavailable credentials explicitly unverified in evidence.
 
-### - [ ] TASK-171: Uji perjalanan pengguna lengkap dan lima state
+### - [x] TASK-171: Uji perjalanan pengguna lengkap dan lima state
 - **Traceability**: `US-01`, `US-02`, `US-03`, `US-04`, `US-05`, `US-06`, `US-07`, `US-08`, `US-09`, `US-10`, `US-11`, `US-12`, `US-13`, `US-14`, `US-15`, `US-16`, `US-17`, `US-18`, `US-19`, `US-20`, `US-21`, [SA §11.2](03-system-analysis.md#112-implementationqa-coverage-required)
 - **Depends On**: `TASK-170`
 - **Target Files**:
