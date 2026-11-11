@@ -2455,7 +2455,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/admin/user-invites.spec.tsx` L/E/I/P/X, last-admin409, invite expired/used/revoked and clipboard unavailable/manual copy.
 
-### - [ ] TASK-149: Bangun About dan panduan bahasa publik
+### - [x] TASK-149: Bangun About dan panduan bahasa publik
 - **Traceability**: `US-19`, `US-21`, [SA §8.2](03-system-analysis.md#82-install-matching-dan-hydration), [Design §4.5](02-design-spec.md#45-admin-pengguna-about--s11s13)
 - **Depends On**: `TASK-148`, `TASK-112`, `TASK-013`, `TASK-115`
 - **Target Files**:

@@ -1755,3 +1755,22 @@
   - `pnpm --filter @kabuki-neko/web test -- src/components/admin/user-invites.spec.tsx` → 43 files / 407 tests passed.
   - typecheck, lint, prettier and build → OK.
   - Chromium check with a route-faked API: users at 1280px light and 360px dark, invitations list and code dialog at 360px. No overflow.
+
+## TASK-149 — 2026-11-11T11:09:34+07:00
+
+- **Files**:
+  - `CREATE` `apps/web/src/components/ui/document-view.tsx`: DocumentView, AboutDocument, LanguageGuide, LEGAL_*/LOCALE_* URLs.
+  - `CREATE` `apps/web/src/app/(public)/about/page.tsx`, `apps/web/src/app/(public)/help/languages/page.tsx`, `apps/web/src/app/(dashboard)/dashboard/about/page.tsx`.
+  - `CREATE` `apps/web/src/components/ui/document-view.spec.tsx`: 4 tests (extra file for the DoD assertions).
+- **Notes**:
+  - About shows the real `/system/about` version, or "Version unknown" (never invented).
+  - Official license and notices links; the official LICENSE text in its original language (`lang="en"`), with a translated-summary label for other locales.
+  - Source failure keeps the official link and offers retry.
+  - Audio credits via the shared CreditsButton/CreditsModal, with the separate-licenses note.
+  - The guide lists the documented steps, links the real template ZIP (download), and shows installed languages with coverage from the registry; an unavailable registry is reported.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/web test` → 44 files / 411 tests passed.
+  - typecheck, lint, prettier and build → OK.
+  - The production server returned 200 for /about, /help/languages, /dashboard/about, both /legal files, the template ZIP and registry.json.
+  - The downloaded ZIP passed `unzip -t`; all JSON parsed and the manifest has locale `und`.
+  - At 320px with 140% text, light and dark: no overflow, footer links /about, /legal/LICENSE.txt, /legal/THIRD-PARTY-NOTICES.txt and /help/languages, keyboard Tab reaches the links, and "Version unknown" shows without an API.
