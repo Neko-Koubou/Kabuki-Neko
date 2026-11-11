@@ -2082,3 +2082,39 @@
   - `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/redis-cluster.spec.ts`: 6/6 passed, and no `test-cluster` containers are left afterwards.
   - `state-parity.spec.ts` (shares the runtime helper): 22/22 passed.
   - eslint and prettier: OK.
+
+## TASK-168 — 2026-11-11T23:15:12+07:00
+
+- **Files**:
+  - `CREATE` `tests/integration/realtime-races.spec.ts`: 5 tests × PostgreSQL/MySQL.
+  - `CREATE` `tests/integration/recovery.spec.ts`: 4 tests × PostgreSQL/MySQL.
+  - `CREATE` `tests/integration/payload-privacy.spec.ts`: 1 full-game scan on PostgreSQL. Privacy is dialect-independent; the two-node path is what matters.
+  - `CREATE` `tests/helpers/game.ts` (outside the listed targets): shared by the three specs.
+    - startScaledApis: 2 API nodes in the multi topology on one Redis plus PostgreSQL/MySQL, sharing one public URL because the storage origin is pinned;
+    - GameClient: records all events, distinct X-Forwarded-For per client;
+    - quizWith, createRoom, join, answeringQuestion, serverOffset/untilServerTime, phaseVersion.
+- **Notes**:
+  - Races:
+    - host on node A and players on node B share one authoritative game (same question id and deadlines);
+    - two next_step calls with one phase version → exactly one accepted, the other STALE_PHASE, and question 2 is never announced;
+    - submit vs skip and submit vs end → the answer counts or appears in the report exactly when its ACK was accepted;
+    - the old socket is cut off after a reconnect on the other node (disconnected or refused);
+    - a lost join ACK replayed on the other node returns the same playerId and token, with one roster entry.
+  - Recovery:
+    - receivedAt − serverStartTime < 500 ms → 1000 base points, and slower answers get less;
+    - an answer received after inputClosesAt and within acceptanceClosesAt counts; one after acceptanceClosesAt gets TIME_EXPIRED, UNANSWERED and 0 points;
+    - a player disconnected at freeze is optional (NOT_ELIGIBLE if it returns without answering); a kicked player releases the question, which closes as soon as the last required player answers;
+    - SIGKILL of the host's node mid-question → recover_room on the other node shows the same question, its timer closes it, and the pre-crash answer counts once;
+    - podium: a silent player is the only entry (rank 1, score 0, nobody invented); a room emptied by a kick has an empty podium (SA §5 rank rules).
+  - Privacy (host, answering player, watcher, a mid-question recovery ACK and room:sync, all 5 types):
+    - no isCorrect/acceptedTexts/correctOptionIds/correctOrderIds or the typed answer text before the reveal;
+    - never tokenHash, frozenReport, answers, eligibility sets or sortOrder;
+    - no host-only keys for players and no session tokens in pushes;
+    - each reveal holds only the player's own result.
+    - SSR HTML is covered by the browser suites.
+  - No client timestamp is ever sent; all timing comes from the server's fields and receivedAt.
+- **Verification**:
+  - `pnpm test:integration --runInBand --runTestsByPath tests/integration/realtime-races.spec.ts`: 10/10.
+  - `… recovery.spec.ts`: 8/8.
+  - `… payload-privacy.spec.ts`: 1/1.
+  - eslint and prettier: OK.

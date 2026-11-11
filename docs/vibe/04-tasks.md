@@ -2721,7 +2721,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `docker compose -f docker/docker-compose.test-cluster.yml config --quiet` dan `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/redis-cluster.spec.ts` no CROSSSLOT/double answer/old-generation command.
 
-### - [ ] TASK-168: Uji concurrency dan recovery dua instance
+### - [x] TASK-168: Uji concurrency dan recovery dua instance
 - **Traceability**: `US-07`, `US-08`, `US-09`, `US-10`, `US-11`, `US-12`, `US-13`, `US-16`, [SA §11.2](03-system-analysis.md#112-implementationqa-coverage-required)
 - **Depends On**: `TASK-167`, `TASK-075`, `TASK-160`
 - **Target Files**:
