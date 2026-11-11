@@ -2668,7 +2668,7 @@ flowchart LR
 
 ## Phase 6: Hardening, Edge Cases & Polish
 
-### - [ ] TASK-164: Terapkan CSP dan browser security headers
+### - [x] TASK-164: Terapkan CSP dan browser security headers
 - **Traceability**: `US-01`, `US-06`, `US-18`, `US-20`, [SA §10.1](03-system-analysis.md#101-kontrol-owasp-top-10), [Design §7.2](02-design-spec.md#72-waktu-media-dan-alternatif-yang-perlu-disediakan)
 - **Depends On**: `TASK-163`
 - **Target Files**:

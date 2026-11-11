@@ -107,11 +107,26 @@ async function openStudio(
   await page.goto(`/login?returnTo=${encodeURIComponent(`/studio/${quizId}`)}`);
   await page.getByLabel(/^Email/u).fill(state.email);
   await page.getByLabel(/^Password/u).fill(PASSWORD);
-  await page
-    .getByRole("button", { name: /^Sign in/u })
-    .last()
-    .click();
-  await page.waitForURL(`**/studio/${quizId}`);
+  // The per-email sign-in limit (5/min) is shared with other specs using this administrator:
+  // a "Too many attempts" answer waits for the server's retry time and signs in again.
+  const limited = page.getByText(/Too many attempts/u);
+  const signedIn = () => new URL(page.url()).pathname === `/studio/${quizId}`;
+  for (let attempt = 0; ; attempt += 1) {
+    await page
+      .getByRole("button", { name: /^Sign in/u })
+      .last()
+      .click();
+    await expect
+      .poll(async () => signedIn() || (await limited.isVisible()), { timeout: 30_000 })
+      .toBe(true);
+    if (signedIn()) break;
+    if (attempt >= 3) throw new Error("sign-in stayed rate limited");
+    const waitMs = Number(
+      /about ([\d,]+) ms/u.exec((await limited.textContent()) ?? "")?.[1]?.replace(/,/gu, "") ??
+        "15000",
+    );
+    await page.waitForTimeout(Math.min(waitMs, 60_000) + 1_000);
+  }
   await expect(page.locator("header[data-dirty]")).toBeVisible({ timeout: 15_000 });
   return { context, page };
 }

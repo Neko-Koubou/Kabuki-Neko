@@ -1949,3 +1949,40 @@
     - Pending gate; another host gets 404 for the report and CSV; no token gets 401.
   - Screenshots at 1280 and 360: no overflow.
   - Full E2E suite: 25/25 passed. Web unit tests: 48 files / 436 tests passed. typecheck, lint and prettier: OK.
+
+## TASK-164 — 2026-11-11T21:22:40+07:00
+
+- **Files**:
+  - `CREATE` `apps/web/src/proxy.ts`: proxy, contentSecurityPolicy, originOf, SECURITY_HEADERS, YOUTUBE_EMBED_ORIGIN, config matcher.
+  - `MODIFY` `apps/web/next.config.ts`: static headers (nosniff, referrer, permissions) on every response.
+  - `MODIFY` `apps/api/src/main.ts`: securityHeaders middleware.
+  - `CREATE` `tests/e2e/security-headers.spec.ts`: 5 tests.
+  - `CREATE` `docs/security-headers.md`: policy table, CSP_MEDIA_ORIGINS, HSTS at the HTTPS proxy (nginx/Caddy), redirects.
+  - `MODIFY` `tests/e2e/studio.spec.ts` and `tests/e2e/audio.spec.ts`: harness robustness only.
+    - The studio sign-in now waits out the shared per-email limit (5/min) that the two new specs pushed over.
+    - The audio check now waits for the victory decode before reading the log.
+- **Notes**:
+  - Web CSP (per request, fresh nonce; all pages are dynamic because the root layout reads headers):
+    - `script-src 'self' 'nonce-…' 'strict-dynamic'`: no unsafe-eval (development only) and no unsafe-inline for scripts;
+    - `style-src 'self' 'unsafe-inline'` (React style attributes);
+    - img/media from self, blob:, data:, the API origin and CSP_MEDIA_ORIGINS (runtime, not a public build value);
+    - connect to self, the API and WS (http/ws forms);
+    - `frame-src` youtube-nocookie only;
+    - `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`, `frame-ancestors 'self'`.
+  - Permissions-Policy: camera=(self) for the QR scanner, microphone=().
+  - API headers:
+    - `default-src 'none'; frame-ancestors 'none'; sandbox`, X-Frame-Options DENY and a referrer policy;
+    - CORP `cross-origin` for /uploads and `same-site` for everything else.
+  - The existing upload MIME allowlist and nosniff are unchanged. The returnTo and QR guards are verified.
+- **Verification**:
+  - `pnpm test:e2e -- tests/e2e/security-headers.spec.ts`: 5 passed.
+    - Fresh nonce; every script tag carries it; directives as above.
+    - Hydration, signed-in dashboard pages, the game socket (PIN check), and an uploaded image loading from the API origin, all with zero CSP violations.
+    - Injected inline and foreign scripts, a foreign iframe and an object are blocked, and the page still hydrates.
+    - A foreign framer is blocked by frame-ancestors.
+    - The returnTo values `//evil`, `https://evil` and `/\evil` all land on /dashboard/quizzes.
+    - API headers checked.
+    - No secret env names in the client bundles.
+  - Full E2E suite: 30/30 passed. Web unit tests: 436/436. API Jest: 215 passed.
+    - `rate-limit.service.spec.ts` (11 tests) cannot run here because it needs Docker (testcontainers Redis); this is pre-existing and unrelated.
+  - typecheck, lint and prettier: OK.

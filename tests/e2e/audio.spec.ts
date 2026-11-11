@@ -426,6 +426,16 @@ test("plays the full role matrix, bounded loops and a silent teardown", async ({
   await host.getByRole("button", { name: "Show podium" }).click();
   await phase(host, "FINISHED", 30_000);
   await expect(player.getByRole("link", { name: "Join a game" })).toBeVisible();
+  // Victory starts at the first-place cue; under load its decode can finish a little later.
+  await expect
+    .poll(
+      async () =>
+        loopIntervals(await readAudioLog(host), Infinity).some((loop) =>
+          loop.src.includes("bgm-podium-victory"),
+        ),
+      { timeout: 20_000 },
+    )
+    .toBe(true);
   await host.waitForTimeout(1_000);
 
   const hostLog = await readAudioLog(host);
