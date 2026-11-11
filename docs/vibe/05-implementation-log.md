@@ -2180,3 +2180,14 @@
   - `pnpm test:e2e tests/e2e/accessibility.spec.ts tests/e2e/responsive.spec.ts` → 6/6 and 8/8 (incl. first-run); full `pnpm test:e2e` → 54/54
   - web typecheck, lint, unit tests 436/436
   - Manual assistive-technology items: not verified (recorded as such)
+
+## TASK-174 — 2026-11-12T04:40:58+07:00
+
+- **Files**:
+  - `scripts/package-assets.ts` (adds: audio manifest validated with the shared strict schema so legacy/stale manifests fail, WebM + MP3 fallback per cue, manifest URL set = provenance outputs (40), WebM must carry Opus; attribution check (code license never covers the audio, asset license named in notices); API/web locale bundle identity (registry, every asset SHA-256, template ZIP); packages LICENSE/notices into both web `public/legal` and API `assets/legal`, and the audio manifest into API `assets/audio`, through staged swaps; `--ensure-audio` runs audio:optimize when outputs are missing; new options `--api`, `--locales`, `--require-locales`)
+  - `tests/contracts/distribution.spec.ts` (private copy of the release inputs; complete tree packages both artifacts; 16 single-input removals/corruptions each fail with a precise message and leave packaged copies unchanged; missing generated audio fails under --require-audio; build hook declared)
+  - `package.json` (`build` = `pnpm build:assets && turbo run build`; `build:assets` = locales:build + package-assets with every requirement; `assets:package`); `.gitignore` (`/apps/api/assets/`). `pnpm-lock.yaml` unchanged: no dependency added.
+- **Verification**:
+  - `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/distribution.spec.ts` → 20/20
+  - `pnpm build` → exit 0; locale bundle caa1a1e1… built and mirrored; 20 sources / 40 outputs verified; legal texts byte-identical in apps/web/public/legal and apps/api/assets/legal; API audio manifest packaged; guide `/help/languages` and `/locales/template-v1.zip` present
+  - eslint/prettier clean

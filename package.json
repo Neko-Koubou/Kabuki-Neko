@@ -8,7 +8,9 @@
     "pnpm": ">=10.34.9"
   },
   "scripts": {
-    "build": "turbo run build",
+    "build": "pnpm build:assets && turbo run build",
+    "build:assets": "pnpm locales:build && pnpm assets:package --require-audio --require-locales --ensure-audio",
+    "assets:package": "tsx scripts/package-assets.ts",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
     "test": "turbo run test",

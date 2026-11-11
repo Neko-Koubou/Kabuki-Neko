@@ -2798,7 +2798,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:e2e -- tests/e2e/accessibility.spec.ts tests/e2e/responsive.spec.ts` plus dated manual browser/reader evidence. Any unchecked manual item remains not verified, not WCAG certification.
 
-### - [ ] TASK-174: Bangun legal, asset dan catalog packaging checks
+### - [x] TASK-174: Bangun legal, asset dan catalog packaging checks
 - **Traceability**: `US-17`, `US-18`, `US-19`, `US-21`, [SA §10.2](03-system-analysis.md#102-environment-tambahan-dan-compose)
 - **Depends On**: `TASK-173`, `TASK-115`, `TASK-149`
 - **Target Files**:
