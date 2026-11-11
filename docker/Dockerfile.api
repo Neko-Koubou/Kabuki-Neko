@@ -1,0 +1,90 @@
+# Kabuki Neko API production image (TASK-175; SA §10.2; US-16, US-17, US-19).
+#
+#   docker build -f docker/Dockerfile.api -t kabuki-neko-api .
+#
+# Stages:
+# 1. assets:
+#    - installs the whole workspace from the frozen lockfile;
+#    - runs `pnpm build:assets`: locale bundle; audio optimized with ffmpeg; LICENSE, notices and
+#      the audio manifest packaged and verified (scripts/package-assets.ts).
+# 2. build:
+#    - compiles the API and its workspace packages;
+#    - `pnpm deploy` collects only production dependencies. Native modules (better-sqlite3, sharp)
+#      are built or fetched here, with compilers that never reach the runtime image.
+# 3. runtime, a fresh slim image with:
+#    - the deployed API;
+#    - the immutable locale bundle, the generated audio set with its manifest and credits (the API
+#      checks that every manifest entry exists), and the legal texts;
+#    - a pinned ffprobe (Debian's ffmpeg package) for media probing;
+#    - tini for signal forwarding.
+#    It runs as the unprivileged user 10001. Only /app/data (SQLite, runtime secrets),
+#    /app/uploads (local media) and /tmp are writable.
+#
+# Base image: Node 26 (the workspace requires node >= 26.13.0), Debian bookworm-slim, pinned by
+# digest. Override NODE_IMAGE to use a registry mirror with the same digest.
+# Build-time TLS behind an intercepting proxy: pass the proxy CA as a BuildKit secret
+# (`--secret id=build_ca,src=<ca.pem>`). It is mounted only for the install steps and never stored
+# in a layer.
+# No credentials are baked in: JWT secrets, database URLs and S3 keys come from the environment or
+# `*_FILE` secrets at run time (docker/entrypoint.sh).
+
+ARG NODE_IMAGE=node:26.13.0-bookworm-slim@sha256:add5c17c14752c54d2f3d519ec46a3815684d41c33f198bcb09fb998f7dcbf68
+ARG PNPM_VERSION=10.34.9
+# Debian bookworm's ffmpeg (ffprobe), pinned to the reviewed version.
+ARG FFMPEG_VERSION=7:5.1.9-0+deb12u1
+ARG TINI_VERSION=0.19.0-1+b3
+
+FROM ${NODE_IMAGE} AS assets
+ARG PNPM_VERSION
+ARG FFMPEG_VERSION
+ENV CI=true PNPM_HOME=/pnpm PATH=/pnpm:$PATH
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates "ffmpeg=${FFMPEG_VERSION}" g++ make python3 \
+  && rm -rf /var/lib/apt/lists/*
+WORKDIR /repo
+COPY . .
+RUN --mount=type=secret,id=build_ca,required=false \
+  if [ -s /run/secrets/build_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/build_ca; fi; \
+  npm install -g "pnpm@${PNPM_VERSION}" \
+  && pnpm install --frozen-lockfile
+RUN pnpm build:assets
+
+FROM assets AS build
+RUN pnpm --filter "@kabuki-neko/api..." build
+RUN --mount=type=secret,id=build_ca,required=false \
+  if [ -s /run/secrets/build_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/build_ca; fi; \
+  pnpm --filter @kabuki-neko/api deploy --legacy --prod /out \
+  && test -f /out/dist/main.js
+
+FROM ${NODE_IMAGE} AS runtime
+ARG FFMPEG_VERSION
+ARG TINI_VERSION
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates "ffmpeg=${FFMPEG_VERSION}" "tini=${TINI_VERSION}" \
+  && rm -rf /var/lib/apt/lists/* \
+  && groupadd --system --gid 10001 kabuki \
+  && useradd --system --uid 10001 --gid kabuki --home-dir /app --no-create-home --shell /usr/sbin/nologin kabuki \
+  && mkdir -p /app/data /app/uploads \
+  && chown kabuki:kabuki /app/data /app/uploads
+WORKDIR /app
+COPY --from=build /out /app
+COPY --from=assets /repo/locales-built /app/locales-built
+# The API verifies that every manifest entry exists next to the manifest, so it ships the whole
+# generated audio set (manifest, 40 WebM/MP3 files, CREDITS.md) that the web image serves.
+COPY --from=assets /repo/apps/web/public/audio /app/audio
+COPY --from=assets /repo/apps/api/assets/legal /app/legal
+COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/kabuki-entrypoint
+ENV NODE_ENV=production \
+  API_PORT=3001 \
+  LOCALE_BUNDLE_PATH=/app/locales-built \
+  AUDIO_MANIFEST_PATH=/app/audio/audio-manifest.json \
+  SQLITE_PATH=/app/data/kabuki-neko.sqlite \
+  APP_SECRET_FILE=/app/data/runtime-secrets.json \
+  LOCAL_STORAGE_PATH=/app/uploads
+USER 10001:10001
+EXPOSE 3001
+VOLUME ["/app/data", "/app/uploads"]
+# Ready only when every dependency is up: /system/health answers 200 (503 otherwise).
+HEALTHCHECK --interval=15s --timeout=5s --start-period=90s --retries=3 \
+  CMD ["node", "-e", "fetch('http://127.0.0.1:' + (process.env.API_PORT || 3001) + '/api/v1/system/health').then((r) => process.exit(r.status === 200 ? 0 : 1), () => process.exit(1))"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/kabuki-entrypoint", "api"]

@@ -1,0 +1,78 @@
+# Kabuki Neko web production image (TASK-175; SA §10.2; US-16, US-17, US-19).
+#
+#   docker build -f docker/Dockerfile.web -t kabuki-neko-web \
+#     --build-arg NEXT_PUBLIC_APP_URL=https://quiz.example.org \
+#     --build-arg NEXT_PUBLIC_API_URL=https://quiz.example.org \
+#     --build-arg NEXT_PUBLIC_WS_URL=https://quiz.example.org .
+#
+# Stages:
+# 1. assets:
+#    - installs the workspace from the frozen lockfile;
+#    - runs `pnpm build:assets`: locale bundle and template, optimized audio with its manifest and
+#      credits, LICENSE and notices in public/legal, all verified (scripts/package-assets.ts).
+# 2. build: `next build` with `output: "standalone"`. Next inlines the NEXT_PUBLIC_* URLs into the
+#    client bundle at build time, so they are build arguments. They are public URLs, never
+#    credentials, and default to the local Compose addresses.
+# 3. runtime, a fresh slim image with:
+#    - the standalone server;
+#    - the immutable static chunks (.next/static);
+#    - the public directory: brand, font, catalogs, audio, /legal/*.txt.
+#    It runs as the unprivileged user 10001 under tini. Only .next/cache and /tmp are writable.
+#
+# Base image and build-time CA handling: as in docker/Dockerfile.api.
+
+ARG NODE_IMAGE=node:26.13.0-bookworm-slim@sha256:add5c17c14752c54d2f3d519ec46a3815684d41c33f198bcb09fb998f7dcbf68
+ARG PNPM_VERSION=10.34.9
+ARG FFMPEG_VERSION=7:5.1.9-0+deb12u1
+ARG TINI_VERSION=0.19.0-1+b3
+
+FROM ${NODE_IMAGE} AS assets
+ARG PNPM_VERSION
+ARG FFMPEG_VERSION
+ENV CI=true PNPM_HOME=/pnpm PATH=/pnpm:$PATH
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates "ffmpeg=${FFMPEG_VERSION}" g++ make python3 \
+  && rm -rf /var/lib/apt/lists/*
+WORKDIR /repo
+COPY . .
+RUN --mount=type=secret,id=build_ca,required=false \
+  if [ -s /run/secrets/build_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/build_ca; fi; \
+  npm install -g "pnpm@${PNPM_VERSION}" \
+  && pnpm install --frozen-lockfile
+RUN pnpm build:assets
+
+FROM assets AS build
+ARG NEXT_PUBLIC_APP_NAME="Kabuki Neko"
+ARG NEXT_PUBLIC_APP_URL=http://localhost:3000
+ARG NEXT_PUBLIC_API_URL=http://localhost:3001
+ARG NEXT_PUBLIC_WS_URL=http://localhost:3001
+ENV NEXT_TELEMETRY_DISABLED=1 \
+  NEXT_PUBLIC_APP_NAME=${NEXT_PUBLIC_APP_NAME} \
+  NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL} \
+  NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL} \
+  NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
+RUN pnpm --filter "@kabuki-neko/web..." build \
+  && test -f apps/web/.next/standalone/apps/web/server.js
+
+FROM ${NODE_IMAGE} AS runtime
+ARG TINI_VERSION
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends "tini=${TINI_VERSION}" \
+  && rm -rf /var/lib/apt/lists/* \
+  && groupadd --system --gid 10001 kabuki \
+  && useradd --system --uid 10001 --gid kabuki --home-dir /app --no-create-home --shell /usr/sbin/nologin kabuki
+WORKDIR /app
+COPY --from=build /repo/apps/web/.next/standalone /app
+COPY --from=build /repo/apps/web/.next/static /app/apps/web/.next/static
+COPY --from=build /repo/apps/web/public /app/apps/web/public
+COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/kabuki-entrypoint
+RUN mkdir -p /app/apps/web/.next/cache && chown kabuki:kabuki /app/apps/web/.next/cache
+ENV NODE_ENV=production \
+  NEXT_TELEMETRY_DISABLED=1 \
+  HOSTNAME=0.0.0.0 \
+  PORT=3000
+USER 10001:10001
+EXPOSE 3000
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
+  CMD ["node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/legal/LICENSE.txt').then((r) => process.exit(r.status === 200 ? 0 : 1), () => process.exit(1))"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/kabuki-entrypoint", "web"]

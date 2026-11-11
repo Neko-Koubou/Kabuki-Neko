@@ -2813,7 +2813,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/distribution.spec.ts` removes each required file and observes failure; normal `pnpm build` outputs legal files and guide links/template work, no invented license equivalence.
 
-### - [ ] TASK-175: Buat image production API dan web
+### - [x] TASK-175: Buat image production API dan web
 - **Traceability**: `US-16`, `US-17`, `US-19`, [SA §10.2](03-system-analysis.md#102-environment-tambahan-dan-compose)
 - **Depends On**: `TASK-174`
 - **Target Files**:

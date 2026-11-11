@@ -2191,3 +2191,17 @@
   - `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/distribution.spec.ts` → 20/20
   - `pnpm build` → exit 0; locale bundle caa1a1e1… built and mirrored; 20 sources / 40 outputs verified; legal texts byte-identical in apps/web/public/legal and apps/api/assets/legal; API audio manifest packaged; guide `/help/languages` and `/locales/template-v1.zip` present
   - eslint/prettier clean
+
+## TASK-175 — 2026-11-12T04:54:00+07:00
+
+- **Files**:
+  - `docker/Dockerfile.api` (Node 26.13.0 bookworm-slim pinned by digest sha256:add5c17c… — the workspace requires node ≥ 26.13 so Node 24 cannot run it; assets stage installs the frozen lockfile and runs `pnpm build:assets` with pinned ffmpeg 7:5.1.9-0+deb12u1; build stage compiles and `pnpm deploy --prod`; runtime with pinned ffprobe/tini 0.19.0-1+b3, UID 10001, only /app/data, /app/uploads, /tmp writable, locale bundle + generated audio set + legal texts, health-based HEALTHCHECK; build CA only as a BuildKit secret)
+  - `docker/Dockerfile.web` (same assets stage; Next standalone build with NEXT_PUBLIC_* URL build args; runtime with standalone server, immutable .next/static and the full public dir incl. /legal, catalogs, audio; UID 10001; only .next/cache writable)
+  - `docker/entrypoint.sh` (tini → exec node for signal forwarding; *_FILE secrets; multi-topology requires shared JWT secrets; compiled-schema config check printing only field names; bounded DB/Redis reachability gate before migrations, KN_STARTUP_WAIT_SEC)
+  - `.dockerignore` (no node_modules/build outputs/generated assets/local data/secrets in the context)
+  - `package.json` + `tests/contracts/distribution.spec.ts` (TASK-174 follow-up found by the image build: `build:assets` builds @kabuki-neko/shared first, which audio:optimize needs on a fresh checkout)
+- **Verification**:
+  - `docker build -f docker/Dockerfile.api -t kabuki-neko-api:test .` → OK (1.18 GB); `docker build -f docker/Dockerfile.web -t kabuki-neko-web:test .` → OK (504 MB) (built with the same-digest mirror.gcr.io base because Docker Hub answered 429, and the proxy CA as build secret)
+  - API image: `ffprobe -version` 5.1.9; better-sqlite3 (SQLite 3.53.2) and sharp (WebP) load; uid 10001; dist read-only, data/uploads/tmp writable; container healthy with sqlite/memory/local, /system/locales serves buildId caa1a1e1…; SIGTERM stop in 1 s; gates: invalid config → field name only, multi without shared secrets refused, env+_FILE refused, unreachable Postgres fails after 4 s; no secrets in image env/history
+  - Web image: uid 10001; healthy; /join, /legal/*.txt, /locales/registry.json, template ZIP, audio manifest/credits/WebM, brand, /help/languages all 200; static chunks immutable
+  - `pnpm test:contracts --runTestsByPath tests/contracts/distribution.spec.ts` → 20/20

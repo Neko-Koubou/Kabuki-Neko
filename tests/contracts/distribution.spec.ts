@@ -295,7 +295,7 @@ it("declares the build hook: locales and assets are packaged before turbo builds
   };
   expect(manifest.scripts["build"]).toBe("pnpm build:assets && turbo run build");
   expect(manifest.scripts["build:assets"]).toBe(
-    "pnpm locales:build && pnpm assets:package --require-audio --require-locales --ensure-audio",
+    "pnpm --filter @kabuki-neko/shared build && pnpm locales:build && pnpm assets:package --require-audio --require-locales --ensure-audio",
   );
   expect(manifest.scripts["assets:package"]).toBe("tsx scripts/package-assets.ts");
 });

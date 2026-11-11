@@ -1,0 +1,47 @@
+# Docker build context for docker/Dockerfile.api and docker/Dockerfile.web (TASK-175).
+# Images rebuild everything from sources: installed dependencies, build outputs, generated assets,
+# local data, test output and anything secret stay out of the context.
+
+# Version control and editor state
+.git
+.github
+.vscode
+.idea
+
+# Dependencies and build output (rebuilt inside the image)
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/*.tsbuildinfo
+**/coverage
+
+# Generated assets (rebuilt by `pnpm build:assets` inside the image)
+locales-built
+apps/web/public/audio
+apps/web/public/.audio.*
+apps/web/public/locales
+apps/web/public/legal
+apps/api/assets
+
+# Local runtime data, uploads and test output
+data
+uploads
+docker/data
+docker/uploads
+test-results
+playwright-report
+blob-report
+
+# Secrets and local environment files (never baked into an image)
+.env
+.env.*
+!.env.example
+!.env.*.example
+**/runtime-secrets.json
+*.pem
+*.key
+*.p12
+*.pfx
+secrets
+docker/secrets
