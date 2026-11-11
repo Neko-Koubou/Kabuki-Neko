@@ -10,7 +10,9 @@
 # API:
 # 1. Secrets from files. For each of JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, DATABASE_URL,
 #    REDIS_URL, S3_ACCESS_KEY and S3_SECRET_KEY, a `<NAME>_FILE` path (Docker/Compose secrets) is
-#    read into the variable. Setting both forms is an error. Nothing is ever printed.
+#    read into the variable. Setting both forms is an error. Without either, a file named after
+#    the lower-case variable in KN_SECRETS_DIR (the Compose scale profile's generated secrets
+#    volume, e.g. `jwt_access_secret`) is used when present. Nothing is ever printed.
 # 2. Shared secrets: with DEPLOYMENT_TOPOLOGY=multi, every node must sign and verify the same
 #    tokens, so JWT_ACCESS_SECRET and JWT_REFRESH_SECRET (or their _FILE forms) are required.
 #    A per-node generated secret file would silently split the sessions.
@@ -36,8 +38,12 @@ fail() {
 load_secret_files() {
   for name in JWT_ACCESS_SECRET JWT_REFRESH_SECRET DATABASE_URL REDIS_URL S3_ACCESS_KEY S3_SECRET_KEY; do
     eval "file=\${${name}_FILE:-}"
-    [ -n "$file" ] || continue
     eval "current=\${${name}:-}"
+    if [ -z "$file" ] && [ -z "$current" ] && [ -n "${KN_SECRETS_DIR:-}" ]; then
+      candidate="${KN_SECRETS_DIR}/$(printf '%s' "$name" | tr 'A-Z' 'a-z')"
+      if [ -f "$candidate" ]; then file="$candidate"; fi
+    fi
+    [ -n "$file" ] || continue
     [ -z "$current" ] || fail "$name and ${name}_FILE are both set; use one"
     [ -r "$file" ] || fail "${name}_FILE is not a readable file"
     value=$(cat "$file")

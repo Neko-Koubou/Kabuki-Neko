@@ -2827,7 +2827,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `docker build -f docker/Dockerfile.api -t kabuki-neko-api:test .` dan `docker build -f docker/Dockerfile.web -t kabuki-neko-web:test .`; `ffprobe -version`/native module load in API image, nonroot UID and required assets inside both.
 
-### - [ ] TASK-176: Buat Compose default dan scale serta wrapper
+### - [x] TASK-176: Buat Compose default dan scale serta wrapper
 - **Traceability**: `US-16`, `US-17`, [SA §10.2](03-system-analysis.md#102-environment-tambahan-dan-compose)
 - **Depends On**: `TASK-175`
 - **Target Files**:

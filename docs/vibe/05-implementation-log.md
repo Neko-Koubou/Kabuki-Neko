@@ -2205,3 +2205,16 @@
   - API image: `ffprobe -version` 5.1.9; better-sqlite3 (SQLite 3.53.2) and sharp (WebP) load; uid 10001; dist read-only, data/uploads/tmp writable; container healthy with sqlite/memory/local, /system/locales serves buildId caa1a1e1…; SIGTERM stop in 1 s; gates: invalid config → field name only, multi without shared secrets refused, env+_FILE refused, unreachable Postgres fails after 4 s; no secrets in image env/history
   - Web image: uid 10001; healthy; /join, /legal/*.txt, /locales/registry.json, template ZIP, audio manifest/credits/WebM, brand, /help/languages all 200; static chunks immutable
   - `pnpm test:contracts --runTestsByPath tests/contracts/distribution.spec.ts` → 20/20
+
+## TASK-176 — 2026-11-12T04:58:55+07:00
+
+- **Files**:
+  - `docker/docker-compose.yml` (default: web + api with kabuki-data/kabuki-uploads volumes; scale profile: secrets-init (random credentials generated once, 0400, per-service owners), PostgreSQL 16 and Redis 7 AOF pinned by digest, MinIO built from pinned upstream source, minio-init bucket with anonymous GetObject only; API depends on scale services with `required: false`; ports bind to KN_BIND_ADDRESS; no secrets, no minioadmin)
+  - `scripts/start-profile.ts` (`pnpm deploy:scale`: DEPLOYMENT_PROFILE=scale + `--profile scale` always together; `default` profile; custom compose action; sets ALLOW_INSECURE_LOCAL_HTTP=true for the bundled HTTP MinIO only when unset, with a notice; argument array, no shell)
+  - `.env.example` (Compose section: KN_* URLs/ports/bind/image tag, exact scale command, no secrets, driver overrides stay commented, no data transfer on profile change)
+  - `docs/deployment.md` (commands, configuration, volumes and secrets, TLS proxy, same-site Lax refresh cookie, WebSocket upgrade, polling read timeout ≥ 75 s and sticky sessions, public media, health and startup order)
+  - `docker/entrypoint.sh` (scope addition: KN_SECRETS_DIR lookup of lower-case secret files when neither the variable nor `_FILE` is set)
+- **Verification**:
+  - `docker compose -f docker/docker-compose.yml config --quiet` → OK; `DEPLOYMENT_PROFILE=scale docker compose -f docker/docker-compose.yml --profile scale config --quiet` → OK; `pnpm deploy:scale config --quiet` → OK
+  - Driver semantics: rendered API env through the real `parseEnvironment` → default sqlite/memory/local, scale postgres/redis/s3
+  - Default profile smoke (`docker compose … up --no-build` with the TASK-175 images): api and web healthy, /join 200, health ok sqlite/memory/local; `down -v`
