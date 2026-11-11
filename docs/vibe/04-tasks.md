@@ -2575,7 +2575,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:e2e -- tests/e2e/player.spec.ts` all 6 inputs/both modes, timing+grace, accepted refresh and no key in DOM/network/RSC props; L/E/I/P/X.
 
-### - [ ] TASK-158: Bangun lobi host dan moderasi
+### - [x] TASK-158: Bangun lobi host dan moderasi
 - **Traceability**: `US-07`, `US-08`, `US-18`, `US-21`, [SA §5.2](03-system-analysis.md#52-semua-client-to-server-methods), [Design §4.7](02-design-spec.md#47-panggung-host--s16)
 - **Depends On**: `TASK-157`, `TASK-130`, `TASK-131`, `TASK-130B`
 - **Target Files**:

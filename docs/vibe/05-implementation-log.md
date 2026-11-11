@@ -1774,3 +1774,20 @@
   - The production server returned 200 for /about, /help/languages, /dashboard/about, both /legal files, the template ZIP and registry.json.
   - The downloaded ZIP passed `unzip -t`; all JSON parsed and the manifest has locale `und`.
   - At 320px with 140% text, light and dark: no overflow, footer links /about, /legal/LICENSE.txt, /legal/THIRD-PARTY-NOTICES.txt and /help/languages, keyboard Tab reaches the links, and "Version unknown" shows without an API.
+
+## TASK-158 — 2026-11-11T11:14:15+07:00
+
+- **Files**:
+  - `CREATE` `apps/web/src/components/host/host-stage-lobby.tsx`: HostStageLobby, HostLobbyCommands, CommandOutcome.
+  - `CREATE` `apps/web/src/components/host/host-stage-lobby.spec.tsx`: 5 tests.
+- **Notes**:
+  - Props-driven; commands return the server outcome, and the socket wiring comes in TASK-160.
+  - Join panel: big PIN, join link (Copy link, with manual copy when no clipboard), QR plus Enlarge (M07).
+  - Audio slot for the single AudioController, with no local player.
+  - Roster keyed by id in join order: 200-player safe, joins announced without a focus move, connected/disconnected badges, kicked players removed only by the server roster, Remove always visible and confirmed by M09.
+  - Lock/Start/End follow capabilities and wait for each ACK; the server's lock state is never flipped optimistically. Start is disabled with the reason when no player is connected; End goes through M09; a lost host connection pauses the controls.
+  - The roster is one column below 400px, fixed after the 360px screenshot wrapped the "Disconnected" badge.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/web test -- src/components/host/host-stage-lobby.spec.tsx` → 45 files / 416 tests passed.
+  - typecheck, lint, prettier and build → OK.
+  - Chromium probe (deleted) at 1280px light and 360px dark. No overflow.
