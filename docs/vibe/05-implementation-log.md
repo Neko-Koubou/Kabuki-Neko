@@ -2230,3 +2230,12 @@
   - `pnpm test:integration --runInBand --runTestsByPath tests/integration/deployment.spec.ts` → default and scale both pass (real runs)
   - `pnpm test:integration --runInBand --runTestsByPath tests/integration/catalog-deployment.spec.ts` → 1/1
   - no kn-it/kn-catalog containers, networks or volumes left; images rebuilt as `:local` (API with TASK-176 entrypoint, web with the readiness check)
+
+## TASK-178 — 2026-11-12T05:12:55+07:00
+
+- **Files**:
+  - `docs/operations.md` (backup scope = SQL + blobs + generated secrets + storage-origin ledger from one point in time; DB-first online order; SQLite online backup API command and WAL-safe restore; PostgreSQL pg_dump/pg_restore and MySQL mysqldump/mysql procedures (MYSQL_PWD); volume archives; restore checklist and session/revocation policy with secret rotation; no implicit data transfer on driver/profile switch; draining and STATE_NAMESPACE; recovery limits (memory rooms lost, Redis AOF ~1 s window, failed finalization retry + 24 h alarm, storage origin registry format); audit 30 d / logs 14 d; MAX_ACTIVE_ROOMS and the 10/min/IP join budget behind NAT)
+  - `tests/integration/backup-restore.spec.ts` (per dialect: documented commands executed verbatim and asserted present in the guide; quiz + image + finished report + live room → backup → post-backup changes → stop/restore/start; instance, quiz media reference, served blob, byte-identical report restored; post-backup quiz gone; pre-backup token valid; post-backup refresh 401; live room lost; PostgreSQL: switching to SQLite starts uninitialized)
+  - `docs/deployment.md` (links the operations guide)
+- **Verification**:
+  - `pnpm test:integration --runInBand --runTestsByPath tests/integration/backup-restore.spec.ts` → 4/4 (commands documented; sqlite, postgres, mysql)

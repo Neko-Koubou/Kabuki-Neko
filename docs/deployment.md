@@ -128,7 +128,7 @@ Put a TLS-terminating reverse proxy in front of every published port and keep
   a PostgreSQL advisory lock or a MySQL named lock, and SQLite's exclusive transaction. When
   several API containers start together, one applies the migrations while the others wait (at
   most 60 s, then they exit and are restarted) and find nothing left to do. Back up before
-  upgrading (see the backup guide).
+  upgrading (see [docs/operations.md](operations.md)).
 - **Catalog pair.** The web and API images each carry the locale bundle from the same build.
   The web container's healthcheck is a readiness check: it reports healthy only when the buildId
   of its `/locales/registry.json` equals the API's `/system/locales` buildId. During a mismatched

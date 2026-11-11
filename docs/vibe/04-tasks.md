@@ -2854,7 +2854,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:integration --runInBand --runTestsByPath tests/integration/deployment.spec.ts` dan `pnpm test:integration --runInBand --runTestsByPath tests/integration/catalog-deployment.spec.ts` default/scale real run; source/shared credentials absent from browser bundle.
 
-### - [ ] TASK-178: Dokumentasikan dan uji backup, restore dan operasi
+### - [x] TASK-178: Dokumentasikan dan uji backup, restore dan operasi
 - **Traceability**: `US-15`, `US-16`, `US-17`, `US-20`, [SA §10.3](03-system-analysis.md#103-recoveryretention-and-known-limits)
 - **Depends On**: `TASK-177`
 - **Target Files**:
