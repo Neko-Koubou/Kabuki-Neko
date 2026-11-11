@@ -2239,3 +2239,15 @@
   - `docs/deployment.md` (links the operations guide)
 - **Verification**:
   - `pnpm test:integration --runInBand --runTestsByPath tests/integration/backup-restore.spec.ts` → 4/4 (commands documented; sqlite, postgres, mysql)
+
+## TASK-179 — 2026-11-12T06:24:53+07:00
+
+- **Files**:
+  - `scripts/benchmark-game.ts` (`pnpm benchmark:game --clients --transitions --mode memory|redis`; isolated harness (1 node memory/SQLite, or 2 nodes PostgreSQL+Redis); distinct simulated device addresses so production limits apply; four transitions per question with every player answering; NTP-style per-client clock calibration; transport (commit serverTime → receipt), admission and state-commit latencies separated; delivery completeness, disconnects, rejected answers, report queue age; environment/versions/duration; JSON record + Markdown; non-zero exit when the target is missed; renews the host token via auth:update on long runs)
+  - `tests/performance/game-benchmark.spec.ts` (clock calibration incl. asymmetric bound, latency correction, nearest-rank percentiles, summaries, delivery loss, verdict incl. dropped connections)
+  - `docs/performance-results.md` (method, environment, three recorded runs and findings)
+- **Verification**:
+  - `pnpm test:performance -- tests/performance/game-benchmark.spec.ts` → 10/10
+  - `pnpm benchmark:game --clients 200 --transitions 100 --mode memory` → PASS: transport p95 18.97 ms, 0/20400 lost, report queue 976 ms for 5000 answers; admission p50 2.0 s / p95 8.3 s (finding)
+  - `pnpm benchmark:game --clients 200 --transitions 100 --mode redis` → FAIL (recorded as failure): node B dropped all 100 players, transport p95 310 ms, 28.9% delivery loss; 60-client characterization run → FAIL p95 180 ms, no disconnects
+  - Findings documented (multi-node target not met on this host; per-answer full-state settle likely serializes admission; node B disconnects consistent with event-loop starvation on a shared 4-core host), not extrapolated

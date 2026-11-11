@@ -2866,7 +2866,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:integration --runInBand --runTestsByPath tests/integration/backup-restore.spec.ts` restore fixtures preserve quiz/media refs/history and secrets policy; recorded commands tested per dialect, recovery limits visible.
 
-### - [ ] TASK-179: Ukur broadcast game dan report load
+### - [x] TASK-179: Ukur broadcast game dan report load
 - **Traceability**: `US-16`, `US-20`, [SA §11.2](03-system-analysis.md#112-implementationqa-coverage-required)
 - **Depends On**: `TASK-178`
 - **Target Files**:
