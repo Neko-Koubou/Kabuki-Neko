@@ -2695,7 +2695,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:integration --runInBand --runTestsByPath tests/integration/auth-races.spec.ts` dan `pnpm test:integration --runInBand --runTestsByPath tests/integration/authorization.spec.ts` pass all 3 drivers; failures stay open, never skip engine silently.
 
-### - [ ] TASK-166: Uji transaksi konten dan lifecycle media
+### - [x] TASK-166: Uji transaksi konten dan lifecycle media
 - **Traceability**: `US-03`, `US-04`, `US-05`, `US-06`, `US-15`, [SA §11.2](03-system-analysis.md#112-implementationqa-coverage-required)
 - **Depends On**: `TASK-165`
 - **Target Files**:

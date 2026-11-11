@@ -119,6 +119,16 @@ export async function createTestRuntime() {
       const accessKeyId = `test${randomBytes(8).toString("hex")}`;
       const secretAccessKey = randomBytes(32).toString("hex");
       const container = await start(async () => {
+        // A prebuilt image of the same pinned source (e.g. built where `docker build` needs an
+        // extra CA for a TLS-intercepting proxy) can be supplied instead of building here.
+        const prebuilt = process.env["KABUKI_TEST_MINIO_IMAGE"];
+        if (prebuilt)
+          return new GenericContainer(prebuilt)
+            .withEnvironment({ MINIO_ROOT_USER: accessKeyId, MINIO_ROOT_PASSWORD: secretAccessKey })
+            .withCommand(["server", "/data"])
+            .withExposedPorts(9000)
+            .withWaitStrategy(Wait.forHttp("/minio/health/ready", 9000))
+            .start();
         const context = await mkdtemp(path.join(directory, "minio-build-"));
         await writeFile(path.join(context, "Dockerfile"), minioDockerfile);
         const image = await GenericContainer.fromDockerfile(context)
@@ -197,6 +207,10 @@ export interface ApiProcess {
   /** Everything the process wrote to stdout/stderr so far (for redaction checks). */
   logs: () => string;
   stop: () => Promise<void>;
+  /** Crash simulation: SIGKILL, no shutdown hooks; resolves once the process is gone. */
+  kill: () => Promise<void>;
+  /** Exit code once exited (null while running). */
+  exitCode: () => number | null;
 }
 
 /**
@@ -217,6 +231,8 @@ export async function startApi(
       ...runtime.env,
       API_PORT: String(port),
       PORT: String(port),
+      // Local uploads are served from this process, so their public URLs point at it.
+      NEXT_PUBLIC_API_URL: `http://127.0.0.1:${port}`,
       ...extra,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -224,6 +240,13 @@ export async function startApi(
   child.stdout.on("data", (chunk: Buffer) => output.push(chunk.toString("utf8")));
   child.stderr.on("data", (chunk: Buffer) => output.push(chunk.toString("utf8")));
   const url = `http://127.0.0.1:${port}`;
+  const kill = async () => {
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    const exited = once(child, "exit");
+    child.kill("SIGKILL");
+    await exited;
+  };
+  const exitCode = () => child.exitCode;
   const stop = async () => {
     if (child.exitCode !== null || child.signalCode !== null) return;
     child.kill("SIGTERM");
@@ -237,7 +260,7 @@ export async function startApi(
     if (child.exitCode !== null) break;
     try {
       if ((await fetch(`${url}/api/v1/auth/setup-status`)).status === 200)
-        return { base: `${url}/api/v1`, url, logs: () => output.join(""), stop };
+        return { base: `${url}/api/v1`, url, logs: () => output.join(""), stop, kill, exitCode };
     } catch {
       // Still starting.
     }

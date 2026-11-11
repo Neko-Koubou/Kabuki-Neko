@@ -2024,3 +2024,36 @@
     - media.spec MinIO: the image is built from GitHub source inside `docker build`, which fails here;
     - system.spec cleanup: the delete failure is induced with chmod 0555, but this container runs as root, which ignores file permissions.
   - eslint and prettier on the new and modified files: OK.
+
+## TASK-166 — 2026-11-11T22:00:41+07:00
+
+- **Files**:
+  - `CREATE` `tests/integration/content-races.spec.ts`: 6 tests × {SQLite, PostgreSQL, MySQL}/local + PostgreSQL/MinIO.
+  - `CREATE` `tests/integration/media-failures.spec.ts`: 3 tests × 3 engines (local) + 4 MinIO failure-injection tests.
+  - `MODIFY` `tests/helpers/runtime.ts`:
+    - `KABUKI_TEST_MINIO_IMAGE` uses a prebuilt image of the same pinned MinIO source, needed here because `docker build` behind the TLS-intercepting proxy lacks its CA;
+    - `startApi` points NEXT_PUBLIC_API_URL at its own origin (local upload URLs) and gains kill() (SIGKILL crash) and exitCode().
+  - `MODIFY` `tests/integration/authorization.spec.ts`: the media checks now use PATCH/DELETE with the owner's real If-Match. The old GET /media/:id check passed only because that route does not exist.
+- **Notes**:
+  - Content races:
+    - two saves on one revision → [200, 409] and the stored quiz is exactly the winner's;
+    - duplicates with distinct keys → complete independent copies; one key → one copy;
+    - create_room racing a save → a room only from the named revision, with that revision's prompt;
+    - pins: B's copy keeps A's cover in use (409 MEDIA_IN_USE); an active room keeps question media in use after the quiz drops it;
+    - attach vs delete → exactly one wins, a quiz never points at a deleted upload, and kept files exist;
+    - cleanup removes only unreferenced uploads with exact count and bytes, and a concurrent run is refused (429 CLEANUP lease).
+  - Failures:
+    - malformed import/upload → stable errors with no quiz, media or finished operation;
+    - an import aborted mid-body creates nothing, then the full file plus a replay creates exactly one quiz;
+    - an incomplete S3 config refuses startup without printing the secret.
+  - MinIO (container paused at precise points, API SIGKILLed):
+    - an outage upload is never 201 and never listed, and uploads resume afterwards;
+    - a crash mid blob write leaves no listed upload and existing files intact;
+    - a crash after a delete claim leaves a DELETING row; it is aged past the janitor's 10-minute threshold in the DB (simulated time), and the startup sweep removes both row and blob;
+    - cleanup during an outage answers 503 STORAGE_UNAVAILABLE with rows and files kept, then the next run deletes every READY/FAILED candidate with exact bytes.
+  - Environment: dockerd started; MinIO image `kabuki-neko/minio-test:local-ca` built from the pinned commit plus the proxy CA.
+- **Verification**:
+  - `KABUKI_TEST_MINIO_IMAGE=kabuki-neko/minio-test:local-ca pnpm test:integration --runInBand --runTestsByPath tests/integration/content-races.spec.ts`: 24/24 passed.
+  - `… --runTestsByPath tests/integration/media-failures.spec.ts`: 13/13 passed.
+  - `authorization.spec.ts` re-run: 18/18. The existing media.spec MinIO test also passes with the prebuilt image.
+  - eslint and prettier: OK.

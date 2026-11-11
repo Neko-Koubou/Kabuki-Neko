@@ -16,8 +16,8 @@
  *     changed or deleted by B or S;
  *   - listings never show another creator's private quiz;
  *   - anonymous requests get 401.
- * - Media: A's upload is invisible (404) to B and S for reading and deleting, and absent from
- *   their libraries.
+ * - Media: B and S cannot edit or delete A's upload (404 even with the right revision), and it is
+ *   absent from their libraries.
  * - Reports: only the host (A) reads the report, its status and CSV; B and S get 404.
  * - Rooms: B cannot lock or end A's live room over the socket; A can.
  * - Boundary checks:
@@ -369,11 +369,30 @@ describe.each(DB_DRIVERS)("authorization matrix on %s", (driver) => {
   it("keeps media private to its uploader, including from SUPERADMIN", async () => {
     const { a, b, s, mediaId } = fixture;
     if (!a || !b || !s) throw new Error("fixture missing");
+    // The owner's current revision, so only authorization can refuse the outsiders' changes.
+    const listed = (await call("/media?limit=100", { token: a.accessToken })).json as {
+      items: { id: string; revision: number }[];
+    };
+    const revision = listed.items.find((item) => item.id === mediaId)?.revision ?? 0;
     for (const outsider of [b, s]) {
-      expect((await call(`/media/${mediaId}`, { token: outsider.accessToken })).status).toBe(404);
+      const edited = await call(`/media/${mediaId}`, {
+        method: "PATCH",
+        token: outsider.accessToken,
+        headers: { "If-Match": `"${revision}"` },
+        body: {
+          accessibility: {
+            altText: "Diubah",
+            transcript: null,
+            captions: [],
+            visualDescription: null,
+          },
+        },
+      });
+      expect(edited.status).toBe(404);
       const removed = await call(`/media/${mediaId}`, {
         method: "DELETE",
         token: outsider.accessToken,
+        headers: { "If-Match": `"${revision}"` },
       });
       expect(removed.status).toBe(404);
       const library = await call("/media?limit=100", { token: outsider.accessToken });
