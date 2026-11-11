@@ -2772,7 +2772,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:e2e -- tests/e2e/journeys.spec.ts tests/e2e/ui-states.spec.ts` all inventory states accounted for; true non-applicable static empty cases asserted as design describes.
 
-### - [ ] TASK-172: Uji locale runtime dan ekstensi bahasa end-to-end
+### - [x] TASK-172: Uji locale runtime dan ekstensi bahasa end-to-end
 - **Traceability**: `US-21`, [SA §8.2](03-system-analysis.md#82-install-matching-dan-hydration)
 - **Depends On**: `TASK-171`
 - **Target Files**:

@@ -2154,3 +2154,16 @@
   - full `pnpm test:e2e` → 41/41
   - e2e typecheck, eslint and prettier clean
 - **Notes**: the creator-forbidden settings message briefly shows the generic "Unavailable" fallback while the `validation` namespace loads (cosmetic; correct text appears once loaded).
+
+## TASK-172 — 2026-11-12T03:56:37+07:00
+
+- **Files**:
+  - `tests/e2e/fixtures/locale-packages.ts` (test-only packages: genuine partial `de` and RTL `ar`; en-XA/ar-XB pseudo generator with ≥ +40% bracketed expansion that leaves ICU syntax intact; package writer)
+  - `tests/contracts/localization-roundtrip.spec.ts` (built-ins complete; pseudo locales valid only with --allow-pseudo and never publishable; install de+ar → one bundle to API+web → built API serves it → rollback restores the original buildId)
+  - `tests/e2e/localization.spec.ts` (picker lists 8 installed languages without code changes, German switch with en fallback + cookie + SSR; Arabic RTL and 320 px fit for de/ar; SSR cookie/Accept-Language/Chinese script/storage rules; failed catalog keeps old language and typed PIN then retries; mid-game switch online/offline never resends or changes content; dirty studio draft stays dirty with no save)
+  - `playwright.config.ts` (scope addition: web server reads a private copy of the shipped bundle via KN_LOCALES_DIR so the spec can install/roll back without touching apps/web/public/locales)
+  - `apps/web/src/components/player/player-game.tsx`, `apps/web/src/components/host/host-stage.tsx` (scope addition, gap found by the test: Design §3 requires a language control on the player/host stages; LocalePicker added above the recovery wrapper so it stays usable while reconnecting/offline)
+- **Verification**:
+  - `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/localization-roundtrip.spec.ts` → 3/3
+  - `pnpm test:e2e tests/e2e/localization.spec.ts` → 8/8 (incl. first-run); full `pnpm test:e2e` → 46/46
+  - web typecheck, lint, unit tests 436/436; shipped registry unchanged (6 locales, buildId caa1a1e1…)

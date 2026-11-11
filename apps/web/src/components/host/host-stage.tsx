@@ -26,6 +26,8 @@
  * - Audio: one useAudioEngine with role host decides every cue from the snapshot. The single
  *   AudioController sits in the lobby slot or the stage header. New roster entries trigger the
  *   join pop. There is no other local music player, also not in PROJECTOR mode.
+ * - The language picker (F19) sits above the recovery wrapper, so it stays usable while
+ *   reconnecting; switching never touches the room.
  * - Report status (pending, ready, failed with retry, lost) does not depend on the cosmetic
  *   FINISHED phase. It follows host-only pushes and falls back to REST while the socket can't
  *   deliver them, including after the room is gone. The report link appears only for a ready
@@ -54,6 +56,7 @@ import { RequireAuth, useAuth } from "@/providers/auth-provider";
 import { useLocale } from "@/providers/locale-provider";
 import { createGameStore, useGame, type GameState } from "@/stores/game.store";
 import { useAudioStore } from "@/stores/useAudioStore";
+import { LocalePicker } from "@/components/ui/locale-picker";
 import { AudioController } from "./AudioController";
 import { ExplanationDialog } from "./explanation-dialog";
 import { HostPhaseControls, type HostPhaseCommands } from "./host-phase-controls";
@@ -218,6 +221,11 @@ export function HostStage({ sessionId }: HostStageProps) {
 
   return (
     <>
+      {/* Design §3/§8.1: the language control stays usable outside the recovery wrapper (inert
+          while reconnecting); switching never touches the room or its commands. */}
+      <div className="mx-auto flex w-full max-w-[1920px] justify-end px-4 pt-2 md:px-8">
+        <LocalePicker />
+      </div>
       <ConnectionRecovery
         role="host"
         store={store}

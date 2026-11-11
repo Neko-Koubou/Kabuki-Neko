@@ -15,11 +15,14 @@
  *   context its own client address with `X-Forwarded-For`, as a reverse proxy would. Per-IP auth
  *   rate limits then apply per simulated client instead of to the whole suite.
  * - The web server gets `API_INTERNAL_URL` for server-side setup-status and locale checks.
+ * - The web server reads a copy of the shipped locale bundle from the runtime directory
+ *   (`KN_LOCALES_DIR`, exposed to specs as `KABUKI_E2E_WEB_LOCALES`), so the localization spec can
+ *   install and roll back test-only languages without touching `apps/web/public/locales`.
  * - `KABUKI_E2E_API_URL` exposes the API URL to specs. `PLAYWRIGHT_CHROMIUM_EXECUTABLE` can point
  *   at a preinstalled Chromium binary.
  */
 import path from "node:path";
-import { existsSync, rmSync } from "node:fs";
+import { cpSync, existsSync, rmSync } from "node:fs";
 import { defineConfig, devices } from "@playwright/test";
 import { createTestRuntime, createSyntheticCatalog } from "./tests/helpers/runtime";
 
@@ -30,6 +33,19 @@ export default (async () => {
   const contractsFile = path.resolve("packages/shared/locales/message-contracts.json");
   if (existsSync(contractsFile)) {
     await createSyntheticCatalog(path.join(runtime.directory, "locales-built"), contractsFile);
+  }
+  // The web server reads a private copy of the shipped locale bundle (KN_LOCALES_DIR), so a spec
+  // can install and roll back test-only languages without touching apps/web/public/locales.
+  // Workers re-evaluate this file and inherit the main process's value, which must stay the one
+  // the web server reads, so only the first evaluation creates the copy.
+  const shippedLocales = path.resolve("apps/web/public/locales");
+  if (
+    !process.env["KABUKI_E2E_WEB_LOCALES"] &&
+    existsSync(path.join(shippedLocales, "registry.json"))
+  ) {
+    const webLocales = path.join(runtime.directory, "web-locales");
+    cpSync(shippedLocales, webLocales, { recursive: true });
+    process.env["KABUKI_E2E_WEB_LOCALES"] = webLocales;
   }
   const apiPort = 43101;
   const webPort = 43100;
@@ -96,6 +112,9 @@ export default (async () => {
           NEXT_PUBLIC_WS_URL: apiURL,
           API_INTERNAL_URL: apiURL,
           APP_URL: webURL,
+          ...(process.env["KABUKI_E2E_WEB_LOCALES"]
+            ? { KN_LOCALES_DIR: process.env["KABUKI_E2E_WEB_LOCALES"] }
+            : {}),
         },
         timeout: 300000,
         reuseExistingServer: false,

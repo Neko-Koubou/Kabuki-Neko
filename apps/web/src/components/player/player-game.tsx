@@ -12,7 +12,9 @@
  * - ConnectionRecovery (F17) wraps the screen. A reconnect keeps the last phase visible but inert
  *   (answers locked), and kick, replacement or expiry show the terminal fallback once.
  * - The header shows avatar, nickname, score and streak from the server, plus the Streamer-only
- *   opt-in for thinking music.
+ *   opt-in for thinking music. The language picker (F19) sits above the recovery wrapper so it
+ *   stays usable while reconnecting or offline; a switch only re-renders text, never the socket,
+ *   the accepted answer or the quiz content.
  * - Phases:
  *   - LOBBY: big avatar, "Waiting for the host to start…", and the avatar editor (M01, LOBBY only).
  *   - GAME_START_COUNTDOWN: server-synced 3, 2, 1.
@@ -59,6 +61,7 @@ import { useLocale } from "@/providers/locale-provider";
 import { createGameStore, currentDraft, useGame, type GameState } from "@/stores/game.store";
 import type { StoreApi } from "zustand";
 import { AvatarCustomizer } from "./avatar-customizer";
+import { LocalePicker } from "@/components/ui/locale-picker";
 import { ConnectionRecovery } from "./connection-recovery";
 import { GameTimer } from "./game-timer";
 import { PersonalResult } from "./personal-result";
@@ -129,24 +132,32 @@ export function PlayerGame({ pinCode }: PlayerGameProps) {
 
   const sessionId = snapshot?.sessionId ?? record?.sessionId ?? null;
   return (
-    <ConnectionRecovery
-      role="player"
-      store={store}
-      sessionId={sessionId}
-      onRetry={retry}
-      onLeave={leave}
-    >
-      {snapshot?.role === "player" && (
-        <PlayerScreen
-          snapshot={snapshot}
-          store={store}
-          socket={socket}
-          serverNow={clock.serverNow}
-          submit={submit}
-          onAccepted={() => audio.signal("answerAccepted")}
-        />
-      )}
-    </ConnectionRecovery>
+    <>
+      {/* Design §3/§8.1: the language control stays usable outside the recovery wrapper, which
+          makes a stale screen inert while reconnecting or offline; switching never touches the
+          socket, the accepted answer or the quiz content. */}
+      <div className="flex justify-end pt-2">
+        <LocalePicker />
+      </div>
+      <ConnectionRecovery
+        role="player"
+        store={store}
+        sessionId={sessionId}
+        onRetry={retry}
+        onLeave={leave}
+      >
+        {snapshot?.role === "player" && (
+          <PlayerScreen
+            snapshot={snapshot}
+            store={store}
+            socket={socket}
+            serverNow={clock.serverNow}
+            submit={submit}
+            onAccepted={() => audio.signal("answerAccepted")}
+          />
+        )}
+      </ConnectionRecovery>
+    </>
   );
 }
 
