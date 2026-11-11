@@ -2734,7 +2734,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:integration --runInBand --runTestsByPath tests/integration/realtime-races.spec.ts`, `pnpm test:integration --runInBand --runTestsByPath tests/integration/recovery.spec.ts` dan `pnpm test:integration --runInBand --runTestsByPath tests/integration/payload-privacy.spec.ts` pass without compensating by client timestamps.
 
-### - [ ] TASK-169: Uji durability laporan dan retention
+### - [x] TASK-169: Uji durability laporan dan retention
 - **Traceability**: `US-12`, `US-14`, `US-16`, `US-20`, [SA §6.3](03-system-analysis.md#63-finalization-and-durability)
 - **Depends On**: `TASK-168`
 - **Target Files**:

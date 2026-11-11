@@ -162,6 +162,8 @@ export interface QuestionSpec {
   options: [string, boolean?][];
   timeLimitSec?: 5 | 10 | 20 | 30;
   pointsMultiplier?: 0 | 1 | 2;
+  /** Image attached to the question. */
+  mediaId?: string;
 }
 
 /** Two API nodes and their accounts. */
@@ -257,6 +259,7 @@ export async function quizWith(
         orderIndex,
         type: spec.type,
         promptText: spec.prompt,
+        mediaId: spec.mediaId ?? null,
         timeLimitSec: spec.timeLimitSec ?? 10,
         pointsMultiplier: spec.type === "POLL" ? 0 : (spec.pointsMultiplier ?? 1),
         explanationText: null,
@@ -309,4 +312,164 @@ export async function join(client: GameClient, room: Room, nickname: string, req
 export async function phaseVersion(host: GameClient, room: Room): Promise<number> {
   const ack = await host.emit("room:sync", room);
   return Number((ack.data?.["snapshot"] as { phaseVersion?: number } | undefined)?.phaseVersion);
+}
+
+/** Opens the runtime's database (any engine) with the domain schemas; caller destroys it. */
+export async function openDatabase(runtime: TestRuntime, env: Record<string, string>) {
+  const { createDataSource, domainSchemas } = await import("../../packages/database/src");
+  const driver = (env["DB_DRIVER"] ?? "sqlite") as "sqlite" | "postgres" | "mysql";
+  const db = createDataSource(
+    driver === "sqlite"
+      ? { driver, sqlitePath: runtime.env["SQLITE_PATH"] ?? "" }
+      : { driver, url: env["DATABASE_URL"] ?? "" },
+    domainSchemas(driver),
+  );
+  await db.initialize();
+  return db;
+}
+
+/** Status of a room's SQL allocation (null once the row is gone). */
+export async function allocationStatus(
+  runtime: TestRuntime,
+  env: Record<string, string>,
+  sessionId: string,
+): Promise<string | null> {
+  const db = await openDatabase(runtime, env);
+  try {
+    const row = await db.manager.findOneBy<{ id: string; status: string }>("room_allocations", {
+      id: sessionId,
+    });
+    return row?.status ?? null;
+  } finally {
+    await db.destroy();
+  }
+}
+
+/**
+ * Ages a live room's Redis state as elapsed server time would: `mutate` edits the decoded private
+ * state (e.g. moves `lobbyActiveAt` two hours back), and the hash is written back in place.
+ */
+export async function ageRoomState(
+  redisUrl: string,
+  room: Room,
+  mutate: (state: Record<string, unknown>) => void,
+  namespace = "default",
+): Promise<void> {
+  const { default: Redis } = await import("ioredis");
+  const redis = new Redis(redisUrl);
+  try {
+    const key = `kabukineko:${namespace}:room:{${room.pinCode}}:meta`;
+    const raw = await redis.hget(key, "state");
+    if (!raw) throw new Error("room state missing");
+    const state = JSON.parse(raw) as Record<string, unknown>;
+    mutate(state);
+    await redis.hset(key, "state", JSON.stringify(state));
+  } finally {
+    redis.disconnect();
+  }
+}
+
+/** Polls `read` until it returns `expected` (or fails after `timeoutMs`). */
+export async function until<T>(
+  read: () => Promise<T>,
+  expected: T,
+  timeoutMs = 30_000,
+): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const value = await read();
+    if (value === expected || Date.now() > deadline) return value;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+}
+
+/** One API node and its accounts. */
+export interface SingleApi {
+  runtime: TestRuntime;
+  api: ApiProcess;
+  env: Record<string, string>;
+  /** Redis URL when the state driver is Redis. */
+  redisUrl: string | null;
+  call: ReturnType<typeof httpClient>;
+  admin: string;
+  host: string;
+}
+
+/** Starts one API node on `driver` with Redis or in-memory game state, plus an admin and a host. */
+export async function startSingleApi(
+  driver: "sqlite" | "postgres" | "mysql",
+  state: "redis" | "memory" = "redis",
+): Promise<SingleApi> {
+  const runtime = await createTestRuntime();
+  try {
+    const redisUrl = state === "redis" ? (await runtime.redis()).getConnectionUrl() : null;
+    const env: Record<string, string> = {
+      ...(await databaseEnv(runtime, driver)),
+      STATE_DRIVER: state,
+      ...(redisUrl ? { REDIS_URL: redisUrl } : {}),
+      // A restarted process gets a new port; the pinned storage origin needs one stable URL.
+      NEXT_PUBLIC_API_URL: "http://localhost:3001",
+      TRUST_PROXY_CIDRS: '["127.0.0.1/32","::1/128"]',
+    };
+    const api = await startApi(runtime, env);
+    const call = httpClient(api.base);
+    const setup = await call("/auth/setup", {
+      method: "POST",
+      ip: "10.8.0.1",
+      headers: { "Idempotency-Key": randomUUID() },
+      body: {
+        instanceName: "Durability",
+        name: "Super",
+        email: "s@example.org",
+        password: PASSWORD,
+      },
+    });
+    if (setup.status !== 201) throw new Error(`setup failed: ${setup.text}`);
+    const host = await call("/auth/register", {
+      method: "POST",
+      ip: "10.8.0.2",
+      headers: { "Idempotency-Key": randomUUID() },
+      body: { name: "Host", email: "host@example.org", password: PASSWORD },
+    });
+    if (host.status !== 201) throw new Error(`register failed: ${host.text}`);
+    return {
+      runtime,
+      api,
+      env,
+      redisUrl,
+      call,
+      admin: (setup.json as { accessToken: string }).accessToken,
+      host: (host.json as { accessToken: string }).accessToken,
+    };
+  } catch (error) {
+    await runtime.cleanup();
+    throw error;
+  }
+}
+
+/** A valid 1×1 PNG. */
+const PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+/** Uploads a small image as `token`'s user; returns the media id and revision. */
+export async function uploadImage(api: ApiProcess, token: string) {
+  const form = new FormData();
+  form.append("folder", "questions");
+  form.append("file", new Blob([new Uint8Array(PNG)], { type: "image/png" }), "gambar.png");
+  const response = await fetch(`${api.base}/media/upload`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Origin: TEST_ORIGIN,
+      "X-Kabuki-Client": "web-v1",
+      "Idempotency-Key": randomUUID(),
+      "X-Forwarded-For": "10.8.0.2",
+    },
+    body: form,
+  });
+  const text = await response.text();
+  if (response.status !== 201) throw new Error(`upload failed: ${text}`);
+  return JSON.parse(text) as { id: string; revision: number };
 }

@@ -2118,3 +2118,16 @@
   - `… recovery.spec.ts`: 8/8.
   - `… payload-privacy.spec.ts`: 1/1.
   - eslint and prettier: OK.
+
+## TASK-169 — 2026-11-11T23:39:24+07:00
+
+- **Files**:
+  - `apps/api/src/modules/game-engine/room-scheduler.ts` (one error-level alarm per room when a frozen report is still not durable 24 h after the game; never evicted)
+  - `apps/api/src/modules/game-engine/room-scheduler.spec.ts` (alarm unit test)
+  - `tests/helpers/game.ts` (openDatabase, allocationStatus, ageRoomState, until, startSingleApi, uploadImage, QuestionSpec.mediaId)
+  - `tests/integration/room-retention.spec.ts` (lobby 2h, hard 8h, finished 1h, pending >24h alarm without eviction, stale PIN cleanup, memory restart LOST)
+  - `tests/integration/finalization-failures.spec.ts` (crash after end_game, crash inside the history write with an expired lease, failed backoff/503 gates/list/pins/manual reset/due retry, reportId gate, payload hash mismatch)
+- **Verification**:
+  - `pnpm test:integration --runInBand --runTestsByPath tests/integration/finalization-failures.spec.ts` → 12/12 (sqlite, postgres, mysql)
+  - `pnpm test:integration --runInBand --runTestsByPath tests/integration/room-retention.spec.ts` → 18/18
+  - API jest room-scheduler 5/5, API typecheck, eslint and prettier clean
