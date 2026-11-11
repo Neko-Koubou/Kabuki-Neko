@@ -1986,3 +1986,41 @@
   - Full E2E suite: 30/30 passed. Web unit tests: 436/436. API Jest: 215 passed.
     - `rate-limit.service.spec.ts` (11 tests) cannot run here because it needs Docker (testcontainers Redis); this is pre-existing and unrelated.
   - typecheck, lint and prettier: OK.
+
+## TASK-165 — 2026-11-11T21:36:50+07:00
+
+- **Files**:
+  - `CREATE` `tests/integration/auth-races.spec.ts`: 6 tests × 3 engines.
+  - `CREATE` `tests/integration/authorization.spec.ts`: 6 tests × 3 engines.
+  - `MODIFY` `tests/helpers/runtime.ts`: DB_DRIVERS/DbDriver, TestRuntime, databaseEnv (real PostgreSQL 16 / MySQL 8.4 containers, never a fallback), freePort, startApi (built API process with captured output), TEST_ORIGIN, httpClient.
+- **Notes**:
+  - Each engine gets a fresh runtime, database and API process. The API trusts loopback as a proxy, so simulated clients have their own rate-limit IPs.
+  - Races (real HTTP):
+    - 5 concurrent setups → exactly one SUPERADMIN, the rest 409 SETUP_COMPLETE;
+    - 4 concurrent registrations on one invitation → one 201, the rest 409 INVITE_UNAVAILABLE; reuse 409;
+    - PUBLIC with an inviteCode → 422; SINGLE_ADMIN → 403;
+    - mutual demotion and mutual deactivation of two SUPERADMINs → exactly one active SUPERADMIN remains, and self-removal returns 409 LAST_SUPERADMIN;
+    - concurrent refresh with one cookie → [200, 401] and the family is revoked; sequential reuse revokes the newer token;
+    - deactivation → access 401, refresh 401, and a login body identical to a wrong password.
+  - WS: host commands are refused right after a role change (TOKEN_REVOKED) until auth:update with a fresh token, and for good after deactivation.
+  - Authorization matrix:
+    - private quiz/export 404 for the other creator and the SUPERADMIN (no implicit bypass);
+    - public quiz read/export allowed, valid PUT/DELETE 403/404 and unchanged, duplicate owned by B;
+    - listings do not leak; anonymous 401;
+    - media and reports (detail/status/players/CSV) 404 for non-owners or non-hosts;
+    - socket lock/end/recover refused for non-hosts.
+  - Boundary checks:
+    - foreign or missing Origin and a missing client header → 403 with no change;
+    - cross-origin refresh → 403;
+    - the 11th login per IP → 429;
+    - a register replay → 409 OPERATION_COMPLETED_REAUTH_REQUIRED with no credential;
+    - logout revokes the refresh family (repeated logout 200, forged token 401).
+  - Redaction: the API output contains none of the passwords, tokens, cookies or invite codes.
+  - Environment: started dockerd in this container (testcontainers needs it), and image pulls through the proxy work.
+- **Verification**:
+  - `pnpm test:integration --runInBand --runTestsByPath tests/integration/auth-races.spec.ts`: 18/18 passed (SQLite, PostgreSQL 16, MySQL 8.4).
+  - `pnpm test:integration --runInBand --runTestsByPath tests/integration/authorization.spec.ts`: 18/18 passed (all 3 engines).
+  - Full integration suite: 53/55 passed. The 2 failures are pre-existing and environmental:
+    - media.spec MinIO: the image is built from GitHub source inside `docker build`, which fails here;
+    - system.spec cleanup: the delete failure is induced with chmod 0555, but this container runs as root, which ignores file permissions.
+  - eslint and prettier on the new and modified files: OK.

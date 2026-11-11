@@ -1,4 +1,7 @@
+import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
+import { once } from "node:events";
+import { createServer } from "node:net";
 import { mkdtemp, readFile, realpath, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -148,6 +151,145 @@ export async function createTestRuntime() {
       }
       return { container, endpoint, bucket, accessKeyId, secretAccessKey };
     },
+  };
+}
+
+/** Database engines every integration matrix runs against. */
+export const DB_DRIVERS = ["sqlite", "postgres", "mysql"] as const;
+/** One database engine. */
+export type DbDriver = (typeof DB_DRIVERS)[number];
+
+/** Test runtime returned by {@link createTestRuntime}. */
+export type TestRuntime = Awaited<ReturnType<typeof createTestRuntime>>;
+
+/**
+ * Environment for `driver`: SQLite uses the runtime's file; PostgreSQL 16 and MySQL 8.4 start a
+ * real container owned by the runtime (stopped by its cleanup). Never falls back to another engine.
+ */
+export async function databaseEnv(
+  runtime: TestRuntime,
+  driver: DbDriver,
+): Promise<Record<string, string>> {
+  if (driver === "sqlite") return { DB_DRIVER: "sqlite" };
+  const container = driver === "postgres" ? await runtime.postgres() : await runtime.mysql();
+  return { DB_DRIVER: driver, DATABASE_URL: container.getConnectionUri() };
+}
+
+/** A free loopback TCP port. */
+export async function freePort(): Promise<number> {
+  const listener = createServer();
+  listener.listen(0, "127.0.0.1");
+  await once(listener, "listening");
+  const address = listener.address();
+  if (!address || typeof address === "string") throw new Error("Missing test port");
+  await new Promise<void>((resolve, reject) =>
+    listener.close((error) => (error ? reject(error) : resolve())),
+  );
+  return address.port;
+}
+
+/** A running API process from `apps/api/dist`. */
+export interface ApiProcess {
+  /** REST base, e.g. `http://127.0.0.1:1234/api/v1`. */
+  base: string;
+  /** Server origin (sockets), e.g. `http://127.0.0.1:1234`. */
+  url: string;
+  /** Everything the process wrote to stdout/stderr so far (for redaction checks). */
+  logs: () => string;
+  stop: () => Promise<void>;
+}
+
+/**
+ * Starts the built API (`apps/api/dist/main.js`) with the runtime env plus `extra`, waits until
+ * `/auth/setup-status` answers, and captures its output. Startup failure stops the process and
+ * includes the output in the error (secrets in it are the generated test ones).
+ */
+export async function startApi(
+  runtime: TestRuntime,
+  extra: Record<string, string> = {},
+): Promise<ApiProcess> {
+  const port = await freePort();
+  const output: string[] = [];
+  const child = spawn(process.execPath, [path.join(process.cwd(), "apps/api/dist/main.js")], {
+    cwd: runtime.directory,
+    env: {
+      ...process.env,
+      ...runtime.env,
+      API_PORT: String(port),
+      PORT: String(port),
+      ...extra,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  child.stdout.on("data", (chunk: Buffer) => output.push(chunk.toString("utf8")));
+  child.stderr.on("data", (chunk: Buffer) => output.push(chunk.toString("utf8")));
+  const url = `http://127.0.0.1:${port}`;
+  const stop = async () => {
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    child.kill("SIGTERM");
+    await Promise.race([
+      once(child, "exit"),
+      new Promise((resolve) => setTimeout(resolve, 10_000)),
+    ]);
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+  };
+  for (let attempt = 0; attempt < 600; attempt++) {
+    if (child.exitCode !== null) break;
+    try {
+      if ((await fetch(`${url}/api/v1/auth/setup-status`)).status === 200)
+        return { base: `${url}/api/v1`, url, logs: () => output.join(""), stop };
+    } catch {
+      // Still starting.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  await stop();
+  throw new Error(`API did not start:\n${output.join("").slice(-4000)}`);
+}
+
+/** Browser origin the test API accepts by default (`CORS_ORIGIN`). */
+export const TEST_ORIGIN = "http://localhost:3000";
+
+/** Options of one {@link httpClient} request. */
+export interface HttpRequest {
+  method?: string;
+  token?: string;
+  body?: unknown;
+  headers?: Record<string, string>;
+  /** Raw `refresh_token=…` cookie pair. */
+  cookie?: string;
+  /** Simulated client address (`X-Forwarded-For`, trusted only from loopback when configured). */
+  ip?: string;
+}
+
+/** JSON client for the test API with the web client's Origin and client header by default. */
+export function httpClient(base: string) {
+  return async function call(path: string, options: HttpRequest = {}) {
+    const response = await fetch(`${base}${path}`, {
+      method: options.method ?? "GET",
+      headers: {
+        "X-Kabuki-Client": "web-v1",
+        Origin: TEST_ORIGIN,
+        ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
+        ...(options.cookie ? { Cookie: options.cookie } : {}),
+        ...(options.ip ? { "X-Forwarded-For": options.ip } : {}),
+        ...(options.body === undefined ? {} : { "Content-Type": "application/json" }),
+        ...options.headers,
+      },
+      ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+    });
+    const text = await response.text();
+    /** Parsed JSON body, or null for empty or non-JSON bodies (CSV, files). */
+    const parse = (): unknown => {
+      try {
+        return text ? (JSON.parse(text) as unknown) : null;
+      } catch {
+        return null;
+      }
+    };
+    const json = parse();
+    const cookie = response.headers.get("set-cookie")?.split(";")[0] ?? null;
+    return { status: response.status, json, text, cookie, headers: response.headers };
   };
 }
 

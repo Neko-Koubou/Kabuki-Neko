@@ -2682,7 +2682,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:e2e -- tests/e2e/security-headers.spec.ts` production hydration/socket/media still work, hostile iframe/URL/script blocked, no secret public build values.
 
-### - [ ] TASK-165: Uji race autentikasi dan admin pada tiga DB
+### - [x] TASK-165: Uji race autentikasi dan admin pada tiga DB
 - **Traceability**: `US-01`, `US-02`, `US-15`, `US-20`, [SA §11.2](03-system-analysis.md#112-implementationqa-coverage-required)
 - **Depends On**: `TASK-164`, `TASK-011`
 - **Target Files**:
