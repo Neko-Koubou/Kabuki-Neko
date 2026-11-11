@@ -2628,7 +2628,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Playwright targeted audio suite passes, all10SFX role matrix covered, no phantom rank/POLL feedback, no stale timers after disconnect or navigation; record actual supported browser evidence.
 
-### - [ ] TASK-161: Bangun daftar laporan host
+### - [x] TASK-161: Bangun daftar laporan host
 - **Traceability**: `US-14`, `US-21`, [SA §4.5](03-system-analysis.md#45-reports), [Design §4.4](02-design-spec.md#44-media-dan-laporan--s08s10)
 - **Depends On**: `TASK-160`
 - **Target Files**:

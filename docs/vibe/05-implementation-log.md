@@ -1884,3 +1884,19 @@
     - Teardown leaves nothing playing and no late cues.
     - With WebM forced off, the specific `matcha` track and the SFX load as MP3.
   - Full E2E suite: 21/21 passed. Web unit tests: 46 files / 424 tests passed. typecheck, lint, prettier and e2e tsc/eslint: OK.
+
+## TASK-161 — 2026-11-11T16:32:05+07:00
+
+- **Files**:
+  - `CREATE` `apps/web/src/app/(dashboard)/dashboard/reports/page.tsx`: S09 route; passes the URL params (`quizId`, `search`, `page`) to the client list.
+  - `CREATE` `apps/web/src/components/reports/report-list.tsx`: ReportList, ReportListRoute, parseReportsQuery, reportsHref, fetchReports, REPORTS_PAGE_SIZE.
+  - `CREATE` `apps/web/src/components/reports/report-list.spec.tsx`: 7 tests.
+- **Notes**:
+  - Only ready reports are listed: 15 per page, `ended_desc`, with search and quiz filter. The server scopes every query to the host, so a foreign `quizId` returns no data.
+  - URL query state; createLatestRequest aborts the older request, and a stale response is never applied. A page beyond the end moves back to the last page.
+  - Each row shows the snapshot title (wraps; a deleted quiz keeps its title) linking to S10, the end date and time with the time-zone label, the player count, and a Completed / Ended early / Expired badge.
+  - Empty states are distinct: no finished games (link to Quizzes) vs. no matches (Clear filters). A fetch failure shows the s09 error, the correlation id and Retry. A failed refresh keeps the rows as older data.
+  - The quiz filter lists the host's own quizzes (limit 100). A filtered id that is missing stays visible as the current choice.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/web test -- src/components/reports/report-list.spec.tsx`: 7 passed. Covers L/E/I/P/X, pagination and clamping, the time zone shown, abort/latest-only, a 401 refresh followed by a retry, and a 404 error.
+  - Full web suite: 47 files / 431 tests passed. typecheck, lint, prettier and build (route `/dashboard/reports`): OK.
