@@ -2601,7 +2601,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/host/question-projector.spec.tsx` full prompt500/options250, no key before reveal, media failure remains controllable, double click emits one pending command.
 
-### - [ ] TASK-160: Integrasikan host recovery, podium dan status laporan
+### - [x] TASK-160: Integrasikan host recovery, podium dan status laporan
 - **Traceability**: `US-07`, `US-10`, `US-12`, `US-13`, `US-14`, `US-21`, [SA §6.3](03-system-analysis.md#63-finalization-and-durability), [Design §6.1](02-design-spec.md#61-semua-layar)
 - **Depends On**: `TASK-159`, `TASK-086`, `TASK-130B`
 - **Target Files**:

@@ -535,5 +535,13 @@ export function useAudioEngine(options: AudioEngineOptions) {
 
   const unlock = useCallback(() => manager.unlock(), [manager]);
 
-  return { status, signal, cycleNextLobbyTrack, unlock, manifestReady: manifest !== null };
+  return {
+    status,
+    signal,
+    cycleNextLobbyTrack,
+    unlock,
+    manifestReady: manifest !== null,
+    /** Lobby tracks of the loaded manifest (empty while loading or when none exist). */
+    lobbyTracks: manifest?.lobby ?? [],
+  };
 }

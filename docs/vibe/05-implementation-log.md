@@ -1815,3 +1815,40 @@
   - `pnpm --filter @kabuki-neko/web test -- src/components/host/question-projector.spec.tsx` → 46 files / 421 tests passed.
   - typecheck, lint, prettier and build → OK.
   - Chromium probe (deleted) at 1280 and 1920 dark, and at 360 light: no overflow.
+
+## TASK-160 — 2026-11-11T15:41:17+07:00
+
+- **Files**:
+  - `CREATE` `apps/web/src/app/(host)/host/[sessionId]/page.tsx`: S16 route (UUID check, localized title, no server-side quiz content).
+  - `CREATE` `apps/web/src/components/host/host-stage.tsx`: HostStageRoute, HostStage, createHostCommands, toOutcome.
+  - `CREATE` `apps/web/src/components/host/report-finalization-notice.tsx`: ReportFinalizationNotice, newerStatus, FINALIZATION_POLL_MS.
+  - `CREATE` `tests/e2e/host.spec.ts`: 3 E2E tests.
+  - `MODIFY` `apps/web/src/components/ui/dashboard-shell.tsx`: exports RedirectToLogin/ReauthPrompt so the host route reuses the same session gate.
+  - `MODIFY` `apps/web/src/hooks/useAudioEngine.ts`: returns `lobbyTracks` for the single AudioController (track count and label).
+- **Notes**:
+  - The stage is protected by RequireAuth: anonymous visitors go to sign-in with returnTo, and a lost session stays inert behind "Sign in again".
+  - One socket, store, clock and audio engine per page. Recovery uses `host:recover_room` with a one-time token renewal (`auth:update`); when renewal fails, the authExpired fallback is shown.
+  - Each of the 8 phases is composed from existing parts:
+    - LOBBY: HostStageLobby with the AudioController slot.
+    - Countdown, preview and answering: QuestionProjector.
+    - ANSWER_REVEAL: ResultChart with ExplanationDialog (M08).
+    - LEADERBOARD: Leaderboard.
+    - PODIUM/FINISHED: Podium (no replay) plus the report notice.
+    - HostPhaseControls provide End from every active phase.
+  - Commands send the snapshot's phaseVersion and are never applied optimistically. An unknown ACK triggers requestSync and is never re-sent.
+  - Audio: only useAudioEngine(host) drives sound, with a join pop for each new roster id. There is no other local player.
+  - Report status is independent of FINISHED:
+    - The newest status wins (socket push or REST, compared by updatedAt).
+    - REST polling runs only while pushes can't arrive, including after the room is gone.
+    - Retry uses an Idempotency-Key and reconciles uncertain outcomes.
+    - "View report" appears only for ready with the real id.
+  - E2E: the host context reuses the API sign-in's refresh cookie (storageState). Signing in through the UI tripped the shared per-email limit (5/min) and broke the next spec.
+- **Verification**:
+  - `pnpm test:e2e -- tests/e2e/host.spec.ts`: 3 passed, covering:
+    - start, skip, next and podium/FINISHED with the ready report;
+    - double clicks on Next sending one command each (question 2 follows question 1);
+    - a dropped socket (controls locked, then recovered) and a reload recovery;
+    - an early end from an empty lobby;
+    - a finalization failure (status frames rewritten to failed) followed by a real retry that returns ready;
+    - the 404, sign-in redirect and terminal fallback.
+  - Full E2E suite: 18/18 passed. Web unit tests: 46 files / 421 tests passed. typecheck, lint, prettier, e2e tsc and the production build: OK.

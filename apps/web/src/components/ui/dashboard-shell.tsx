@@ -75,7 +75,7 @@ export function loginHref(pathname: string | null): string {
 }
 
 /** Anonymous visitor: replace the URL with the sign-in page (link kept as a fallback). */
-function RedirectToLogin({ href }: { href: string }) {
+export function RedirectToLogin({ href }: { href: string }) {
   const { t } = useLocale();
   const router = useRouter();
   useEffect(() => {
@@ -92,7 +92,7 @@ function RedirectToLogin({ href }: { href: string }) {
 }
 
 /** Session lost: message and "Sign in again", shown over the inert page and focused. */
-function ReauthPrompt({ href }: { href: string }) {
+export function ReauthPrompt({ href }: { href: string }) {
   const { t } = useLocale();
   const linkRef = useRef<HTMLAnchorElement | null>(null);
   useEffect(() => linkRef.current?.focus(), []);
