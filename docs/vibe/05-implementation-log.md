@@ -2251,3 +2251,14 @@
   - `pnpm benchmark:game --clients 200 --transitions 100 --mode memory` → PASS: transport p95 18.97 ms, 0/20400 lost, report queue 976 ms for 5000 answers; admission p50 2.0 s / p95 8.3 s (finding)
   - `pnpm benchmark:game --clients 200 --transitions 100 --mode redis` → FAIL (recorded as failure): node B dropped all 100 players, transport p95 310 ms, 28.9% delivery loss; 60-client characterization run → FAIL p95 180 ms, no disconnects
   - Findings documented (multi-node target not met on this host; per-answer full-state settle likely serializes admission; node B disconnects consistent with event-loop starvation on a shared 4-core host), not extrapolated
+
+## TASK-180 — 2026-11-12T06:39:29+07:00
+
+- **Files**:
+  - `scripts/measure-web-budget.ts` (production `next build` + `next start` only, refuses dev markers; real API + room for M01; 5 cold Chromium runs per scenario at 390×844, 1.6 Mbps/150 ms RTT, 4× CPU, cache off; scenarios /join in en, ja, zh-Hans, de (test long-text package), ar (test RTL package) and the identity step; initial JS gzip-9 incl. framework, locale payload incl. shell + en fallback, fonts/media separate; LCP/CLS raw + median; lazy checks for dnd-kit, ZXing, confetti and avatar style chunks; JSON record with the gzip manifest + Markdown; exit 1 on any budget failure)
+  - `tests/performance/web-budget.spec.ts` (classification, gzip accounting with each URL once, medians, development-build refusal, explicit failure of every threshold)
+  - `docs/performance-results.md` (method, raw + median results, verdict and concrete follow-up findings per chunk/file)
+- **Verification**:
+  - `pnpm test:performance -- tests/performance/web-budget.spec.ts` → pass
+  - `pnpm exec tsx scripts/measure-web-budget.ts --runs 5` → **FAIL recorded**: initial JS 353.8 KiB gzip > 300 KiB; identity step median LCP 4280 ms > 4000 ms. Passing: locale payloads 10.3–23.2 KiB, /join LCP 620–648 ms in all locales, CLS ≤ 0.095, lazy loading of dnd-kit/ZXing/confetti/avatar styles
+  - Findings name chunks 43pd1f38gdu5b.js (zod + intl-messageformat), 02p86dr4wnlm7.js (socket.io + audio manager), 34fq-xudn5cji.js (framer-motion + DiceBear core + QR generator) and the M01 render path for follow-up atomic fixes

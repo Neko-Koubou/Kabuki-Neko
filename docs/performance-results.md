@@ -135,3 +135,80 @@ pnpm test:performance -- tests/performance/game-benchmark.spec.ts
 Each run writes a JSON record to `test-results/benchmark/<mode>.json`. It contains the
 environment, versions, duration, clock error, delivery, percentiles and the verdict. The command
 exits non-zero when the target is missed.
+
+# Player bundle and cold-load budgets
+
+Recorded result of `pnpm exec tsx scripts/measure-web-budget.ts --runs 5` (TASK-180; Design §9;
+SA §8.3; US-18, US-20, US-21). The tooling (classification, gzip accounting, medians, refusal of
+development builds, threshold failures) is covered by
+`pnpm test:performance -- tests/performance/web-budget.spec.ts`.
+
+## Method
+
+- **Production build only.** The script builds with `next build` and serves with `next start`. It
+  refuses HTML with development markers.
+- **Real backend.** A real API and room serve the identity step (M01) with a valid PIN.
+- **Cold runs.** Five fresh Chromium contexts per scenario, with:
+  - a 390×844 mobile viewport;
+  - 1.6 Mbps down, 750 kbps up, 150 ms RTT and 4× CPU slowdown (CDP);
+  - the cache disabled.
+- **Scenarios.** `/join` in en, ja, zh-Hans (CJK), de (long text) and ar (RTL). German and Arabic
+  are test packages built into a separate bundle the server reads (`KN_LOCALES_DIR`); they are
+  not shipped. Plus the identity step `/join?pin=…` in en.
+- **Initial JS.** Every script loaded on `/join` until network idle, framework included, at gzip
+  level 9.
+- **Initial locale payload.** The namespaces the route fetched plus the SSR shell namespaces
+  (common, accessibility), for the locale and its `en` fallback.
+- Fonts and media are reported separately.
+
+## Result (2026-11-11, Chromium 153, same 4-core VM as above): **FAIL**
+
+| Budget                       | Result                                                                                                                | Verdict         |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------- | --------------- |
+| Initial JS ≤ 300 KiB gzip    | **353.8 KiB** gzip (1,310 KiB raw, 16 files)                                                                          | FAIL            |
+| Initial locale ≤ 50 KiB gzip | en 10.3, ja 23.2, zh-Hans 22.0, de 10.9, ar 10.9 KiB                                                                  | PASS            |
+| Median LCP ≤ 4 s             | `/join` 620–648 ms in every locale; **identity step 4,280 ms**                                                        | FAIL (identity) |
+| Median CLS ≤ 0.1             | 0.030–0.069 on `/join`; 0.095 at the identity step                                                                    | PASS            |
+| Lazy loading                 | dnd-kit (studio), ZXing (QR decoder) and confetti absent from `/join`; avatar style chunks 1 → 2 at the identity step | PASS            |
+
+| Scenario            | LCP runs (ms)                | Median LCP | Median CLS | JS gzip   | Fonts    | Media   |
+| ------------------- | ---------------------------- | ---------- | ---------- | --------- | -------- | ------- |
+| join en             | 624, 636, 656, 616, 612      | 624        | 0.030      | 353.8 KiB | 35.0 KiB | 1.0 KiB |
+| identity (M01) en   | 4280, 4320, 4148, 4200, 4344 | 4280       | 0.095      | 590.3 KiB | 35.0 KiB | 1.0 KiB |
+| join ja (CJK)       | 636, 620, 640, 608, 580      | 620        | 0.069      | 353.8 KiB | 35.0 KiB | 1.0 KiB |
+| join zh-Hans (CJK)  | 648, 624, 660, 644, 664      | 648        | 0.056      | 353.8 KiB | 35.0 KiB | 1.0 KiB |
+| join de (long text) | 640, 644, 596, 620, 600      | 620        | 0.043      | 353.8 KiB | 35.0 KiB | 1.0 KiB |
+| join ar (RTL)       | 632, 592, 656, 664, 644      | 644        | 0.038      | 353.8 KiB | 35.0 KiB | 1.0 KiB |
+
+`/join`'s LCP element is server-rendered text, so it paints before the scripts finish. The JS
+budget is still exceeded, and that costs interactivity time on slow phones.
+
+## Findings for follow-up fixes
+
+Each is a separate atomic fix; this measurement task does not change them.
+
+1. **`/_next/static/chunks/43pd1f38gdu5b.js` — 123.8 KiB gzip.** The shared contracts' `zod`
+   schemas plus the `intl-messageformat` runtime: `apps/web/src/lib/i18n/format.ts` and
+   `catalog-loader.ts`, and the `@kabuki-neko/shared` schema imports on the join path.
+   Catalogs already ship precompiled ASTs, so check whether parser code is bundled, and import
+   narrower schemas on `/join`.
+2. **`/_next/static/chunks/02p86dr4wnlm7.js` — 17.0 KiB gzip.** `socket.io-client`/`engine.io`
+   (needed for the PIN check) bundled with the audio manager (`lib/audio-manager.ts`, reached from
+   `components/player/avatar-customizer.tsx` for the join pop). Defer the audio manager until the
+   player's first gesture.
+3. **`/_next/static/chunks/34fq-xudn5cji.js` — 12.4 KiB gzip.** `framer-motion`, DiceBear core
+   (`lib/avatar.ts`) and the QR code generator are on the `/join` boot. The QR generator is only
+   needed on the host stage and DiceBear core only at the identity step.
+4. **Identity step LCP 4.3 s.** M01 renders after the PIN check over the socket, then loads and
+   renders the avatar style chunk under 4× CPU. Render the identity form and nickname field first,
+   and stream the avatar previews in (`components/player/avatar-customizer.tsx`).
+
+## Re-running
+
+```bash
+pnpm --filter "@kabuki-neko/api..." build
+PLAYWRIGHT_CHROMIUM_EXECUTABLE=/path/to/chromium pnpm exec tsx scripts/measure-web-budget.ts --runs 5
+```
+
+The record (raw runs, medians, gzip manifest of every initial chunk, verdict) goes to
+`test-results/benchmark/web-budget.json`. The command exits non-zero when any budget fails.

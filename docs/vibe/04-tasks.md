@@ -2879,7 +2879,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm benchmark:game --clients 200 --transitions 100` for memory single node and Redis2 nodes; p95<50ms target, observed failures remain failures with environment, no extrapolation. `pnpm test:performance -- tests/performance/game-benchmark.spec.ts` menguji clock/sample/statistics alat ukur.
 
-### - [ ] TASK-180: Ukur player bundle dan cold-load budgets
+### - [x] TASK-180: Ukur player bundle dan cold-load budgets
 - **Traceability**: `US-18`, `US-20`, `US-21`, [SA §8.3](03-system-analysis.md#83-budget-qr-font-dan-accessible-media)
 - **Depends On**: `TASK-179`
 - **Target Files**:
