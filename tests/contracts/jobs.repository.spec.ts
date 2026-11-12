@@ -5,7 +5,10 @@ import {
   migrateDatabase,
   type DatabaseDriver,
 } from "../../packages/database/src";
-import { JobsRepository } from "../../packages/database/src/repositories/jobs.repository";
+import {
+  JobsRepository,
+  finalizationPayloadHash,
+} from "../../packages/database/src/repositories/jobs.repository";
 import { createTestRuntime } from "../helpers/runtime";
 it.each<DatabaseDriver>(["sqlite", "postgres", "mysql"])(
   "%s fences expired workers and keeps a single immutable finalization payload",
@@ -52,6 +55,17 @@ it.each<DatabaseDriver>(["sqlite", "postgres", "mysql"])(
           original.payload_hash,
         );
         await expect(jobs.enqueue(session, host, { a: 3 }, 1)).rejects.toThrow("hash mismatch");
+        // Code review MJ-13: the light status read carries no payload and matches enqueue's hash.
+        expect(await jobs.statusOf(session)).toEqual({
+          session_id: session,
+          host_id: host,
+          payload_hash: original.payload_hash,
+          state: "PENDING",
+          attempts: 0,
+          last_error_code: null,
+        });
+        expect(finalizationPayloadHash({ a: 2, b: 1 })).toBe(original.payload_hash);
+        expect(await jobs.statusOf(randomUUID())).toBeNull();
         const claims = await Promise.all([jobs.claim(1), jobs.claim(1)]);
         expect(claims.filter(Boolean)).toHaveLength(1);
         const first = claims.find((x) => x !== null);

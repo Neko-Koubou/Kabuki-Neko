@@ -205,13 +205,14 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 - **Perbaikan**: validasi query di service dengan `ZodValidationPipe` (422).
 - **Resolusi**: `ReportsService.list`, `players`, dan `answers` memvalidasi query dengan `ZodValidationPipe` (`reportsQuerySchema`, `reportPlayersQuerySchema`, `reportAnswersQuerySchema`) sebelum gate, sehingga `?limit=abc`, `?sort=x`, search > 150 karakter, atau key asing menghasilkan 422 `VALIDATION_FAILED`, bukan 500. Spec baru di `reports.service.spec.ts` (pada kode lama: rejection ZodError tak tertangani). API Jest 235/235, tsc, lint, integration `reports.spec.ts` PASS.
 
-#### MJ-13 [MAJOR] [OPEN] Sync finalisasi memvalidasi dan meng-hash ulang seluruh FrozenReport setiap 5 detik
+#### MJ-13 [MAJOR] [RESOLVED] Sync finalisasi memvalidasi dan meng-hash ulang seluruh FrozenReport setiap 5 detik
 - **File:Line**: `room-scheduler.ts:226-234` → `report-worker.ts:239-279` → `jobs.repository.ts:20-58`.
 - **Masalah**: `parse` + stringify + SHA-256 hingga 64 MiB, dengan event loop terblokir, terus berulang selama status bukan `ready` (termasuk FAILED tanpa batas).
 - **Perbaikan**:
   - `JobsRepository.statusOf(sessionId)` yang ringan.
   - Enqueue hanya bila belum ada job.
   - Jalur job yang sudah ada hanya membaca `payload_hash`.
+- **Resolusi**: `JobsRepository.statusOf` membaca baris job tanpa payload; `ReportWorker.sync` memakainya dulu dan hanya meng-enqueue (validasi + JSON kanonik + SHA-256) bila session belum punya job. Hash laporan beku dihitung sekali per session per proses (`reportHash`, memo dibuang saat `ready`, dibatasi 10.000) lalu cukup dibandingkan dengan `payload_hash`, jadi pelanggaran invarian tetap terdeteksi. Regresi: `report-worker.spec.ts` (5 sync → 5 `statusOf`, 0 enqueue, 1 parse; mismatch tetap dilempar — gagal di kode lama), kontrak `jobs.repository.spec.ts` di SQLite/PostgreSQL/MySQL, integrasi `finalization-failures.spec.ts` 12/12; API jest 253/253, tsc/eslint bersih.
 
 #### MJ-14 [MAJOR] [RESOLVED] Unduhan CSV menggantung (dan membocorkan memori) bila klien memutus koneksi (eks-MN-21)
 - **File:Line**: `apps/api/src/modules/reports/reports.controller.ts:164`; `reports.service.ts:406`.

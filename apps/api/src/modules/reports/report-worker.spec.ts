@@ -22,6 +22,7 @@ import {
   type FinalizationJob,
 } from "@kabuki-neko/database";
 import { FINALIZATION_LIMITS } from "@kabuki-neko/shared/constants/limits";
+import { frozenReportSchema } from "../../providers/state/private-state.schema";
 import type { FinalizeStatus } from "@kabuki-neko/shared/schemas/game.schema";
 import { quizWriteSchema } from "@kabuki-neko/shared/schemas/quiz.schema";
 import { ConfigService } from "../../config/config.service";
@@ -412,6 +413,30 @@ it("re-enqueues a report whose enqueue failed through scheduler recovery sync", 
   expect(
     statusFromJob({ session_id: identity.sessionId, state: "RUNNING", last_error_code: null }, now),
   ).toMatchObject({ status: "pending", reportId: null });
+});
+
+it("keeps repeated syncs light: status row only, report hashed once, mismatch still detected (MJ-13)", async () => {
+  const w = worker();
+  const { identity, report } = await play();
+  // The frozen report already has its job (enqueued by the finalization hook).
+  expect(await db.manager.count("finalization_jobs")).toBe(1);
+  const enqueue = jest.spyOn(jobs, "enqueue");
+  const status = jest.spyOn(jobs, "statusOf");
+  const parse = jest.spyOn(frozenReportSchema, "parse");
+  for (let i = 0; i < 5; i++)
+    expect(await w.sync(identity, report, null)).toMatchObject({ status: "pending" });
+  expect(status).toHaveBeenCalledTimes(5);
+  expect(enqueue).not.toHaveBeenCalled();
+  // Validation + canonical hashing of the (up to 64 MiB) report ran once, not on every sync.
+  expect(parse).toHaveBeenCalledTimes(1);
+  // statusOf never reads the payload.
+  expect(await jobs.statusOf(identity.sessionId)).not.toHaveProperty("payload");
+  expect(await jobs.statusOf(randomUUID())).toBeNull();
+  // A queued payload that no longer matches the frozen report is still an invariant violation.
+  await db.manager.update("finalization_jobs", identity.sessionId, {
+    payload_hash: "f".repeat(64),
+  });
+  await expect(w.sync(identity, report, null)).rejects.toThrow("hash mismatch");
 });
 
 it("lets the room scheduler re-drive finalization at most every 5 s until the room is released", async () => {
