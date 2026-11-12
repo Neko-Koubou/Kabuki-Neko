@@ -261,14 +261,37 @@ export class GameGateway
     await this.publish(binding).catch(() => undefined);
   }
 
-  /** Rate key for an event: user for hosts, player for bound players, IP or socket otherwise. */
+  /**
+   * Rejects, before any limiter key is created, a request whose tier needs a binding the socket
+   * does not have (code review MJ-15). These requests would fail in `execute` anyway (answers and
+   * avatars need a bound player; sync and time need a bound player or an authenticated host), so
+   * the client sees the same error, but an anonymous socket can no longer mint a limiter key per
+   * connection and fill the in-memory limiter.
+   */
+  private requireBinding(event: ClientEventName, socket: GameSocket): void {
+    const tier = TIERS[event];
+    if ((tier === "ANSWER" || tier === "AVATAR") && !socket.data.player)
+      throw new ApiError("INVALID_SESSION_TOKEN", 401);
+    if ((tier === "SYNC" || tier === "TIME") && !socket.data.player && !socket.data.host)
+      throw new ApiError("AUTH_REQUIRED", 401);
+  }
+  /**
+   * Rate key for an event (code review MJ-15). Keys never depend on the socket id, so the number of
+   * limiter keys grows with authenticated hosts, joined players and client IPs, not connections:
+   * - HOST: the host user, or the client IP when unauthenticated;
+   * - ANSWER/AVATAR: the bound player;
+   * - SYNC/TIME: the bound player, else the host user (unbound sockets are rejected earlier);
+   * - everything else (auth, PIN check, join, friendly name): the client IP.
+   */
   private rateKey(event: ClientEventName, socket: GameSocket): string {
     const tier = TIERS[event];
-    if (tier === "HOST") return `user:${socket.data.host?.user.id ?? socket.data.ip}`;
-    if (tier === "ANSWER" || tier === "AVATAR")
-      return `player:${socket.data.player?.playerId ?? socket.id}`;
-    if (tier === "SYNC" || tier === "TIME") return `socket:${socket.id}`;
-    return `ip:${socket.data.ip}`;
+    const { host, player, ip } = socket.data;
+    if (tier === "HOST") return host ? `user:${host.user.id}` : `ip:${ip}`;
+    if (tier === "ANSWER" || tier === "AVATAR" || tier === "SYNC" || tier === "TIME") {
+      if (player) return `player:${player.playerId}`;
+      if (host) return `user:${host.user.id}`;
+    }
+    return `ip:${ip}`;
   }
   /** Validates, rate-limits, executes and wraps one client request into its ACK envelope. */
   private async dispatch(event: ClientEventName, socket: GameSocket, payload: unknown) {
@@ -278,6 +301,7 @@ export class GameGateway
         : undefined;
     const requestId = typeof raw === "string" && UUID.test(raw) ? raw : randomUUID();
     try {
+      this.requireBinding(event, socket);
       await this.limiter.consume(TIERS[event], this.rateKey(event, socket));
       if (event === "host:create_room")
         await this.limiter.consume("CREATE", this.rateKey(event, socket));
@@ -301,10 +325,7 @@ export class GameGateway
     return socket.data.host;
   }
   /** Player binding for the addressed room or 401. */
-  private player(
-    socket: GameSocket,
-    request: Record<string, unknown>,
-  ): PlayerBinding {
+  private player(socket: GameSocket, request: Record<string, unknown>): PlayerBinding {
     const binding = socket.data.player;
     if (!binding || binding.sessionId !== request.sessionId || binding.pin !== request.pinCode)
       throw new ApiError("INVALID_SESSION_TOKEN", 401);

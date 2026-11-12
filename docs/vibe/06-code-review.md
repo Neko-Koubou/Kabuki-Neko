@@ -215,7 +215,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 - **Perbaikan**: `pipeline(Readable.from(chunks), response)` dari `node:stream/promises`.
 - **Resolusi**: ekspor CSV kini mengalir lewat `streamChunks` (`pipeline(Readable.from(chunks), response)`) di `reports.controller.ts`: pemutusan klien menolak pipeline dan respons dihancurkan, sehingga handler, request, dan array chunk dilepas. Sebelumnya `once(response, "drain")` menggantung (diverifikasi: loop lama masih pending setelah 2 s). Spec baru `report-stream.spec.ts` (unduhan normal lengkap + diakhiri; abort selesai, bukan menggantung). API Jest 237/237, tsc, lint, integration `reports.spec.ts` (CSV) PASS.
 
-#### MJ-15 [MAJOR] [OPEN] Event socket anonim memenuhi map rate-limiter in-memory → 503 global
+#### MJ-15 [MAJOR] [RESOLVED] Event socket anonim memenuhi map rate-limiter in-memory → 503 global
 - **File:Line**: `apps/api/src/modules/game-engine/game.gateway.ts:214,265-272,281`; `apps/api/src/common/rate-limit.service.ts:100`.
 - **Masalah**:
   - Tier SYNC/TIME/ANSWER/AVATAR tanpa binding dikunci pada `socket.id`, dan limiter dibebankan sebelum validasi.
@@ -225,6 +225,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Kunci tier anonim ke IP, atau ke `playerId` bila sudah terikat.
   - Event yang butuh binding ditolak sebelum limiter.
   - Test: N socket dari satu IP hanya menambah key dalam jumlah konstan.
+- **Resolusi**: `GameGateway.requireBinding` menolak ANSWER/AVATAR tanpa player terikat (`INVALID_SESSION_TOKEN`) dan SYNC/TIME tanpa player/host (`AUTH_REQUIRED`) **sebelum** limiter dibebani; `rateKey` tidak lagi memakai `socket.id` (HOST → `user:`/`ip:`, ANSWER/AVATAR/SYNC/TIME → `player:` lalu `user:`, sisanya `ip:`). Regresi: `game-gateway-rate.spec.ts` (40 socket anonim → 0 key; 20 socket satu IP → 1 key; reconnect player berbagi satu key) — gagal pada kode lama, lulus sekarang; API jest 242/242, tsc dan eslint bersih.
 
 #### MJ-16 [MAJOR] [OPEN] Kegagalan finalisasi tidak memicu alarm atau metrik
 - **File:Line**: `apps/api/src/common/metrics.service.ts:61`; `apps/api/src/modules/reports/report-worker.ts:192-216`; `room-scheduler.ts:244`.
