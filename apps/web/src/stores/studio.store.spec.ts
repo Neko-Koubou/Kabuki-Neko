@@ -185,6 +185,55 @@ describe("studio store", () => {
     expect(isDirty(store.getState())).toBe(true);
   });
 
+  it("makes a concurrent save wait for the in-flight outcome instead of skipping (MJ-31)", async () => {
+    const store = createStudioStore();
+    store.getState().load(detail(2, 5));
+    store.getState().updateMetadata({ title: "Renamed" });
+    let rejectFirst: (error: unknown) => void = () => undefined;
+    const persist = vi.fn(
+      (draft: ReturnType<typeof toWrite>, revision: number) =>
+        new Promise<QuizDetail>((resolve, reject) => {
+          if (persist.mock.calls.length === 1) rejectFirst = reject;
+          else
+            resolve({ ...detail(2, revision + 1), title: draft.title, questions: draft.questions });
+        }),
+    );
+    // Ctrl+S, then "Save and continue" while the first PUT is still running.
+    const first = store.getState().save(persist);
+    const second = store.getState().save(persist);
+    rejectFirst(new ApiError(503, "DEPENDENCY_UNAVAILABLE"));
+    await expect(first).resolves.toBe("failed");
+    await expect(second).resolves.toBe("failed"); // not "skipped": navigation must not continue
+    expect(persist).toHaveBeenCalledTimes(1);
+    expect(store.getState().draft?.title).toBe("Renamed"); // the draft is kept
+    expect(isDirty(store.getState())).toBe(true);
+
+    // When the in-flight save succeeds but edits arrived meanwhile, the waiter saves them too.
+    let resolveFirst: (value: QuizDetail) => void = () => undefined;
+    const persist2 = vi.fn(
+      (draft: ReturnType<typeof toWrite>, revision: number) =>
+        new Promise<QuizDetail>((resolve) => {
+          const done = {
+            ...detail(2, revision + 1),
+            title: draft.title,
+            description: draft.description,
+            questions: draft.questions,
+          };
+          if (persist2.mock.calls.length === 1) resolveFirst = () => resolve(done);
+          else resolve(done);
+        }),
+    );
+    const a = store.getState().save(persist2);
+    const b = store.getState().save(persist2);
+    store.getState().updateMetadata({ description: "Typed during the save" });
+    resolveFirst(detail(2, 6));
+    await expect(a).resolves.toBe("saved");
+    await expect(b).resolves.toBe("saved");
+    expect(persist2).toHaveBeenCalledTimes(2);
+    expect(store.getState().saved?.snapshot.description).toBe("Typed during the save");
+    expect(isDirty(store.getState())).toBe(false);
+  });
+
   it("preserves the draft on a 409 conflict and supports manual reconciliation", async () => {
     const store = createStudioStore();
     store.getState().load(detail(2, 3));

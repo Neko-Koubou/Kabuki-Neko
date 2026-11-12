@@ -152,6 +152,41 @@ export function createStudioStore(): StoreApi<StudioState> {
       if (draft === null) return;
       set({ draft: { ...draft, questions: renumber(change([...draft.questions])) } });
     };
+    /** The save request currently in flight (shared by concurrent `save` callers). */
+    let inflight: Promise<SaveResult> | null = null;
+    /** Sends `sent` at `revision` and records the outcome in the store. */
+    const persistDraft = async (
+      persist: PersistQuiz,
+      sent: QuizWrite,
+      revision: number,
+    ): Promise<SaveResult> => {
+      set({ saving: true, saveError: null });
+      try {
+        const detail = await persist(sent, revision);
+        const snapshot = toWrite(detail);
+        // Edits made while saving stay in the draft (and keep it dirty).
+        const current = get().draft;
+        set({
+          saved: { revision: detail.revision, snapshot },
+          draft: current === sent ? structuredClone(snapshot) : current,
+          saving: false,
+          conflict: null,
+        });
+        return "saved";
+      } catch (error) {
+        const apiError = error instanceof ApiError ? error : new ApiError(0, "NETWORK_ERROR");
+        if (apiError.code === "REVISION_CONFLICT") {
+          set({
+            saving: false,
+            conflict: { currentRevision: apiError.params.currentRevision ?? null },
+            saveError: apiError,
+          });
+          return "conflict";
+        }
+        set({ saving: false, saveError: apiError });
+        return "failed";
+      }
+    };
 
     return {
       quizId: null,
@@ -242,34 +277,23 @@ export function createStudioStore(): StoreApi<StudioState> {
       },
 
       async save(persist) {
-        const { draft, saved, saving } = get();
-        if (draft === null || saved === null || saving) return "skipped";
-        const sent = draft;
-        set({ saving: true, saveError: null });
+        // Single-flight (code review MJ-31): a caller arriving while a save is running waits for
+        // that save's real outcome instead of getting "skipped" (which "Save and continue" took
+        // for success and navigated away while the PUT could still fail). If edits were made
+        // meanwhile, they are saved next, so the caller only succeeds when everything is saved.
+        if (inflight) {
+          const outcome = await inflight;
+          if (outcome !== "saved") return outcome;
+          return isDirty(get()) ? get().save(persist) : "saved";
+        }
+        const { draft, saved } = get();
+        if (draft === null || saved === null) return "skipped";
+        const run = persistDraft(persist, draft, saved.revision);
+        inflight = run;
         try {
-          const detail = await persist(sent, saved.revision);
-          const snapshot = toWrite(detail);
-          // Edits made while saving stay in the draft (and keep it dirty).
-          const current = get().draft;
-          set({
-            saved: { revision: detail.revision, snapshot },
-            draft: current === sent ? structuredClone(snapshot) : current,
-            saving: false,
-            conflict: null,
-          });
-          return "saved";
-        } catch (error) {
-          const apiError = error instanceof ApiError ? error : new ApiError(0, "NETWORK_ERROR");
-          if (apiError.code === "REVISION_CONFLICT") {
-            set({
-              saving: false,
-              conflict: { currentRevision: apiError.params.currentRevision ?? null },
-              saveError: apiError,
-            });
-            return "conflict";
-          }
-          set({ saving: false, saveError: apiError });
-          return "failed";
+          return await run;
+        } finally {
+          inflight = null;
         }
       },
 

@@ -342,10 +342,11 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 - **Perbaikan**: status anonim hanya untuk 401 (`AUTH_REQUIRED`/`TOKEN_REVOKED`/`TOKEN_EXPIRED`). Error lain mempertahankan token dan menampilkan error yang bisa di-retry.
 - **Resolusi**: `loadPrincipal` di `auth-provider.tsx` hanya keluar sesi untuk 401 `AUTH_REQUIRED`/`TOKEN_REVOKED`/`TOKEN_EXPIRED`; kegagalan sementara (offline, timeout, 5xx) mempertahankan token dan halaman — saat pengecekan awal status menjadi `unavailable` dan `RequireAuth` menampilkan alert + Retry (katalog `common.inventory.s17.error`, `common.actions.retry`), halaman terautentikasi tetap tidak berubah. Spec baru (gagal pada kode lama). Web Vitest 51/451, tsc, lint PASS.
 
-#### MJ-31 [MAJOR] [OPEN] "Save and continue" studio bernavigasi saat save sebelumnya masih berjalan
+#### MJ-31 [MAJOR] [RESOLVED] "Save and continue" studio bernavigasi saat save sebelumnya masih berjalan
 - **File:Line**: `apps/web/src/components/studio/studio-editor.tsx:317`; `apps/web/src/stores/studio.store.ts` (`save`).
 - **Masalah**: hasil `"skipped"` (save sedang berjalan) dianggap sukses. Bila PUT kemudian gagal, draft hilang. Melanggar M10 X.
 - **Perbaikan**: save single-flight yang mengembalikan promise yang sedang berjalan kepada pemanggil konkuren.
+- **Resolusi**: `save` di `studio.store.ts` kini single-flight: pemanggil yang datang saat save berjalan menunggu hasil sebenarnya (bukan `"skipped"`), lalu menyimpan lagi bila ada edit selama save; `"Save and continue"` hanya bernavigasi setelah semua tersimpan, dan saat PUT gagal draft tetap ada. Spec baru (gagal pada kode lama). Web Vitest 51/452, tsc, lint PASS.
 
 ### 3.3. [MINOR]
 
