@@ -112,17 +112,31 @@ export interface LatencySummary {
   mean: number;
 }
 
+/**
+ * Largest and smallest value without spreading the array into arguments: a 200-client run yields
+ * more than 100,000 latency samples, past V8's argument limit ("Maximum call stack size exceeded").
+ */
+function extremes(values: readonly number[]): { min: number; max: number } {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const value of values) {
+    if (value < min) min = value;
+    if (value > max) max = value;
+  }
+  return { min, max };
+}
+
 /** Summarizes a sample; an empty sample is reported as count 0 with nulls avoided by zeros. */
 export function summarize(values: readonly number[]): LatencySummary {
   const round = (value: number) => Math.round(value * 100) / 100;
   if (values.length === 0) return { count: 0, min: 0, p50: 0, p95: 0, p99: 0, max: 0, mean: 0 };
   return {
     count: values.length,
-    min: round(Math.min(...values)),
+    min: round(extremes(values).min),
     p50: round(percentile(values, 50)),
     p95: round(percentile(values, 95)),
     p99: round(percentile(values, 99)),
-    max: round(Math.max(...values)),
+    max: round(extremes(values).max),
     mean: round(values.reduce((sum, value) => sum + value, 0) / values.length),
   };
 }
@@ -229,10 +243,10 @@ export function summarizeProbe(samples: readonly ProbeSample[]): ProcessDiagnost
   return {
     samples: samples.length,
     lagP99Ms: summarize(samples.map((sample) => sample.lagP99Ms)),
-    lagMaxMs: Math.max(...samples.map((sample) => sample.lagMaxMs)),
+    lagMaxMs: extremes(samples.map((sample) => sample.lagMaxMs)).max,
     cpuPercentMean: round(cpu.reduce((sum, value) => sum + value, 0) / cpu.length),
-    cpuPercentMax: round(Math.max(...cpu)),
-    heapMaxMiB: Math.max(...samples.map((sample) => sample.heapMiB)),
+    cpuPercentMax: round(extremes(cpu).max),
+    heapMaxMiB: extremes(samples.map((sample) => sample.heapMiB)).max,
   };
 }
 

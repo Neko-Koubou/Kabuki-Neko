@@ -92,6 +92,11 @@ describe("statistics", () => {
     expect(() => percentile([1], 101)).toThrow("percentile out of range");
   });
 
+  it("summarizes samples larger than V8's argument limit", () => {
+    const values = Array.from({ length: 500_000 }, (_, index) => index % 1_000);
+    expect(summarize(values)).toMatchObject({ count: 500_000, min: 0, max: 999 });
+  });
+
   it("summarizes without mutating the input and reports an empty sample as zero counts", () => {
     const values = [5, 1, 9, 3];
     expect(summarize(values)).toEqual({
