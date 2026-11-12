@@ -167,6 +167,8 @@ export class GameGateway
   @WebSocketServer() private server!: Namespace;
   private readonly summaries = new Map<string, Summary>();
   private readonly queues = new Map<string, Promise<void>>();
+  /** Publish per room queued but not started yet; later calls share it (see `publish`). */
+  private readonly pendingPublishes = new Map<string, Promise<void>>();
   private heartbeat: ReturnType<typeof setInterval> | undefined;
   private readonly trusted: (address: string) => boolean;
 
@@ -433,7 +435,10 @@ export class GameGateway
       case "player:submit_answer": {
         const binding = this.player(socket, request);
         const ack = await this.game.submitAnswer(binding, request as never);
-        await this.publish(binding);
+        // The ACK reports the admission; the room changes reach clients as pushes. Waiting for the
+        // room's publish queue here made the N-th answer of a burst wait for N diffs (TASK-183A).
+        // A missed publish is caught by the room:version heartbeat.
+        void this.publish(binding);
         return ack;
       }
       case "room:sync": {
@@ -503,9 +508,23 @@ export class GameGateway
     this.queues.set(sessionId, next);
     return next;
   }
-  /** Serializes publishes per room so diffs are computed against a consistent summary. */
+  /**
+   * Serializes publishes per room so diffs are computed against a consistent summary, and
+   * coalesces them: a call made while a publish of the room is queued but not started shares it.
+   * A diff reads the state when it starts and compares it with the last published summary, so the
+   * shared diff covers every change made before it. A burst of answers therefore runs at most one
+   * diff in flight plus one queued, instead of one full diff per answer (QA follow-up TASK-183A).
+   */
   publish(identity: RoomIdentity): Promise<void> {
-    return this.enqueue(identity.sessionId, () => this.diff(identity));
+    const key = identity.sessionId;
+    const pending = this.pendingPublishes.get(key);
+    if (pending) return pending;
+    const queued = this.enqueue(key, () => {
+      this.pendingPublishes.delete(key);
+      return this.diff(identity);
+    });
+    this.pendingPublishes.set(key, queued);
+    return queued;
   }
   /**
    * Forgets a room the scheduler dropped (code review MJ-05): after the queued publishes, sends

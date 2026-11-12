@@ -2363,3 +2363,33 @@
   - The ACK awaits `GameGateway.publish`, which runs one full `diff` per answer: a private-state read, the host projection, and the summary of every player.
   - The diffs are serialized per room by `enqueue`, so the N-th answer of a burst waits for N diffs.
   - This is in `game.gateway.ts`, outside this task's target files. Corrective task TASK-183A was added.
+
+## TASK-183A: Gabungkan publish gateway per room dan lepaskan ACK jawaban dari antrean publish — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/modules/game-engine/game.gateway.ts`:
+    - `publish` is coalesced per room (`pendingPublishes`): a call made while a publish of the room is queued but not started shares it, so at most one diff runs and one waits. `forget` keeps its place after the publishes queued before it, and both maps are empty when idle.
+    - `player:submit_answer` returns its ACK without awaiting the publish; the publish is still started, and a missed one is caught by the `room:version` heartbeat.
+  - `apps/api/src/modules/game-engine/game-gateway-publish.spec.ts` (new): three cases.
+    - 50 publishes during a running diff → 2 diffs, maps empty afterwards.
+    - `room:expired` after the queued publishes.
+    - The answer ACK resolves while the publish's state read is still held.
+- **Verification**:
+  - New spec 3/3 PASS; the same spec on the old gateway 3/3 FAIL.
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 38/38 suites, 257/257 tests.
+  - `pnpm test:integration --testPathPatterns='game-gateway|realtime-races|recovery|payload-privacy|room-retention'` → 5/5 suites, 40/40 tests.
+  - `pnpm test:e2e tests/e2e/player.spec.ts tests/e2e/host.spec.ts` → 9/9 (with first-run).
+  - `pnpm benchmark:game --clients 200 --transitions 100 --mode memory`:
+
+    | | Transport p95 | Admission p50 | Admission p95 | Rejected answers |
+    | --- | --- | --- | --- | --- |
+    | Before (TASK-183) | 15.88 ms | 2,127.99 ms | 9,437.25 ms | 13 |
+    | After | 13.37 ms (PASS) | 2,379.49 ms | 9,157.73 ms | 0 of 5,000 |
+
+- **Finding**:
+  - Admission latency is still unchanged. Neither the settle reads (TASK-183) nor the per-answer diff publishes are its bottleneck.
+  - Remaining candidates:
+    - the server event loop being busy elsewhere (scheduler ticks, Zod parsing per request, the heartbeat);
+    - the load generator, which runs 200 clients in the same 4-core host.
+  - Telling these apart needs the per-node event-loop and CPU diagnostics planned in TASK-184. TASK-185 then sets the root cause. No speculative change was made here.
