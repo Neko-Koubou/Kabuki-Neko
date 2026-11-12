@@ -54,7 +54,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 
 ### 3.1. [CRITICAL]
 
-#### CR-01 [CRITICAL] [OPEN] Hash SHA-256 tanpa salt dari password tersimpan di `request_dedup`
+#### CR-01 [CRITICAL] [RESOLVED] Hash SHA-256 tanpa salt dari password tersimpan di `request_dedup`
 - **File:Line**:
   - `apps/api/src/modules/auth/setup.service.ts:73-82`, `:115-124`;
   - `apps/api/src/common/idempotency.service.ts:49-60`;
@@ -69,6 +69,11 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Lakukan hal yang sama untuk `inviteCode`.
   - Tambahkan migrasi atau purge yang menghapus baris `auth.setup`/`auth.register` lama.
   - Test: `request_hash` ≠ SHA-256 body plaintext, dan password berbeda dengan key sama → 409.
+- **Resolusi**:
+  - `RefreshService.credentialFingerprint` menghitung HMAC-SHA256 dengan kunci HKDF dari refresh secret, yang tidak pernah masuk DB.
+  - `SetupService` meng-hash body setup/register dengan `passwordFingerprint` (dan `inviteFingerprint`) sebagai pengganti plaintext.
+  - Spec baru di `setup.service.spec.ts` membuktikan `request_hash` ≠ hash body plaintext dan ≠ tebakan SHA-256 tanpa kunci, serta bahwa key sama dengan password berbeda tetap `IDEMPOTENCY_CONFLICT`.
+  - Receipt lama (DONE, kedaluwarsa 24 jam) dihapus oleh purge retensi MJ-01.
 
 #### CR-02 [CRITICAL] [RESOLVED] Rute media MinIO di origin aplikasi → stored XSS dan pencurian sesi (overlay TLS + profil scale)
 - **File:Line**:

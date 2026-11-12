@@ -56,6 +56,40 @@ export class SetupService {
       throw error;
     }
   }
+  /**
+   * The setup body as it enters the idempotency request hash: the password is replaced by its
+   * keyed fingerprint, so `request_dedup.request_hash` is no fast verifier of the password
+   * (CR-01). The other fields are already stored in plain text elsewhere.
+   */
+  private setupFingerprint(body: {
+    instanceName: string;
+    name: string;
+    email: string;
+    password: string;
+  }) {
+    return {
+      instanceName: body.instanceName,
+      name: body.name,
+      email: body.email,
+      passwordFingerprint: this.refresh.credentialFingerprint(body.password),
+    };
+  }
+  /** The registration body for the request hash: password and invite code replaced by keyed fingerprints (CR-01). */
+  private registerFingerprint(body: {
+    name: string;
+    email: string;
+    password: string;
+    inviteCode?: string | undefined;
+  }) {
+    return {
+      name: body.name,
+      email: body.email,
+      passwordFingerprint: this.refresh.credentialFingerprint(body.password),
+      ...(body.inviteCode === undefined
+        ? {}
+        : { inviteFingerprint: this.refresh.credentialFingerprint(body.inviteCode) }),
+    };
+  }
   private async noCredentialReplay(): Promise<never> {
     throw new ApiError("OPERATION_COMPLETED_REAUTH_REQUIRED", 409);
   }
@@ -78,7 +112,7 @@ export class SetupService {
           method: "POST",
           path: "/api/v1/auth/setup",
           query: {},
-          body,
+          body: this.setupFingerprint(body),
         },
         async (manager) => {
           const session = this.refresh.issue({ id: account.id, auth_version: 1 });
@@ -120,7 +154,7 @@ export class SetupService {
           method: "POST",
           path: "/api/v1/auth/register",
           query: {},
-          body,
+          body: this.registerFingerprint(body),
         },
         async (manager) => {
           const session = this.refresh.issue({ id: account.id, auth_version: 1 });
