@@ -12,8 +12,9 @@ requirement (NFR) of the PRD is mapped to the evidence that verifies it (SA §11
 - the audio rights status is consistent with docs/audio-provenance.json.
 
 The gate (the default mode) **rejects a release while any row is PENDING or GAP**. `--report`
-prints the same findings without failing, for CI on ordinary pushes. Nothing in CI publishes or
-deploys.
+prints the same findings without failing, for CI runs on branches. Nothing in CI publishes or
+deploys. CI currently runs only when started by hand (`workflow_dispatch`); automatic push and
+pull-request runs are switched off.
 
 Statuses:
 

@@ -12,13 +12,15 @@
 #
 # Nothing here publishes or deploys: no registry push, no release creation, no deployment step,
 # and the token is read-only. Third-party actions are pinned to full commit SHAs.
+#
+# Automatic runs are switched off at the owner's request: the workflow no longer triggers on push
+# or pull_request and runs only when started by hand (Actions tab → CI → "Run workflow"). To turn
+# it back on, restore the triggers:
+#   push: { branches: ["**"], tags: ["v*"] }
+#   pull_request:
 name: CI
 
 on:
-  push:
-    branches: ["**"]
-    tags: ["v*"]
-  pull_request:
   workflow_dispatch:
 
 permissions:
