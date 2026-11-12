@@ -20,7 +20,7 @@ Status Legend: `- [ ]` Pending | `- [~]` In Progress | `- [x]` Completed | `- [!
 | 4. Frontend Design Tokens, Base UI & State Layer | TASK-087–TASK-131 | 45 | Fondasi M5–M6; source katalog M1 dituntaskan sebelum UI |
 | 5. Feature Screens, API Integration & 5 UI States | TASK-132–TASK-163 | 32 | M5 → M6 |
 | 6. Hardening, Edge Cases & Polish | TASK-164–TASK-182 | 19 | M7 + release evidence + paket self-host Docker |
-| 7. Tindak lanjut QA | TASK-183–TASK-187 (+ TASK-183A, TASK-185A–D) | 10 | Temuan terbuka [07-qa-report.md](07-qa-report.md): benchmark Redis dua node (US-20), fixture uji root/proxy |
+| 7. Tindak lanjut QA | TASK-183–TASK-189 (+ TASK-183A, TASK-185A–D) | 12 | Temuan terbuka [07-qa-report.md](07-qa-report.md): benchmark Redis dua node (US-20), fixture uji root/proxy; ruang disk Docker yang dapat diatur (TASK-188–189, permintaan pengguna 2026-11-12) |
 
 **Urutan:** ambil task Pending bernomor terkecil yang semua Depends On-nya Completed. Dependensi per-task adalah DAG operasional; phase merangkum milestone, bukan izin mengerjakan seluruh phase dalam satu `/vibe-code`. API/DB/adapter selesai sebelum integrasi UI; catalog tools/contracts lebih awal dan enam katalog lengkap tersedia sebelum provider UI. Tidak ada delegasi atau eksekusi agen paralel yang diperlukan oleh plan ini.
 
@@ -3151,6 +3151,64 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - Tanpa env, perilaku lama tetap sama.
   - `docker compose -f docker/docker-compose.yml --profile scale config --quiet` lulus.
   - `pnpm exec eslint tests/helpers/runtime.ts` dan Prettier check lulus.
+
+### - [ ] TASK-188: Terapkan kuota total penyimpanan media yang dapat diatur
+- **Traceability**: `US-06`, `US-15`, `US-17`, BR-15–16; permintaan pengguna 2026-11-12: "user mengatur sendiri space volume yang akan mereka pakai … default nya recommended space untuk running project ini dengan docker" (pendekatan dipilih: kuota aplikasi + lokasi).
+- **Depends On**: `TASK-024`, `TASK-067`, `TASK-067A`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/config/env.schema.ts`
+  - `MODIFY` `packages/database/src/repositories/media.repository.ts`
+  - `MODIFY` `apps/api/src/modules/media/media.service.ts`
+  - `MODIFY` `apps/api/src/modules/media/media.service.spec.ts`
+- **Implementation Specs**:
+  - Konteks: Docker named volume tidak bisa diberi batas ukuran secara portabel. Pertumbuhan utama data ada di media upload, jadi batasnya ditegakkan aplikasi.
+  - Env `MEDIA_STORAGE_QUOTA_MIB`:
+    - integer ≥ 0; `0` = tanpa batas;
+    - default **10240** (10 GiB), yaitu default yang direkomendasikan untuk self-host.
+  - Repository: `totalStoredBytes()` menjumlahkan `size_bytes` media yang tersimpan (belum dihapus) dengan query terparameterisasi, setara di SQLite/PostgreSQL/MySQL.
+  - Upload ditolak sebelum blob ditulis bila `total + ukuran baru > kuota`:
+    - kode error yang sudah ada `CAPACITY_REACHED` (HTTP 507), sehingga katalog 6 bahasa tidak berubah;
+    - tidak ada record, receipt sukses, atau blob yang tertinggal.
+  - Kuota bersifat lunak terhadap upload konkuren: kelebihan maksimum = jumlah upload paralel × batas ukuran file. Ini didokumentasikan, bukan disembunyikan.
+  - Penghapusan media (dan GC orphan) membebaskan kuota.
+- **Definition of Done (Verification)**:
+  - Spec media service:
+    - upload di bawah kuota diterima;
+    - upload yang melewati kuota ditolak `CAPACITY_REACHED` 507 tanpa record/blob;
+    - kuota `0` tanpa batas;
+    - hapus media membuka kembali ruang.
+  - Validasi env:
+    - default 10240;
+    - nilai negatif atau non-integer ditolak.
+  - `pnpm --filter @kabuki-neko/database build` dan `pnpm --filter @kabuki-neko/api lint`/`typecheck`/`test` lulus.
+  - `pnpm test:integration --testPathPatterns='media'` lulus.
+
+### - [ ] TASK-189: Atur ruang disk Docker: rotasi log, batas memori Redis, lokasi volume, dan rekomendasi
+- **Traceability**: `US-17`, `US-19`, permintaan pengguna 2026-11-12 (lihat TASK-188).
+- **Depends On**: `TASK-188`, `TASK-187`, `TASK-182`
+- **Target Files**:
+  - `MODIFY` `docker/docker-compose.yml`
+  - `CREATE` `docker/docker-compose.paths.yml`
+  - `MODIFY` `.env.example`
+  - `MODIFY` `docs/self-hosting.md`
+- **Implementation Specs**:
+  - `docker-compose.yml`:
+    - semua service memakai anchor logging `json-file` dengan `max-size` `${KN_LOG_MAX_SIZE:-10m}` dan `max-file` `${KN_LOG_MAX_FILE:-3}`, agar log tidak memenuhi disk;
+    - API menerima `MEDIA_STORAGE_QUOTA_MIB` (`${MEDIA_STORAGE_QUOTA_MIB:-10240}`);
+    - Redis profile `scale` memakai `--maxmemory ${KN_REDIS_MAXMEMORY:-256mb}` dengan `--maxmemory-policy noeviction`, supaya state game tidak pernah dibuang diam-diam; tulisan gagal secara eksplisit saat penuh.
+  - `docker/docker-compose.paths.yml` (override opsional): named volume `kabuki-data`, `kabuki-uploads`, dan untuk profile scale `kabuki-postgres`, `kabuki-redis`, `kabuki-minio` dipetakan ke folder host pilihan operator lewat `KN_DATA_PATH`, `KN_UPLOADS_PATH`, `KN_POSTGRES_PATH`, `KN_REDIS_PATH`, `KN_MINIO_PATH`. Dengan begitu operator dapat menaruh data di disk/partisi berukuran tertentu. Volume secrets tetap named volume.
+  - `.env.example`: semua variabel baru dengan default rekomendasi dan komentar.
+  - `docs/self-hosting.md` (ID + EN), tabel kebutuhan ruang yang direkomendasikan per profil (image, data/SQLite, uploads sesuai kuota, log, PostgreSQL/Redis/MinIO). Tambahkan juga:
+    - cara memakai override paths;
+    - cara memantau pemakaian (`docker system df -v`, `du`);
+    - penjelasan jujur bahwa Docker tidak membatasi ukuran named volume dan batas keras butuh partisi/disk terpisah.
+- **Definition of Done (Verification)**:
+  - `docker compose -f docker/docker-compose.yml config --quiet` dan versi `--profile scale` lulus.
+  - Kombinasi dengan `-f docker/docker-compose.paths.yml` (dengan path contoh) dan dengan `docker-compose.tls.yml` lulus.
+  - Config yang dirender menunjukkan logging/maxmemory/kuota sesuai default dan override env.
+  - `bash scripts/selfhost-smoke.sh` profil default lulus bila image tersedia.
+  - Setiap variabel yang disebut panduan ada di `.env.example`.
+  - Prettier check YAML/Markdown lulus.
 
 ## 3. Blueprint coverage
 
