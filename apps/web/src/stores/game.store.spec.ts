@@ -461,6 +461,89 @@ describe("transport and lifecycle", () => {
     expect(host.getState().syncRequested).toBe(false);
   });
 
+  it("derives host capabilities from applied pushes without a full room:sync (QA regression of MJ-25)", () => {
+    const host = createGameStore();
+    const lobby = hostSnapshot(5, 1);
+    host.getState().applySync(
+      hostRoomSyncSchema.parse({
+        ...lobby,
+        ...room(SESSION_A, 5, 1, false),
+        players: [],
+        eligibleCount: 0,
+        capabilities: {
+          canStart: false,
+          canLock: true,
+          canKick: true,
+          canSkip: false,
+          canNext: false,
+          canEnd: true,
+        },
+      }),
+    );
+    const caps = () => {
+      const snapshot = host.getState().snapshot;
+      return snapshot?.role === "host" ? snapshot.capabilities : null;
+    };
+    const player = lobby.players[0];
+    expect(player).toBeDefined();
+    if (!player) return;
+
+    // The first join enables Start, and the matching heartbeat asks for no snapshot.
+    host.getState().applyEvent("room:player_joined", push({ player }, 6, 1));
+    expect(caps()).toMatchObject({ canStart: true, canLock: true, canEnd: true });
+    host.getState().applyEvent("room:version", push({ publicRevision: 6 }, 6, 1));
+    expect(host.getState().syncRequested).toBe(false);
+    // Only connected players count, as on the server.
+    host
+      .getState()
+      .applyEvent("room:presence_changed", push({ playerId: PLAYER, connected: false }, 7, 1));
+    expect(caps()?.canStart).toBe(false);
+    host
+      .getState()
+      .applyEvent("room:presence_changed", push({ playerId: PLAYER, connected: true }, 8, 1));
+    expect(caps()?.canStart).toBe(true);
+
+    host
+      .getState()
+      .applyEvent("game:countdown", push({ phaseStartedAt: T0, phaseEndsAt: T0 + 3_000 }, 9, 2));
+    expect(caps()).toEqual({
+      canStart: false,
+      canLock: false,
+      canKick: true,
+      canSkip: false,
+      canNext: false,
+      canEnd: true,
+    });
+    const answering = room(SESSION_A, 10, 3, true);
+    host.getState().applyEvent(
+      "game:question_answering",
+      push(
+        {
+          question: answering.question,
+          serverStartTime: T0,
+          inputClosesAt: T0 + 20_000,
+          acceptanceClosesAt: T0 + 20_000 + GAME_TIMING.graceMs,
+        },
+        10,
+        3,
+      ),
+    );
+    expect(caps()).toMatchObject({ canSkip: true, canNext: false, canStart: false });
+    host.getState().applyEvent("game:answer_reveal", push({ reveal }, 11, 4));
+    expect(caps()).toMatchObject({ canSkip: false, canNext: true, canEnd: true });
+    host
+      .getState()
+      .applyEvent("game:podium", push({ podium: [], finalization: null, reportId: null }, 12, 5));
+    expect(caps()).toEqual({
+      canStart: false,
+      canLock: false,
+      canKick: false,
+      canSkip: false,
+      canNext: false,
+      canEnd: false,
+    });
+  });
+
   it("applies room:expired despite the server's revision 1 / phaseVersion 1 (MJ-29)", () => {
     const store = createGameStore();
     store.getState().applySync(playerSnapshot({ revision: 10 }));

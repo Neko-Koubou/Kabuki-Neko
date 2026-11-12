@@ -147,6 +147,42 @@ function phaseTiming(serverTime: number, durationMs: number | null): RoomSnapsho
   };
 }
 
+/** Phases before the final podium, in which the host may still kick and end (server projector). */
+const ACTIVE_HOST_PHASES: ReadonlySet<RoomSnapshot["phase"]> = new Set([
+  "LOBBY",
+  "GAME_START_COUNTDOWN",
+  "QUESTION_PREVIEW",
+  "QUESTION_ANSWERING",
+  "ANSWER_REVEAL",
+  "LEADERBOARD",
+]);
+
+/**
+ * Host capabilities after an applied push, by the server projector's rules (room-projector.ts).
+ * Pushes carry no capabilities, and since applied pushes advance `publicRevision` (MJ-25) no full
+ * `room:sync` refreshes them, so the store derives them from the reduced roster and phase:
+ * otherwise `canStart` stays false after the first player joins an empty lobby. `canSkip` also
+ * needs the private `accepting` flag: it is true when answering opens and keeps the last
+ * snapshot's value while the phase stays the same (a closed question moves on to the reveal).
+ */
+function hostCapabilities(
+  previous: HostRoomSync,
+  next: HostRoomSync,
+): HostRoomSync["capabilities"] {
+  const phase = next.phase;
+  const connected = next.players.filter((player) => player.connected).length;
+  return {
+    canStart: phase === "LOBBY" && connected > 0,
+    canLock: phase === "LOBBY",
+    canKick: ACTIVE_HOST_PHASES.has(phase),
+    canSkip:
+      phase === "QUESTION_ANSWERING" &&
+      (previous.phase === "QUESTION_ANSWERING" ? previous.capabilities.canSkip : true),
+    canNext: phase === "ANSWER_REVEAL" || phase === "LEADERBOARD",
+    canEnd: ACTIVE_HOST_PHASES.has(phase),
+  };
+}
+
 /** Pushes sent only to the host channel; they never advance the public revision. */
 const HOST_ONLY_EVENTS: ReadonlySet<string> = new Set([
   "game:answer_count_updated",
@@ -414,8 +450,12 @@ export function createGameStore(): StoreApi<GameState> {
         set({ seenEventIds: seen, syncRequested: true });
         return { applied: true };
       }
-      const next = reduce(snapshot, name, envelope.data as Record<string, unknown>, envelope);
-      if (next === null) return { applied: false, reason: "unknown-event" };
+      const reduced = reduce(snapshot, name, envelope.data as Record<string, unknown>, envelope);
+      if (reduced === null) return { applied: false, reason: "unknown-event" };
+      const next =
+        reduced.role === "host" && snapshot.role === "host"
+          ? { ...reduced, capabilities: hostCapabilities(snapshot, reduced) }
+          : reduced;
       set({
         snapshot: next,
         seenEventIds: seen,

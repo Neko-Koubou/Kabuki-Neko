@@ -330,6 +330,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 - **Masalah**: heartbeat selalu terlihat lebih baru, sehingga semua klien (hingga 200) meminta snapshot penuh beberapa kali per soal. Selama itu UI menjadi `inert` ("Catching up…").
 - **Perbaikan**: event room-scope memajukan `publicRevision`. Event khusus host tidak.
 - **Resolusi**: `reduce` di `game.store.ts` kini memajukan `publicRevision` ke revisi envelope untuk setiap push room-wide; push khusus host (`game:answer_count_updated`, `report:status_changed`) tidak. Heartbeat dengan publicRevision yang sama tidak lagi memicu `room:sync`; heartbeat lebih baru tetap memicu. Spec baru di `game.store.spec.ts`. Web Vitest 51/448, tsc, lint PASS.
+- **Tindak lanjut QA (2026-11-12, `/vibe-test`)**: perbaikan ini memunculkan regresi. Push tidak membawa `capabilities`, dan sebelumnya hanya `room:sync` penuh yang memperbaruinya. Akibatnya `canStart` host tetap `false` setelah pemain pertama bergabung, sehingga "Start game" tidak pernah aktif (5 kegagalan E2E). `applyEvent` kini menurunkan kapabilitas host dari roster dan fase hasil reduce dengan aturan `room-projector.ts`. Spec regresi baru di `game.store.spec.ts`: gagal tanpa perbaikan, lulus dengan perbaikan. Rincian di [07-qa-report.md](07-qa-report.md).
 
 #### MJ-26 [MAJOR] [RESOLVED] Kegagalan recovery non-terminal diabaikan: tanpa backoff, `retryAfter` diabaikan, tanpa tombol Retry
 - **File:Line**: `apps/web/src/hooks/use-session-recovery.ts:239-241,262-268`; `connection-recovery.tsx:140-145`.
