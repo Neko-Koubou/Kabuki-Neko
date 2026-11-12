@@ -243,6 +243,29 @@ it("bounds outstanding friendly reservations per IP and room", async () => {
       expect(`${adjective} ${noun}`.length).toBeLessThanOrEqual(15);
 });
 
+it("lets a player recover by token while the room is FINALIZING but never admits new joins (MJ-04)", async () => {
+  const ack = await room();
+  const joined = await service.join(joinRequest(ack.pinCode, "Hana"), ctx());
+  // The scheduler moves the allocation to FINALIZING as soon as the report is frozen (podium).
+  await runtime.transition(ack.sessionId, "ACTIVE", "FINALIZING", Date.now());
+  const recovered = await service.join(
+    {
+      requestId: randomUUID(),
+      pinCode: ack.pinCode,
+      sessionId: ack.sessionId,
+      sessionToken: joined.ack.sessionToken,
+    },
+    ctx(),
+  );
+  expect(recovered.ack).toMatchObject({ playerId: joined.ack.playerId, recovered: true });
+  await expect(service.checkPin(ack.pinCode)).rejects.toMatchObject({
+    errorCode: "ROOM_NOT_FOUND",
+  });
+  await expect(service.join(joinRequest(ack.pinCode, "Late"), ctx())).rejects.toMatchObject({
+    errorCode: "ROOM_NOT_FOUND",
+  });
+});
+
 it("recovers by token with a new generation and rejects stale, changed, cross-room and kicked sessions", async () => {
   const ack = await room();
   const other = await room();

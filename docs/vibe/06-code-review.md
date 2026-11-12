@@ -137,10 +137,11 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 - **Perbaikan**: setelah ACK kick, `GameService` menjalankan `closeQuestion(ALL_ANSWERED)` bila semua pemain wajib sudah menjawab, lalu `settle`.
   - Kasus paritas di `state-parity.spec.ts`.
 
-#### MJ-04 [MAJOR] [OPEN] Pemain tidak bisa recover saat PODIUM/FINISHED
+#### MJ-04 [MAJOR] [RESOLVED] Pemain tidak bisa recover saat PODIUM/FINISHED
 - **File:Line**: `apps/api/src/modules/game-engine/recovery.service.ts:122-131`.
 - **Masalah**: allocation berpindah ke FINALIZING saat laporan dibekukan, sehingga recovery dengan token menghasilkan 404. Melanggar SA §6.2(4) dan BR-12.
 - **Perbaikan**: recovery dengan `sessionToken` menerima `ACTIVE|FINALIZING`. `check_pin`, friendly name, dan join baru tetap hanya `ACTIVE`.
+- **Resolusi**: `RecoveryService.room(pin, statuses)` menerima daftar status; `join` dengan `sessionToken` menerima `ACTIVE|FINALIZING`, sedangkan `checkPin`, friendly name, dan join baru tetap hanya `ACTIVE`. Spec baru di `recovery.service.spec.ts` (recovery saat FINALIZING sukses; check_pin dan join baru 404; gagal pada kode lama). API Jest 234/234, tsc, lint PASS.
 
 #### MJ-05 [MAJOR] [OPEN] Map gateway bocor dan klien room yang dilepas tidak menerima `room:expired`
 - **File:Line**:

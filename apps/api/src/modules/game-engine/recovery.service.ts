@@ -118,12 +118,20 @@ export class RecoveryService {
     @Inject(GAME_STATE_STORE) private readonly store: IGameStateStore,
   ) {}
 
-  /** Resolves a live PIN to its room identity and private state, or 404. */
+  /**
+   * Resolves a live PIN to its room identity and private state, or 404. New joins, PIN checks
+   * and friendly names need an ACTIVE allocation; token recovery also accepts FINALIZING, which
+   * the scheduler sets as soon as the report is frozen (PODIUM/FINISHED), so a player who
+   * refreshes on the podium still gets the results during the 1 h retention (SA §6.2(4), BR-12;
+   * code review MJ-04).
+   */
   private async room(
     pin: string,
+    statuses: readonly string[] = ["ACTIVE"],
   ): Promise<{ identity: { pin: string; sessionId: string }; state: ActiveRoomState }> {
     const allocation = await this.runtime.findByPin(pin);
-    if (!allocation || allocation.status !== "ACTIVE") throw new ApiError("ROOM_NOT_FOUND", 404);
+    if (!allocation || !statuses.includes(allocation.status))
+      throw new ApiError("ROOM_NOT_FOUND", 404);
     const identity = { pin: allocation.pin_code, sessionId: allocation.id };
     const state = await this.store.getPrivateSnapshot(identity);
     if (!state) throw new ApiError("ROOM_NOT_FOUND", 404);
@@ -201,7 +209,10 @@ export class RecoveryService {
 
   /** `player:join_room` — new join or token recovery; see the module comment. */
   async join(request: JoinRequest, context: PlayerContext): Promise<JoinOutcome> {
-    const { identity, state } = await this.room(request.pinCode);
+    const { identity, state } = await this.room(
+      request.pinCode,
+      "sessionToken" in request ? ["ACTIVE", "FINALIZING"] : ["ACTIVE"],
+    );
     const { requestId: _requestId, ...payload } = request;
     const payloadHash = canonicalRequestHash(JSON.parse(JSON.stringify(payload)));
     if ("sessionToken" in request) {
