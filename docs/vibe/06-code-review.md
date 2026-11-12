@@ -326,10 +326,11 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 - **Masalah**: kedua tab berbagi key localStorage yang sama. Tab lama menghapus record, sehingga tab baru tidak bisa recover.
 - **Perbaikan**: jangan hapus storage untuk `session_replaced`. Tetap hapus untuk `INVALID_SESSION_TOKEN`.
 
-#### MJ-29 [MAJOR] [OPEN] `room:expired` selalu dibuang oleh fence revisi
+#### MJ-29 [MAJOR] [RESOLVED] `room:expired` selalu dibuang oleh fence revisi
 - **File:Line**: `apps/web/src/stores/game.store.ts:369-391`.
 - **Masalah**: server mengirim `room:expired` dengan revision/phaseVersion 1, sehingga event itu dianggap stale dan klien tidak pernah mencapai state terminal.
 - **Perbaikan**: tangani `room:expired`, `player:kicked`, dan `player:session_replaced` sebelum fence (cukup cek `sessionId` + dedup `eventId`).
+- **Resolusi**: di `game.store.ts` `applyEvent`, `player:kicked`/`player:session_replaced`/`room:expired` ditangani sebelum fence revision/phaseVersion (tetap cek `sessionId` + dedup `eventId`), sehingga `room:expired` dengan revision 1/phaseVersion 1 dari server menghasilkan state terminal. Spec baru di `game.store.spec.ts` (terapan, duplikat ditolak, sesi lain ditolak). Web Vitest stores/hooks/player/host 134/134, tsc, lint PASS.
 
 #### MJ-30 [MAJOR] [OPEN] Kegagalan `/auth/me` apa pun (offline, timeout, 5xx) dianggap sign-out
 - **File:Line**: `apps/web/src/providers/auth-provider.tsx:240-251`.

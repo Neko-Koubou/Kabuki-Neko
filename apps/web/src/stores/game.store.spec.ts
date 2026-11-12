@@ -433,6 +433,30 @@ describe("transport and lifecycle", () => {
     expect(store.getState().terminal).toBeNull();
   });
 
+  it("applies room:expired despite the server's revision 1 / phaseVersion 1 (MJ-29)", () => {
+    const store = createGameStore();
+    store.getState().applySync(playerSnapshot({ revision: 10 }));
+    const expired = push({ reason: "ROOM_LOST" }, 1, 1);
+    expect(store.getState().applyEvent("room:expired", expired)).toEqual({ applied: true });
+    expect(store.getState().terminal).toBe("ROOM_LOST");
+    // Event-id dedup and the session check still apply.
+    expect(store.getState().applyEvent("room:expired", expired)).toEqual({
+      applied: false,
+      reason: "duplicate",
+    });
+    const other = createGameStore();
+    other.getState().applySync(playerSnapshot({ revision: 10 }));
+    expect(
+      other
+        .getState()
+        .applyEvent(
+          "room:expired",
+          push({ reason: "ROOM_EXPIRED" }, 1, 1, { sessionId: SESSION_B }),
+        ),
+    ).toEqual({ applied: false, reason: "other-session" });
+    expect(other.getState().terminal).toBeNull();
+  });
+
   it("survives remounts inside the locale provider (locale/theme never reset it)", () => {
     const store = createGameStore();
     store.getState().applySync(playerSnapshot());

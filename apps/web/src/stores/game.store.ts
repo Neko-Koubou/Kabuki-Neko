@@ -366,15 +366,17 @@ export function createGameStore(): StoreApi<GameState> {
         });
         return { applied: true };
       }
-      if (envelope.revision <= state.snapshotRevision)
-        return { applied: false, reason: "stale-revision" };
       if (state.seenEventIds.has(envelope.eventId)) return { applied: false, reason: "duplicate" };
-      if (envelope.phaseVersion < state.phaseVersion)
-        return { applied: false, reason: "stale-phase" };
-      const seen = new Set(state.seenEventIds);
-      seen.add(envelope.eventId);
-      if (seen.size > MAX_SEEN_EVENTS) seen.delete(seen.values().next().value ?? "");
-
+      /** Remembers the event id (bounded) so a duplicate delivery is ignored. */
+      const remember = () => {
+        const seen = new Set(state.seenEventIds);
+        seen.add(envelope.eventId);
+        if (seen.size > MAX_SEEN_EVENTS) seen.delete(seen.values().next().value ?? "");
+        return seen;
+      };
+      // Terminal pushes end the session whatever their revision: the server sends `room:expired`
+      // for a released room with revision/phaseVersion 1, which the revision fence below would
+      // always drop (code review MJ-29). Session id and event-id dedup still apply.
       if (
         name === "player:kicked" ||
         name === "player:session_replaced" ||
@@ -386,9 +388,15 @@ export function createGameStore(): StoreApi<GameState> {
             : name === "player:session_replaced"
               ? "SESSION_REPLACED"
               : (envelope.data as { reason: "ROOM_EXPIRED" | "ROOM_LOST" }).reason;
-        set({ seenEventIds: seen, terminal: reason });
+        set({ seenEventIds: remember(), terminal: reason });
         return { applied: true };
       }
+      if (envelope.revision <= state.snapshotRevision)
+        return { applied: false, reason: "stale-revision" };
+      if (envelope.phaseVersion < state.phaseVersion)
+        return { applied: false, reason: "stale-phase" };
+      const seen = remember();
+
       if (name === "room:error") {
         set({ seenEventIds: seen, syncRequested: true });
         return { applied: true };
