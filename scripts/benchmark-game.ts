@@ -823,6 +823,19 @@ export async function runBenchmark(options: BenchmarkOptions) {
       diagnostics: { nodes, loadGenerator },
       target: { p95Ms: P95_TARGET_MS, ...result },
     };
+  } catch (error) {
+    // The run could not even finish its record: keep the evidence of each local node (its last
+    // output, probe lines excluded), since the processes and their logs go away with the run.
+    const tails = [...new Set(cluster.nodes)]
+      .filter((node) => node.logs !== null)
+      .map((node) => {
+        const lines = (node.logs?.() ?? "")
+          .split("\n")
+          .filter((line) => line.trim() !== "" && !line.includes(PROBE_PREFIX));
+        return `--- API node ${node.label} (last ${Math.min(lines.length, 40)} lines) ---\n${lines.slice(-40).join("\n")}`;
+      });
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error([message, ...tails].join("\n"), { cause: error });
   } finally {
     for (const socket of sockets) socket.disconnect();
     await cluster.stop();
