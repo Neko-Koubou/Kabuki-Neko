@@ -193,10 +193,11 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 - **Perbaikan**: di `getHealth`, abaikan `DEPENDENCY_UNAVAILABLE` dari limiter. 429 tetap diteruskan.
 - **Resolusi**: `getHealth` (`system.controller.ts`) tetap membebankan tier PUBLIC (429 diteruskan, query tetap 422), tetapi `DEPENDENCY_UNAVAILABLE` dari limiter (Redis mati) tidak lagi menghentikan request: pengecekan berjalan dan mengembalikan body Health 503 dengan `state` down. Spec baru `system.controller.spec.ts` (gagal pada kode lama). API Jest 34/239, tsc, lint PASS.
 
-#### MJ-11 [MAJOR] [OPEN] Endpoint laporan berhalaman memuat seluruh jawaban sesi
+#### MJ-11 [MAJOR] [RESOLVED] Endpoint laporan berhalaman memuat seluruh jawaban sesi
 - **File:Line**: `apps/api/src/modules/reports/reports.service.ts:322-330,359-367,389-395`; `reports.repository.ts:323-333`.
 - **Masalah**: hingga 1 juta baris (termasuk payload) dihidrasi per request hanya untuk 20 pemain. Melanggar SA §4.5 dan §10.3.
 - **Perbaikan**: tally lewat `GROUP BY` di SQL. Payload hanya dibaca untuk hitungan opsi soal pilihan.
+- **Resolusi**: `ReportsRepository.answerOutcomes` mengagregasi hasil jawaban dengan `GROUP BY` (per soal atau per pemain, dengan filter pemain/soal) dan `payloadCounts` membaca payload yang berbeda beserta hitungannya hanya untuk soal pilihan yang dimainkan. `questionReport`/`playerTallies` kini bekerja di atas agregat; halaman pemain hanya menghitung pemain di halaman itu, CSV per pemain tanpa payload, dan `allAnswers` tidak lagi dipakai endpoint. Regresi: kontrak `reports.repository.spec.ts` (SQLite/PostgreSQL/MySQL), `reports.service.spec.ts` (tidak memanggil `allAnswers`, filter halaman dan soal skor), integrasi `reports.spec.ts` lulus; API jest 252/252, tsc/eslint bersih.
 
 #### MJ-12 [MAJOR] [RESOLVED] Query string laporan yang tidak valid menghasilkan 500
 - **File:Line**: `packages/database/src/repositories/reports.repository.ts:237,263,296`; `reports.service.ts:362`; `error.filter.ts:55-83`.

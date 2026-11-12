@@ -25,6 +25,8 @@ import {
   RuntimeRepository,
   UsersRepository,
   type Allocation,
+  type AnswerOutcomeGroup,
+  type PayloadCount,
   type ReportAnswerRow,
   type ReportPlayerRow,
   type ReportQuestionRow,
@@ -102,44 +104,57 @@ export function storedQuestion(snapshot: unknown): StoredQuestion {
 export function isScored(question: Pick<Question, "type" | "pointsMultiplier">): boolean {
   return question.type !== "POLL" && question.pointsMultiplier > 0;
 }
-/** Credit of one answer row: CORRECT 1, PARTIAL C/K, everything else 0. */
+/** Credit of one answer: CORRECT 1, PARTIAL C/K, everything else 0. */
 function credit(
-  answer: Pick<ReportAnswerRow, "result" | "accuracy_numerator" | "accuracy_denominator">,
+  answer: Pick<AnswerOutcomeGroup, "result" | "accuracyNumerator" | "accuracyDenominator">,
 ) {
   if (answer.result !== "CORRECT" && answer.result !== "PARTIAL") return 0;
-  return answer.accuracy_denominator === 0
+  return answer.accuracyDenominator === 0
     ? 0
-    : answer.accuracy_numerator / answer.accuracy_denominator;
+    : answer.accuracyNumerator / answer.accuracyDenominator;
 }
 
-/** Per-question analytics from its stored row and the answers of its eligible players. */
+/**
+ * Per-question analytics from its stored row, the SQL outcome groups of its answers and, for
+ * choice questions, its distinct payload counts (code review MJ-11: no answer rows are loaded).
+ * Stored answers exist only for the eligible players of PLAYED questions, so an unplayed
+ * question's groups are ignored.
+ */
 export function questionReport(
   row: Pick<ReportQuestionRow, "question_index" | "snapshot" | "status" | "eligible_player_ids">,
-  answers: readonly ReportAnswerRow[],
+  outcomes: readonly AnswerOutcomeGroup[],
+  payloads: readonly PayloadCount[] = [],
 ): QuestionReport & { scoredTally: Tally } {
   const question = storedQuestion(row.snapshot);
   const played = row.status === "PLAYED";
   const eligible = new Set(played ? row.eligible_player_ids : []);
-  const own = answers.filter(
-    (a) => a.question_index === row.question_index && eligible.has(a.player_id),
-  );
-  const accepted = own.filter((a) => a.submitted_payload !== null);
+  const own = played ? outcomes.filter((group) => group.key === row.question_index) : [];
+  const accepted = own.filter((group) => group.accepted);
+  const acceptedCount = accepted.reduce((sum, group) => sum + group.count, 0);
   const choiceCounts = new Map(question.options.map((option) => [option.id, 0]));
-  if (CHOICE.has(question.type))
-    for (const answer of accepted) {
-      const payload = answer.submitted_payload;
+  if (played && CHOICE.has(question.type))
+    for (const { questionIndex, payload, count } of payloads) {
+      if (questionIndex !== row.question_index) continue;
       const indexes = Array.isArray(payload) ? payload : [payload];
       for (const index of new Set(indexes)) {
         const id = typeof index === "number" ? question.publicToPrivateOptionIds[index] : undefined;
         if (id !== undefined && choiceCounts.has(id))
-          choiceCounts.set(id, (choiceCounts.get(id) ?? 0) + 1);
+          choiceCounts.set(id, (choiceCounts.get(id) ?? 0) + count);
       }
     }
   const poll = question.type === "POLL";
-  const count = (result: string) => (poll ? 0 : accepted.filter((a) => a.result === result).length);
+  const count = (result: string) =>
+    poll
+      ? 0
+      : accepted
+          .filter((group) => group.result === result)
+          .reduce((sum, group) => sum + group.count, 0);
   const scoredTally: Tally =
     played && isScored(question)
-      ? { numerator: own.reduce((sum, a) => sum + credit(a), 0), denominator: eligible.size }
+      ? {
+          numerator: own.reduce((sum, group) => sum + group.count * credit(group), 0),
+          denominator: eligible.size,
+        }
       : { numerator: 0, denominator: 0 };
   const { publicToPrivateOptionIds: _mapping, ...authoring } = question;
   return {
@@ -147,11 +162,11 @@ export function questionReport(
     question: authoring as Question,
     status: row.status,
     eligibleCount: eligible.size,
-    acceptedCount: accepted.length,
+    acceptedCount,
     correctCount: count("CORRECT"),
     partialCount: count("PARTIAL"),
     incorrectCount: count("INCORRECT"),
-    unansweredCount: eligible.size - accepted.length,
+    unansweredCount: eligible.size - acceptedCount,
     accuracy: metric(scoredTally),
     optionCounts: CHOICE.has(question.type)
       ? question.options.map((option) => ({
@@ -181,23 +196,27 @@ export function hardestQuestions(questions: readonly QuestionReport[]): number[]
     .map((q) => q.questionIndex);
 }
 
-/** Accuracy tally of each player over scored opportunities of PLAYED questions. */
-export function playerTallies(
+/** Indexes of the PLAYED questions whose answers are scored opportunities. */
+export function scoredIndexes(
   questions: readonly Pick<ReportQuestionRow, "question_index" | "snapshot" | "status">[],
-  answers: readonly ReportAnswerRow[],
-): Map<string, Tally> {
-  const scored = new Set(
-    questions
-      .filter((q) => q.status === "PLAYED" && isScored(storedQuestion(q.snapshot)))
-      .map((q) => q.question_index),
-  );
+): number[] {
+  return questions
+    .filter((q) => q.status === "PLAYED" && isScored(storedQuestion(q.snapshot)))
+    .map((q) => q.question_index);
+}
+
+/**
+ * Accuracy tally of each player from per-player outcome groups that the repository already
+ * restricted to scored questions (code review MJ-11).
+ */
+export function playerTallies(outcomes: readonly AnswerOutcomeGroup[]): Map<string, Tally> {
   const tallies = new Map<string, Tally>();
-  for (const answer of answers) {
-    if (!scored.has(answer.question_index)) continue;
-    const tally = tallies.get(answer.player_id) ?? { numerator: 0, denominator: 0 };
-    tally.numerator += credit(answer);
-    tally.denominator += 1;
-    tallies.set(answer.player_id, tally);
+  for (const group of outcomes) {
+    const player = String(group.key);
+    const tally = tallies.get(player) ?? { numerator: 0, denominator: 0 };
+    tally.numerator += group.count * credit(group);
+    tally.denominator += group.count;
+    tallies.set(player, tally);
   }
   return tallies;
 }
@@ -314,6 +333,24 @@ export class ReportsService {
     }
   }
 
+  /**
+   * Accuracy tallies over scored questions, aggregated in SQL per player (code review MJ-11);
+   * restricted to `players` when given (a page), otherwise every player (CSV).
+   */
+  private async tallies(
+    hostId: string,
+    sessionId: string,
+    questions: readonly Pick<ReportQuestionRow, "question_index" | "snapshot" | "status">[],
+    players?: readonly { id: string }[],
+  ): Promise<Map<string, Tally>> {
+    return playerTallies(
+      await this.reports.answerOutcomes(hostId, sessionId, "player", {
+        questionIndexes: scoredIndexes(questions),
+        ...(players ? { playerIds: players.map((player) => player.id) } : {}),
+      }),
+    );
+  }
+
   /** Ready reports of the current host (`GET /reports`). Invalid query → 422 (MJ-12). */
   list(hostId: string, query: unknown) {
     const parsed = new ZodValidationPipe(reportsQuerySchema).transform(query);
@@ -327,12 +364,19 @@ export class ReportsService {
   detail(hostId: string, sessionId: string): Promise<SessionFullReport> {
     return this.gate(async () => {
       const session = await this.reports.session(hostId, sessionId);
-      const [questions, answers, players] = await Promise.all([
+      const [questions, outcomes, players] = await Promise.all([
         this.reports.questions(hostId, sessionId),
-        this.reports.allAnswers(hostId, sessionId),
+        this.reports.answerOutcomes(hostId, sessionId, "question"),
         this.reports.players(hostId, sessionId, { page: 1, limit: DETAIL_PLAYERS }),
       ]);
-      const analytics = questions.map((q) => questionReport(q, answers));
+      const choice = questions
+        .filter((q) => q.status === "PLAYED" && CHOICE.has(storedQuestion(q.snapshot).type))
+        .map((q) => q.question_index);
+      const [payloads, tallies] = await Promise.all([
+        this.reports.payloadCounts(hostId, sessionId, choice),
+        this.tallies(hostId, sessionId, questions, players.items),
+      ]);
+      const analytics = questions.map((q) => questionReport(q, outcomes, payloads));
       const overall = analytics.reduce<Tally>(
         (sum, q) => ({
           numerator: sum.numerator + q.scoredTally.numerator,
@@ -341,7 +385,6 @@ export class ReportsService {
         { numerator: 0, denominator: 0 },
       );
       const reports = analytics.map(({ scoredTally: _tally, ...report }) => report);
-      const tallies = playerTallies(questions, answers);
       return fullReportSchema.parse({
         session: sessionSummary(session),
         totalQuestions: session.total_questions,
@@ -365,12 +408,11 @@ export class ReportsService {
     // Validated before the gate: a ZodError inside it surfaced as 500 INTERNAL_ERROR (MJ-12).
     const parsed = new ZodValidationPipe(reportPlayersQuerySchema).transform(query);
     return this.gate(async () => {
-      const [page, questions, answers] = await Promise.all([
+      const [page, questions] = await Promise.all([
         this.reports.players(hostId, sessionId, parsed),
         this.reports.questions(hostId, sessionId),
-        this.reports.allAnswers(hostId, sessionId),
       ]);
-      const tallies = playerTallies(questions, answers);
+      const tallies = await this.tallies(hostId, sessionId, questions, page.items);
       return playerReportsPageSchema.parse({
         items: page.items.map((p) => playerReport(p, tallies.get(p.id))),
         meta: page.meta,
@@ -394,12 +436,11 @@ export class ReportsService {
   exportCsv(hostId: string, sessionId: string): Promise<CsvDownload> {
     return this.gate(async () => {
       const session = await this.reports.session(hostId, sessionId);
-      const [questions, answers, players] = await Promise.all([
+      const [questions, players] = await Promise.all([
         this.reports.questions(hostId, sessionId),
-        this.reports.allAnswers(hostId, sessionId),
         this.reports.allPlayers(hostId, sessionId),
       ]);
-      const tallies = playerTallies(questions, answers);
+      const tallies = await this.tallies(hostId, sessionId, questions);
       const rows: CsvPlayer[] = players.map((p) => playerReport(p, tallies.get(p.id)));
       const csvSession = {
         id: session.id,

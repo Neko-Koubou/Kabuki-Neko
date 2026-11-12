@@ -392,6 +392,37 @@ it("computes weighted accuracy, per-type counts, kicked opportunities and hardes
   expect(page.items[0]?.accuracy.value).toBe(0.5);
 });
 
+it("aggregates analytics in SQL and never loads every answer row (MJ-11)", async () => {
+  const { identity } = await play();
+  const all = jest.spyOn(reports, "allAnswers");
+  const outcomes = jest.spyOn(reports, "answerOutcomes");
+  const payloads = jest.spyOn(reports, "payloadCounts");
+  try {
+    const page = await service.players(host.user.id, identity.sessionId, { limit: "1" });
+    expect(page.items.map((p) => p.id)).toHaveLength(1);
+    // The page's tallies are aggregated for that page's players and the scored questions only.
+    expect(outcomes).toHaveBeenLastCalledWith(host.user.id, identity.sessionId, "player", {
+      questionIndexes: [0, 1],
+      playerIds: [page.items[0]?.id],
+    });
+    await service.detail(host.user.id, identity.sessionId);
+    // Payloads are read only for the played choice questions.
+    const choice = payloads.mock.calls[0]?.[2] ?? [];
+    const report = await service.detail(host.user.id, identity.sessionId);
+    for (const index of choice)
+      expect(["SINGLE_CHOICE", "TRUE_FALSE", "MULTIPLE_SELECT", "POLL"]).toContain(
+        report.questions[index]?.question.type,
+      );
+    expect(choice.every((index) => report.questions[index]?.status === "PLAYED")).toBe(true);
+    await service.exportCsv(host.user.id, identity.sessionId);
+    expect(all).not.toHaveBeenCalled();
+  } finally {
+    all.mockRestore();
+    outcomes.mockRestore();
+    payloads.mockRestore();
+  }
+});
+
 it("returns one answer row per question with NOT_PLAYED / NOT_ELIGIBLE / ANSWERED / UNANSWERED", async () => {
   const { identity, ann, ben, cat } = await play();
   const rows = async (playerId: string) =>

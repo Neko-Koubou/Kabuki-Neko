@@ -277,6 +277,95 @@ it.each<DatabaseDriver>(["sqlite", "postgres", "mysql"])(
         expect(answers.map((a) => [a.question_index, a.player_id, a.result])).toEqual([
           [0, player, "UNANSWERED"],
         ]);
+        // Code review MJ-11: outcome and payload aggregation in SQL on every dialect.
+        const question = await db.manager.findOneByOrFail<{
+          id: string;
+          session_id: string;
+          question_index: number;
+        }>("session_questions", {
+          session_id: session,
+          question_index: 0,
+        });
+        const voters = [randomUUID(), randomUUID(), randomUUID()];
+        await db.manager.insert(
+          "game_players",
+          voters.map((id, join) => ({
+            ...playerRow(id, join + 1, null, false),
+            session_id: session,
+          })),
+        );
+        const answerRow = (
+          playerId: string,
+          payload: unknown,
+          result: string,
+          numerator: number,
+          denominator: number,
+        ) => ({
+          id: randomUUID(),
+          session_id: session,
+          player_id: playerId,
+          session_question_id: question.id,
+          question_id: null,
+          question_index: 0,
+          submission_id: randomUUID(),
+          submitted_payload: payload,
+          result,
+          is_correct: result === "CORRECT",
+          accuracy_numerator: numerator,
+          accuracy_denominator: denominator,
+          response_time_ms: 100,
+          received_at: 1,
+          points_awarded: 0,
+          streak_bonus_awarded: 0,
+          current_streak: 0,
+        });
+        await db.manager.insert("player_answers", [
+          answerRow(voters[0] as string, [0, 2], "PARTIAL", 1, 2),
+          answerRow(voters[1] as string, [0, 2], "PARTIAL", 1, 2),
+          answerRow(voters[2] as string, [1], "CORRECT", 1, 1),
+        ]);
+        const byQuestion = await reports.answerOutcomes(host, session, "question");
+        expect(
+          byQuestion
+            .map((g) => [
+              g.key,
+              g.result,
+              g.accuracyNumerator,
+              g.accuracyDenominator,
+              g.accepted,
+              g.count,
+            ])
+            .sort((a, b) => String(a[1]).localeCompare(String(b[1]))),
+        ).toEqual([
+          [0, "CORRECT", 1, 1, true, 1],
+          [0, "PARTIAL", 1, 2, true, 2],
+          [0, "UNANSWERED", 0, 1, false, 1],
+        ]);
+        const byPlayer = await reports.answerOutcomes(host, session, "player", {
+          playerIds: [voters[0] as string, player],
+          questionIndexes: [0],
+        });
+        expect(byPlayer.map((g) => [g.key, g.result, g.count]).sort()).toEqual(
+          [
+            [voters[0], "PARTIAL", 1],
+            [player, "UNANSWERED", 1],
+          ].sort(),
+        );
+        expect(await reports.answerOutcomes(host, session, "player", { playerIds: [] })).toEqual(
+          [],
+        );
+        expect(
+          (await reports.payloadCounts(host, session, [0]))
+            .map((row) => [row.questionIndex, row.payload, row.count])
+            .sort((a, b) => Number(b[2]) - Number(a[2])),
+        ).toEqual([
+          [0, [0, 2], 2],
+          [0, [1], 1],
+        ]);
+        expect(await reports.payloadCounts(host, session, [])).toEqual([]);
+        await expect(reports.answerOutcomes(other, session, "question")).rejects.toThrow(
+          "NOT_FOUND",
+        );
         await expect(reports.allPlayers(host, pending)).rejects.toThrow("FINALIZATION_PENDING");
         await expect(reports.allAnswers(other, session)).rejects.toThrow("NOT_FOUND");
         await db.manager.update("users", host, { is_active: false });

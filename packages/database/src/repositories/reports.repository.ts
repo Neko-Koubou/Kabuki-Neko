@@ -77,6 +77,32 @@ export type ReportPlayerRow = PlayerRecord & { session_id: string };
 export type ReportQuestionRow = QuestionRecord & { id: string; session_id: string };
 /** Stored history answer row (`player_answers`). */
 export type ReportAnswerRow = AnswerRecord & { session_id: string };
+/**
+ * Answer outcomes of a report grouped by question or by player (code review MJ-11): one row per
+ * distinct (key, result, accuracy, accepted) with its count, so analytics never hydrate every
+ * answer row or its payload.
+ */
+export interface AnswerOutcomeGroup {
+  /** `question_index` (by question) or `player_id` (by player). */
+  key: number | string;
+  result: string;
+  accuracyNumerator: number;
+  accuracyDenominator: number;
+  /** True when the answers in this group carry a submitted payload. */
+  accepted: boolean;
+  count: number;
+}
+/** Distinct submitted payloads of one question with their counts (choice option counts). */
+export interface PayloadCount {
+  questionIndex: number;
+  payload: Answer;
+  count: number;
+}
+/** Optional narrowing of an outcome aggregation. */
+export interface OutcomeFilter {
+  playerIds?: readonly string[];
+  questionIndexes?: readonly number[];
+}
 /** Escapes LIKE wildcards with `!` (used with `ESCAPE '!'` on every dialect). */
 function likeTerm(search: string) {
   return "%" + search.replace(/[!_%]/g, "!$&") + "%";
@@ -319,6 +345,86 @@ export class ReportsRepository {
       .getRepository<ReportPlayerRow>("game_players")
       .find({ where: { session_id: id } });
     return players.sort(comparePlayers);
+  }
+  /**
+   * Answer outcomes of a ready report aggregated in SQL by question or by player (code review
+   * MJ-11). An empty `playerIds`/`questionIndexes` filter matches nothing.
+   */
+  async answerOutcomes(
+    hostId: string,
+    id: string,
+    by: "question" | "player",
+    filter: OutcomeFilter = {},
+  ): Promise<AnswerOutcomeGroup[]> {
+    await this.session(hostId, id);
+    if (filter.playerIds?.length === 0 || filter.questionIndexes?.length === 0) return [];
+    const key = by === "question" ? "a.question_index" : "a.player_id";
+    const accepted = "CASE WHEN a.submitted_payload IS NULL THEN 0 ELSE 1 END";
+    const query = this.db
+      .getRepository<ReportAnswerRow>("player_answers")
+      .createQueryBuilder("a")
+      .select(key, "key")
+      .addSelect("a.result", "result")
+      .addSelect("a.accuracy_numerator", "numerator")
+      .addSelect("a.accuracy_denominator", "denominator")
+      .addSelect(accepted, "accepted")
+      .addSelect("COUNT(*)", "count")
+      .where("a.session_id=:id", { id });
+    if (filter.playerIds)
+      query.andWhere("a.player_id IN (:...players)", { players: filter.playerIds });
+    if (filter.questionIndexes)
+      query.andWhere("a.question_index IN (:...indexes)", { indexes: filter.questionIndexes });
+    const rows = await query
+      .groupBy(key)
+      .addGroupBy("a.result")
+      .addGroupBy("a.accuracy_numerator")
+      .addGroupBy("a.accuracy_denominator")
+      .addGroupBy(accepted)
+      .getRawMany<{
+        key: number | string;
+        result: string;
+        numerator: number | string;
+        denominator: number | string;
+        accepted: number | string;
+        count: number | string;
+      }>();
+    return rows.map((row) => ({
+      key: by === "question" ? Number(row.key) : String(row.key),
+      result: row.result,
+      accuracyNumerator: Number(row.numerator),
+      accuracyDenominator: Number(row.denominator),
+      accepted: Number(row.accepted) === 1,
+      count: Number(row.count),
+    }));
+  }
+  /**
+   * Distinct submitted payloads per question with their counts, for the given (choice) questions
+   * only (code review MJ-11): payloads are read only where option counts need them.
+   */
+  async payloadCounts(
+    hostId: string,
+    id: string,
+    questionIndexes: readonly number[],
+  ): Promise<PayloadCount[]> {
+    await this.session(hostId, id);
+    if (questionIndexes.length === 0) return [];
+    const rows = await this.db
+      .getRepository<ReportAnswerRow>("player_answers")
+      .createQueryBuilder("a")
+      .select("a.question_index", "questionIndex")
+      .addSelect("a.submitted_payload", "payload")
+      .addSelect("COUNT(*)", "count")
+      .where("a.session_id=:id", { id })
+      .andWhere("a.question_index IN (:...indexes)", { indexes: questionIndexes })
+      .andWhere("a.submitted_payload IS NOT NULL")
+      .groupBy("a.question_index")
+      .addGroupBy("a.submitted_payload")
+      .getRawMany<{ questionIndex: number | string; payload: string; count: number | string }>();
+    return rows.map((row) => ({
+      questionIndex: Number(row.questionIndex),
+      payload: JSON.parse(row.payload) as Answer,
+      count: Number(row.count),
+    }));
   }
   /** Every stored answer of a ready report ordered by question index then player ID. */
   async allAnswers(hostId: string, id: string): Promise<ReportAnswerRow[]> {
