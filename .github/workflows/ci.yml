@@ -126,6 +126,11 @@ jobs:
           pnpm build
       - name: Driver contracts
         run: pnpm test:contracts
+      # The deployment and catalog-pairing suites run the production images
+      # (kabuki-neko-{api,web}:local); build them once before the suites start in parallel, so no
+      # suite pulls a missing image or builds it concurrently (code review MJ-20).
+      - name: Production images for the deployment suites
+        run: KN_IMAGE_TAG=local docker compose -f docker/docker-compose.yml build api web
       - name: Integration
         run: pnpm test:integration
       - name: Keep driver records

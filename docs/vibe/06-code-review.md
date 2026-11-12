@@ -275,10 +275,11 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 - **Perbaikan**: dokumentasikan rotasi dengan menghapus `jwt_*_secret` dari volume secrets lalu `up -d` (secrets-init membuat ulang). Untuk profil default, hapus `runtime-secrets.json`.
 - **Resolusi**: `secrets-init` mendukung `KN_ROTATE_JWT_SECRETS=true` yang mengganti pasangan JWT secara atomik (stage + rename, tetap 0400/uid 10001) dan mempertahankan kredensial lain. `docs/operations.md` kini menjelaskan rotasi yang benar per profil (default: hapus `runtime-secrets.json` lalu start; scale: `KN_ROTATE_JWT_SECRETS=true … run --rm --no-deps secrets-init` lalu `restart api`; secret eksplisit lewat override) dan bahwa Compose tidak meneruskan `JWT_*` dari shell; `docs/deployment.md` dikoreksi. Diverifikasi dengan compose project sementara: run biasa idempoten, rotasi hanya mengubah JWT. Langkah rotasi ditambahkan ke integrasi `deployment.spec.ts` (token lama → 401 setelah restart).
 
-#### MJ-20 [MAJOR] [OPEN] Job CI `drivers` gagal di runner bersih: `catalog-deployment.spec` butuh image yang tidak pernah dibangun
+#### MJ-20 [MAJOR] [RESOLVED] Job CI `drivers` gagal di runner bersih: `catalog-deployment.spec` butuh image yang tidak pernah dibangun
 - **File:Line**: `.github/workflows/ci.yml:114-121`; `tests/integration/catalog-deployment.spec.ts:86-105`.
 - **Masalah**: spec memanggil `docker run kabuki-neko-api:local` tanpa build, dan job menjalankan integration paralel.
 - **Perbaikan**: langkah CI yang membangun kedua image sebelum Integration.
+- **Resolusi**: Job CI `drivers` kini menjalankan `KN_IMAGE_TAG=local docker compose -f docker/docker-compose.yml build api web` sebelum Integration, sehingga suite deployment/katalog yang berjalan paralel tidak menarik image yang tidak ada atau membangunnya bersamaan. `catalog-deployment.spec.ts` memeriksa kedua image di `beforeAll` dan gagal dengan instruksi build yang jelas (diverifikasi dengan tag yang tidak ada).
 
 #### MJ-21 [MAJOR] [OPEN] Build image gagal setelah Debian memperbarui ffmpeg (pin versi apt eksak)
 - **File:Line**: `docker/Dockerfile.api:34,42,63`; `docker/Dockerfile.web:28,36`.
