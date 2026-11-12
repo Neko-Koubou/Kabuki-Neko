@@ -9,7 +9,8 @@
  * sent. Retry needs an Idempotency-Key: a replayed key never re-executes and returns the current
  * status; a different request under the same key is 409 IDEMPOTENCY_CONFLICT.
  */
-import { once } from "node:events";
+import { Readable, type Writable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import {
   Body,
   Controller,
@@ -161,7 +162,21 @@ export class ReportsController {
     response.setHeader("Content-Type", "text/csv; charset=utf-8");
     response.setHeader("Content-Disposition", `attachment; filename="${csv.filename}"`);
     response.setHeader("X-Content-Type-Options", "nosniff");
-    for (const chunk of csv.chunks) if (!response.write(chunk)) await once(response, "drain");
-    response.end();
+    await streamChunks(csv.chunks, response);
+  }
+}
+
+/**
+ * Streams `chunks` into `target` with backpressure and ends it (code review MJ-14). A client
+ * that disconnects mid-download rejects the pipeline (premature close) instead of leaving the
+ * handler waiting forever for a `drain` that never comes, so the request and the chunk array
+ * are released. Headers are already sent at that point, so the outcome is only logged by
+ * Node; the response is destroyed rather than answered.
+ */
+export async function streamChunks(chunks: Iterable<string>, target: Writable): Promise<void> {
+  try {
+    await pipeline(Readable.from(chunks, { objectMode: false }), target);
+  } catch {
+    if (!target.destroyed) target.destroy();
   }
 }

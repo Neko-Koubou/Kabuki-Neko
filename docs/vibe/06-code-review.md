@@ -206,12 +206,13 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Enqueue hanya bila belum ada job.
   - Jalur job yang sudah ada hanya membaca `payload_hash`.
 
-#### MJ-14 [MAJOR] [OPEN] Unduhan CSV menggantung (dan membocorkan memori) bila klien memutus koneksi (eks-MN-21)
+#### MJ-14 [MAJOR] [RESOLVED] Unduhan CSV menggantung (dan membocorkan memori) bila klien memutus koneksi (eks-MN-21)
 - **File:Line**: `apps/api/src/modules/reports/reports.controller.ts:164`; `reports.service.ts:406`.
 - **Masalah**:
   - `await once(response, "drain")` tidak pernah selesai setelah `close`.
   - Array CSV penuh beserta request tertahan selamanya, dan bisa dipicu 10×/menit.
 - **Perbaikan**: `pipeline(Readable.from(chunks), response)` dari `node:stream/promises`.
+- **Resolusi**: ekspor CSV kini mengalir lewat `streamChunks` (`pipeline(Readable.from(chunks), response)`) di `reports.controller.ts`: pemutusan klien menolak pipeline dan respons dihancurkan, sehingga handler, request, dan array chunk dilepas. Sebelumnya `once(response, "drain")` menggantung (diverifikasi: loop lama masih pending setelah 2 s). Spec baru `report-stream.spec.ts` (unduhan normal lengkap + diakhiri; abort selesai, bukan menggantung). API Jest 237/237, tsc, lint, integration `reports.spec.ts` (CSV) PASS.
 
 #### MJ-15 [MAJOR] [OPEN] Event socket anonim memenuhi map rate-limiter in-memory → 503 global
 - **File:Line**: `apps/api/src/modules/game-engine/game.gateway.ts:214,265-272,281`; `apps/api/src/common/rate-limit.service.ts:100`.
