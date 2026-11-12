@@ -3256,7 +3256,7 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - `pnpm test:integration --testPathPatterns=system` lulus sebagai root di container cloud dan sebagai user non-root (CI).
   - `pnpm exec eslint tests/integration/system.spec.ts` dan Prettier check lulus.
 
-### - [ ] TASK-187: Bangun image MinIO uji di belakang proxy TLS dengan CA build opsional
+### - [~] TASK-187: Bangun image MinIO uji di belakang proxy TLS dengan CA build opsional
 - **Traceability**: `US-06`, `US-16`, `US-17`, [07-qa-report.md §4](07-qa-report.md)
 - **Depends On**: `TASK-167`, `TASK-170`, `TASK-176`
 - **Target Files**:

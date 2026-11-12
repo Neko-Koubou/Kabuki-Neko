@@ -189,8 +189,17 @@ services:
         FROM golang:1.27.3-bookworm AS build
         ENV CGO_ENABLED=0 GOTOOLCHAIN=local
         WORKDIR /src
-        RUN git init . && git remote add origin https://github.com/minio/minio.git && git fetch --depth=1 origin 9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a && git checkout --detach FETCH_HEAD
-        RUN go build -trimpath -o /out/minio . && mkdir -p /out/data
+        # Optional build CA (a TLS-intercepting proxy's), trusted only for this step through a
+        # temporary bundle; the runtime stage copies the untouched distro bundle.
+        RUN --mount=type=secret,id=build_ca,required=false \
+          if [ -s /run/secrets/build_ca ]; then \
+            cat /etc/ssl/certs/ca-certificates.crt /run/secrets/build_ca > /tmp/ca-bundle.pem && \
+            export SSL_CERT_FILE=/tmp/ca-bundle.pem GIT_SSL_CAINFO=/tmp/ca-bundle.pem; \
+          fi && \
+          git init . && git remote add origin https://github.com/minio/minio.git && \
+          git fetch --depth=1 origin 9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a && \
+          git checkout --detach FETCH_HEAD && \
+          go build -trimpath -o /out/minio . && mkdir -p /out/data && rm -f /tmp/ca-bundle.pem
         FROM scratch
         COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
         COPY --from=build /out/minio /usr/bin/minio
@@ -200,6 +209,10 @@ services:
         WORKDIR /data
         EXPOSE 9000
         ENTRYPOINT ["/usr/bin/minio"]
+      # Behind a TLS-intercepting proxy: KN_BUILD_CA_FILE=/path/to/proxy-ca.pem. The secret is
+      # mounted for the fetch/build step only and never stored in a layer.
+      secrets:
+        - build_ca
     image: ${KN_MINIO_IMAGE:-kabuki-neko/minio:9e49d5e7a648}
     restart: unless-stopped
     command: ["server", "/data"]
@@ -255,6 +268,11 @@ services:
     depends_on:
       minio:
         condition: service_started
+
+# Build-time only (MinIO source build); /dev/null means no extra CA.
+secrets:
+  build_ca:
+    file: ${KN_BUILD_CA_FILE:-/dev/null}
 
 volumes:
   kabuki-data:

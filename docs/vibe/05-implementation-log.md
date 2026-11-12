@@ -2660,3 +2660,9 @@
   - `pnpm exec eslint tests/integration/system.spec.ts` and Prettier → pass.
   - `pnpm test:integration --testPathPatterns=system` as root (uid 0) → 3/3. Before this change it failed in this container with deleted 2 / failed 0.
   - The same suite as a temporary non-root user (uid 30033, `node node_modules/jest/bin/jest.js --config tests/jest.integration.config.cjs --testPathPatterns=system`) → 3/3. The user was removed afterwards.
+
+## TASK-187: Bangun image MinIO uji di belakang proxy TLS dengan CA build opsional — IN PROGRESS
+- **Started**: 2026-11-12 (Asia/Jakarta)
+- **Plan**: `tests/helpers/runtime.ts`, `docker/docker-compose.yml`, `docs/driver-verification.md`
+- **Done so far**: KABUKI_TEST_BUILD_CA in the MinIO fixture (temporary bundle via SSL_CERT_FILE/GIT_SSL_CAINFO, CA digest in the tag); Compose optional BuildKit secret build_ca (KN_BUILD_CA_FILE, default /dev/null); docs. eslint/Prettier pass; compose config default/scale/scale+TLS pass.
+- **Verification**: driver-matrix|storage contracts with KABUKI_TEST_BUILD_CA and no prebuilt image — running
