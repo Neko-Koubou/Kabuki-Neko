@@ -287,10 +287,16 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 - **Masalah**: `reconnection: false` ditambah batas umur anonim 120 s menyebabkan cek PIN atau join gagal ("unknown") sampai halaman dimuat ulang. Ini skenario umum di kelas.
 - **Perbaikan**: sambungkan ulang bila `!socket.connected` sebelum `emit`.
 
-#### MJ-24 [MAJOR] [OPEN] Media unggahan tidak pernah tampil: MediaPreview menolak URL absolut dari API
+#### MJ-24 [MAJOR] [RESOLVED] Media unggahan tidak pernah tampil: MediaPreview menolak URL absolut dari API
 - **File:Line**: `apps/web/src/components/ui/media-preview.tsx:58-71,120` (dipakai di player, projector, picker, library, dan detail jawaban).
 - **Masalah**: API mengembalikan `publicUrl` absolut (`${NEXT_PUBLIC_API_URL}/uploads/…` atau URL S3), sementara `allowedOrigins` default `[]`. Akibatnya selalu tampil "media isn't available".
 - **Perbaikan**: default `allowedOrigins` berisi origin `NEXT_PUBLIC_API_URL` ditambah origin media publik (`NEXT_PUBLIC_MEDIA_ORIGINS`).
+- **Resolusi**:
+  - `apps/web/src/lib/media-origins.ts` (`publicMediaOrigins`) menggabungkan origin API dan `NEXT_PUBLIC_MEDIA_ORIGINS` (hanya http(s), path diabaikan). Ini menjadi default `MediaPreview.allowedOrigins`.
+  - CSP halaman (`proxy.ts`) memakai daftar yang sama ditambah `CSP_MEDIA_ORIGINS`, sehingga media MinIO profil scale tidak lagi diblokir CSP.
+  - `Dockerfile.web` menerima build arg `NEXT_PUBLIC_MEDIA_ORIGINS`. Compose mengisinya dari `KN_MEDIA_PUBLIC_URL`, dan overlay TLS dari `https://KN_DOMAIN/kabuki-neko-media`.
+  - Spec baru membuktikan URL `/uploads` absolut dari API dan basis bucket ter-render secara default, sedangkan origin asing tetap ditolak.
+  - Web Vitest, tsc, dan lint PASS; E2E `security-headers` 8/8; Compose config default + TLS PASS.
 
 #### MJ-25 [MAJOR] [OPEN] `publicRevision` snapshot tidak ikut maju oleh event → `room:sync` penuh berulang
 - **File:Line**: `apps/web/src/stores/game.store.ts:157-161,360-366`; `connection-recovery.tsx:64,200`.

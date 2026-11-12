@@ -94,6 +94,8 @@ services:
         NEXT_PUBLIC_APP_URL: ${KN_PUBLIC_URL:-http://localhost:3000}
         NEXT_PUBLIC_API_URL: ${KN_API_PUBLIC_URL:-http://localhost:3001}
         NEXT_PUBLIC_WS_URL: ${KN_API_PUBLIC_URL:-http://localhost:3001}
+        # Scale profile media (S3_PUBLIC_URL); harmless for the default profile.
+        NEXT_PUBLIC_MEDIA_ORIGINS: ${KN_MEDIA_PUBLIC_URL:-http://localhost:9000/kabuki-neko-media}
     image: kabuki-neko-web:${KN_IMAGE_TAG:-local}
     restart: unless-stopped
     environment:

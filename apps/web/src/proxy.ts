@@ -116,7 +116,11 @@ export function proxy(request: NextRequest): NextResponse {
     nonce,
     apiUrl: process.env.NEXT_PUBLIC_API_URL,
     wsUrl: process.env.NEXT_PUBLIC_WS_URL,
-    mediaOrigins: process.env.CSP_MEDIA_ORIGINS,
+    // Runtime extras (CSP_MEDIA_ORIGINS) plus the build-time public media bases the client
+    // also allowlists (NEXT_PUBLIC_MEDIA_ORIGINS, e.g. the S3/MinIO public URL; MJ-24).
+    mediaOrigins: [process.env.CSP_MEDIA_ORIGINS, process.env.NEXT_PUBLIC_MEDIA_ORIGINS]
+      .filter((value): value is string => Boolean(value))
+      .join(","),
     development: process.env.NODE_ENV === "development",
   });
   const requestHeaders = new Headers(request.headers);

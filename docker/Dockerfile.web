@@ -48,11 +48,15 @@ ARG NEXT_PUBLIC_APP_NAME="Kabuki Neko"
 ARG NEXT_PUBLIC_APP_URL=http://localhost:3000
 ARG NEXT_PUBLIC_API_URL=http://localhost:3001
 ARG NEXT_PUBLIC_WS_URL=http://localhost:3001
+# Public media bases the browser may load uploads from besides the API origin (S3/MinIO public
+# URL in the scale profile); used by the client allowlist and the page CSP.
+ARG NEXT_PUBLIC_MEDIA_ORIGINS=""
 ENV NEXT_TELEMETRY_DISABLED=1 \
   NEXT_PUBLIC_APP_NAME=${NEXT_PUBLIC_APP_NAME} \
   NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL} \
   NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL} \
-  NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
+  NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL} \
+  NEXT_PUBLIC_MEDIA_ORIGINS=${NEXT_PUBLIC_MEDIA_ORIGINS}
 RUN pnpm --filter "@kabuki-neko/web..." build \
   && test -f apps/web/.next/standalone/apps/web/server.js
 

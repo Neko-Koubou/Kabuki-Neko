@@ -95,6 +95,49 @@ describe("URL allowlist", () => {
   });
 });
 
+describe("default media origins (MJ-24)", () => {
+  it("renders absolute API upload URLs and configured public media bases by default", () => {
+    vi.stubEnv("NEXT_PUBLIC_API_URL", "http://localhost:3001");
+    vi.stubEnv(
+      "NEXT_PUBLIC_MEDIA_ORIGINS",
+      "http://localhost:9000/kabuki-neko-media, javascript:x",
+    );
+    try {
+      const alt = { ...emptyAccessibility(), altText: "Uploaded cover" };
+      show(
+        <MediaPreview
+          asset={asset({
+            url: "http://localhost:3001/uploads/questions/a.webp",
+            accessibility: alt,
+          })}
+        />,
+      );
+      expect(screen.getByRole("img", { name: "Uploaded cover" })).toBeInTheDocument();
+      const s3 = { ...emptyAccessibility(), altText: "Bucket image" };
+      show(
+        <MediaPreview
+          asset={asset({
+            url: "http://localhost:9000/kabuki-neko-media/questions/b.webp",
+            accessibility: s3,
+          })}
+        />,
+      );
+      expect(screen.getByRole("img", { name: "Bucket image" })).toBeInTheDocument();
+      const onError = vi.fn();
+      const { container } = show(
+        <MediaPreview
+          asset={asset({ url: "https://evil.example/uploads/questions/c.webp" })}
+          onError={onError}
+        />,
+      );
+      expect(container.querySelector("img")).toBeNull();
+      expect(onError).toHaveBeenCalledWith("REJECTED_URL");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});
+
 describe("B11 MediaPreview", () => {
   it("renders images with their alt, reserved ratio and a retry after a load failure", async () => {
     const user = userEvent.setup();

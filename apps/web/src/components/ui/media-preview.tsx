@@ -21,6 +21,7 @@
 import { ImageOff } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { canonicalYouTubeUrl, type Accessibility } from "@kabuki-neko/shared/schemas/media.schema";
+import { publicMediaOrigins } from "@/lib/media-origins";
 import { useLocale } from "@/providers/locale-provider";
 import { ActionButton } from "./action-button";
 
@@ -41,7 +42,10 @@ export type MediaErrorReason = "REJECTED_URL" | "LOAD_FAILED";
 /** Props of {@link MediaPreview}. */
 export interface MediaPreviewProps {
   asset: MediaAsset | null;
-  /** Extra origins allowed for absolute upload URLs (e.g. the S3 public base URL's origin). */
+  /**
+   * Origins allowed for absolute upload URLs. Defaults to the API origin plus the configured
+   * public media origins (`publicMediaOrigins`), which is where the API's `publicUrl` points.
+   */
   allowedOrigins?: readonly string[];
   /** Try to start audio/video/YouTube automatically (falls back to a play action). */
   autoPlay?: boolean;
@@ -117,7 +121,7 @@ function Disclosure({ summary, children }: { summary: string; children: ReactNod
 /** Image, audio, video or YouTube preview with allowlisted URLs and text alternatives. */
 export function MediaPreview({
   asset,
-  allowedOrigins = [],
+  allowedOrigins = publicMediaOrigins(),
   autoPlay = false,
   onReady,
   onError,
