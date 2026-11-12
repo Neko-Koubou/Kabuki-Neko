@@ -234,7 +234,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Test: N socket dari satu IP hanya menambah key dalam jumlah konstan.
 - **Resolusi**: `GameGateway.requireBinding` menolak ANSWER/AVATAR tanpa player terikat (`INVALID_SESSION_TOKEN`) dan SYNC/TIME tanpa player/host (`AUTH_REQUIRED`) **sebelum** limiter dibebani; `rateKey` tidak lagi memakai `socket.id` (HOST → `user:`/`ip:`, ANSWER/AVATAR/SYNC/TIME → `player:` lalu `user:`, sisanya `ip:`). Regresi: `game-gateway-rate.spec.ts` (40 socket anonim → 0 key; 20 socket satu IP → 1 key; reconnect player berbagi satu key) — gagal pada kode lama, lulus sekarang; API jest 242/242, tsc dan eslint bersih.
 
-#### MJ-16 [MAJOR] [OPEN] Kegagalan finalisasi tidak memicu alarm atau metrik
+#### MJ-16 [MAJOR] [RESOLVED] Kegagalan finalisasi tidak memicu alarm atau metrik
 - **File:Line**: `apps/api/src/common/metrics.service.ts:61`; `apps/api/src/modules/reports/report-worker.ts:192-216`; `room-scheduler.ts:244`.
 - **Masalah**:
   - `MetricsService.reportJobFailed` tidak pernah dipanggil.
@@ -244,6 +244,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 - **Perbaikan**:
   - Inject `MetricsService` ke `ReportWorker` dan panggil `reportJobFailed(code)` setelah `jobs.fail`.
   - Alarm 24 jam dikirim sebagai event terstruktur.
+- **Resolusi**: `ReportWorker` (opsional `MetricsService`) memanggil `reportJobFailed(code)` setelah setiap `jobs.fail` dan saat antrian tidak terjangkau (sekali per transisi ke failed): counter `report_queue_failures:<code>` + event terstruktur `report_queue_failed` (dibatasi 1/menit). Alarm 24 jam di `RoomScheduler` kini juga memanggil `MetricsService.finalizationPendingAlarm()` (counter `finalization_pending_alarms` + event `finalization_pending_alarm`), baris log lama tetap ada. Didokumentasikan di `docs/operations.md`. Regresi: `report-worker.spec.ts` dan `room-scheduler.spec.ts` (gagal di kode lama); API jest 253/253, tsc/eslint bersih.
 
 #### MJ-17 [MAJOR] [OPEN] Gate startup DB/Redis di entrypoint tidak berjalan ketika profil memilih driver
 - **File:Line**: `docker/entrypoint.sh:109-114`; `docs/deployment.md:29-30`.

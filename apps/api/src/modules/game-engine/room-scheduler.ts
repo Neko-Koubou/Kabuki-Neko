@@ -20,7 +20,9 @@
  * game service to re-sync it with the durable queue at most every 5 s (re-enqueue after a database
  * outage, mirror a READY job whose state update was lost), so such rooms are eventually released.
  * A frozen report still not durable 24 h after the game ended raises one error-level alarm per
- * session (`finalization pending for more than 24 h`, session id only) and is still never evicted.
+ * session (`finalization pending for more than 24 h`, session id only), plus a counted, structured
+ * `finalization_pending_alarm` event from MetricsService (code review MJ-16), and is still never
+ * evicted.
  */
 import {
   Inject,
@@ -32,6 +34,7 @@ import {
 } from "@nestjs/common";
 import { RuntimeRepository, type Allocation } from "@kabuki-neko/database";
 import { ROOM_LIMITS } from "@kabuki-neko/shared/constants/limits";
+import { MetricsService } from "../../common/metrics.service";
 import { ConfigService } from "../../config/config.service";
 import {
   GAME_STATE_STORE,
@@ -86,6 +89,7 @@ export class RoomScheduler implements OnApplicationBootstrap, OnModuleDestroy {
     @Inject(GameService) private readonly game: GameService,
     @Inject(ConfigService) config: ConfigService,
     @Optional() @Inject(GAME_CLOCK) clock: (() => number) | null = null,
+    @Optional() @Inject(MetricsService) private readonly metrics: MetricsService | null = null,
   ) {
     this.owner = config.values.DEPLOYMENT_INSTANCE_ID;
     this.clock = clock ?? Date.now;
@@ -255,6 +259,8 @@ export class RoomScheduler implements OnApplicationBootstrap, OnModuleDestroy {
     ) {
       this.alarmed.add(row.id);
       this.logger.error(`finalization pending for more than 24 h for session ${row.id}`);
+      // Structured, counted alarm for log-based alerting (code review MJ-16).
+      this.metrics?.finalizationPendingAlarm();
     }
     // FINISHED rooms are kept 1 h for recovery; a hard-expired room cannot transition any more and
     // is released as soon as its report is durable. Non-durable reports are never released.

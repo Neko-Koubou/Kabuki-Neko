@@ -19,6 +19,7 @@ import {
 } from "@kabuki-neko/database";
 import { ROOM_LIMITS } from "@kabuki-neko/shared/constants/limits";
 import { quizWriteSchema } from "@kabuki-neko/shared/schemas/quiz.schema";
+import { MetricsService } from "../../common/metrics.service";
 import { ConfigService } from "../../config/config.service";
 import { parseEnvironment } from "../../config/env.schema";
 import { JwtGuard, type VerifiedPrincipal } from "../../common/guards/jwt.guard";
@@ -304,7 +305,17 @@ it("raises one alarm when a frozen report is still not durable 24 h after the ga
   const errors = jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
   try {
     const identity = await room();
-    const worker = scheduler();
+    const lines: string[] = [];
+    const metrics = new MetricsService((line) => lines.push(line), clock);
+    const worker = new RoomScheduler(
+      runtime,
+      rooms,
+      store,
+      game,
+      configFor(randomUUID()),
+      clock,
+      metrics,
+    );
     await command(identity, "host:start_game");
     now += 3_000;
     await worker.scan(now);
@@ -323,6 +334,14 @@ it("raises one alarm when a frozen report is still not durable 24 h after the ga
     now += 60_000;
     await worker.scan(now);
     expect(errors).toHaveBeenCalledTimes(1);
+    // MJ-16: also one counted, structured alarm event (no IDs in the metric dimension).
+    expect(metrics.snapshot().counters["finalization_pending_alarms"]).toBe(1);
+    expect(lines.map((line) => JSON.parse(line) as { event: string })).toEqual([
+      expect.objectContaining({
+        event: "finalization_pending_alarm",
+        errorCode: "FINALIZATION_PENDING",
+      }),
+    ]);
     expect(String(errors.mock.calls[0]?.[0])).toBe(
       `finalization pending for more than 24 h for session ${identity.sessionId}`,
     );

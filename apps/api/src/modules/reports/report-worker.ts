@@ -32,6 +32,7 @@ import { ZodError } from "zod";
 import { FINALIZATION_LIMITS } from "@kabuki-neko/shared/constants/limits";
 import type { ErrorCode } from "@kabuki-neko/shared/errors";
 import type { FinalizeStatus } from "@kabuki-neko/shared/schemas/game.schema";
+import { MetricsService } from "../../common/metrics.service";
 import { ConfigService } from "../../config/config.service";
 import {
   GAME_STATE_STORE,
@@ -111,6 +112,7 @@ export class ReportWorker implements OnApplicationBootstrap, OnModuleDestroy {
     @Inject(GAME_STATE_STORE) private readonly store: IGameStateStore,
     @Inject(ConfigService) config: ConfigService,
     @Optional() @Inject(GAME_CLOCK) clock: (() => number) | null = null,
+    @Optional() @Inject(MetricsService) private readonly metrics: MetricsService | null = null,
   ) {
     this.clock = clock ?? Date.now;
     this.concurrency = config.values.FINALIZE_CONCURRENCY;
@@ -211,6 +213,8 @@ export class ReportWorker implements OnApplicationBootstrap, OnModuleDestroy {
       } catch {
         return "LEASE_LOST";
       }
+      // Operators see every failed attempt (counter) and a rate-limited structured alarm (MJ-16).
+      this.metrics?.reportJobFailed(code);
       await this.publish(identity, {
         sessionId: job.session_id,
         status: "failed",
@@ -337,7 +341,11 @@ export class ReportWorker implements OnApplicationBootstrap, OnModuleDestroy {
       errorCode: "REPORT_SAVE_FAILED",
       updatedAt: this.clock(),
     };
-    if (current?.status !== "failed") await this.publish(identity, failed);
+    if (current?.status !== "failed") {
+      // The durable queue itself is unreachable: count it and raise the queue alarm once (MJ-16).
+      this.metrics?.reportJobFailed("REPORT_SAVE_FAILED");
+      await this.publish(identity, failed);
+    }
     return failed;
   }
 

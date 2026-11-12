@@ -25,6 +25,7 @@ import { FINALIZATION_LIMITS } from "@kabuki-neko/shared/constants/limits";
 import { frozenReportSchema } from "../../providers/state/private-state.schema";
 import type { FinalizeStatus } from "@kabuki-neko/shared/schemas/game.schema";
 import { quizWriteSchema } from "@kabuki-neko/shared/schemas/quiz.schema";
+import { MetricsService } from "../../common/metrics.service";
 import { ConfigService } from "../../config/config.service";
 import { parseEnvironment } from "../../config/env.schema";
 import { JwtGuard, type VerifiedPrincipal } from "../../common/guards/jwt.guard";
@@ -64,13 +65,17 @@ let game: GameService;
 const workers: ReportWorker[] = [];
 
 /** New worker sharing the database and the current state store (one per simulated process). */
-function worker(stateStore: MemoryStateStore = store): ReportWorker {
+function worker(
+  stateStore: MemoryStateStore = store,
+  metrics: MetricsService | null = null,
+): ReportWorker {
   const created = new ReportWorker(
     jobs,
     new ReportFinalizer(jobs, reports, stateStore, clock),
     stateStore,
     config,
     clock,
+    metrics,
   );
   workers.push(created);
   return created;
@@ -308,7 +313,10 @@ it("finishes durable jobs after a process restart even though the memory state i
 
 it("retries after 1/5/30/120/600 s, then waits for a manual retry that resets the attempts", async () => {
   const { identity } = await play();
-  const w = worker();
+  // Operators see every failed attempt and a structured, rate-limited alarm (MJ-16).
+  const lines: string[] = [];
+  const metrics = new MetricsService((line) => lines.push(line), clock);
+  const w = worker(store, metrics);
   const statuses: FinalizeStatus[] = [];
   w.setStatusListener(async (_identity, status) => {
     statuses.push(status);
@@ -330,6 +338,15 @@ it("retries after 1/5/30/120/600 s, then waits for a manual retry that resets th
   now += 24 * 3_600_000;
   expect(await w.runOnce()).toBeNull();
   expect(insert).toHaveBeenCalledTimes(FINALIZATION_LIMITS.automatedAttempts + 1);
+  expect(metrics.snapshot().counters["report_queue_failures:REPORT_SAVE_FAILED"]).toBe(
+    FINALIZATION_LIMITS.automatedAttempts + 1,
+  );
+  const alarms = lines.map((line) => JSON.parse(line) as { event: string; errorCode: string });
+  expect(alarms.length).toBeGreaterThan(0);
+  expect(alarms[0]).toMatchObject({
+    event: "report_queue_failed",
+    errorCode: "REPORT_SAVE_FAILED",
+  });
   expect(await roomStatus(identity)).toMatchObject({
     status: "failed",
     retryable: true,

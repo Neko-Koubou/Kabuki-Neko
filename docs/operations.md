@@ -142,6 +142,13 @@ What happens to sign-ins:
 /api/v1/reports/:id/retry-finalize`).
   - A report still not durable 24 hours after its game logs one error-level line, `finalization
 pending for more than 24 h for session <id>`, and the room is kept until the report is saved.
+  - Alert on these structured stdout events (one JSON object per line, no IDs or personal data):
+    - `{"level":"error","event":"report_queue_failed","errorCode":…}`: a report write attempt
+      failed or the queue database was unreachable (at most one line per minute; every failure
+      is counted in the `report_queue_failures` metric);
+    - `{"level":"error","event":"finalization_pending_alarm","errorCode":"FINALIZATION_PENDING"}`:
+      a report is still not durable 24 hours after its game (counted in
+      `finalization_pending_alarms`; the session ID is in the line above).
 - **Storage origins.** If uploads moved (new path, bucket or public URL), list the previous origin
   in a JSON array file named by `STORAGE_LOCATIONS_FILE`:
   - local entries: `{ "id", "driver": "local", "path", "publicUrl" }`;

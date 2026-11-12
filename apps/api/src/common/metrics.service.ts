@@ -9,6 +9,7 @@ const COUNTERS = [
   "storage_failures",
   "locale_load_failures",
   "audit_failures",
+  "finalization_pending_alarms",
 ] as const;
 const DURATIONS = [
   "state_store_duration_ms",
@@ -72,6 +73,22 @@ export class MetricsService {
         }),
       );
     }
+  }
+  /**
+   * A frozen report still not durable 24 h after its game (code review MJ-16): counted and written
+   * as one structured error event for log-based alerting. The session ID stays in the scheduler's
+   * own log line; metric dimensions never carry IDs.
+   */
+  finalizationPendingAlarm(): void {
+    this.increment("finalization_pending_alarms");
+    this.output(
+      JSON.stringify({
+        level: "error",
+        event: "finalization_pending_alarm",
+        occurredAt: new Date(this.clock()).toISOString(),
+        errorCode: "FINALIZATION_PENDING",
+      }),
+    );
   }
   snapshot() {
     return {
