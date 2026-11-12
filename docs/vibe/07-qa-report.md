@@ -83,7 +83,7 @@ Pemetaan memakai peta `TRACE` di `tests/e2e/journeys.spec.ts`. Test "traces ever
   - saturasi CPU: dua node API, PostgreSQL, Redis, dan 200 klien berbagi 4 core, sehingga ping Socket.io atau adapter Redis tertunda;
   - jalur fan-out `@socket.io/redis-adapter` ke node kedua.
   Diagnosis butuh profiling per node dan run di host terpisah, di luar batas 3 percobaan terfokus run QA ini.
-- **Rekomendasi**: buat task korektif (Stage 5) untuk menyelidiki pemutusan node B dan latensi fan-out Redis, lalu ulangi benchmark di hardware terpisah. Target PRD p95 < 50 ms **belum terbukti** untuk topologi multi-instance.
+- **Tindak lanjut**: [04-tasks.md](04-tasks.md) Phase 7 — `TASK-183` (admission tanpa full-state settle), `TASK-184` (diagnostik per node + verdict jujur), `TASK-185` (ukur ulang dan tetapkan akar masalah). Target PRD p95 < 50 ms **belum terbukti** untuk topologi multi-instance.
 
 ## 3. Bug dan perbaikan dalam run ini
 
@@ -181,9 +181,10 @@ Tindak lanjut QA-01/02 juga dicatat di bawah MJ-25 pada [06-code-review.md](06-c
 
 | Item | Status | Alasan / tindakan |
 | --- | --- | --- |
-| `tests/integration/system.spec.ts` › cleans orphans with partial failures … | **FAIL (lingkungan)** | Injeksi gagal-hapus memakai `chmod 0555`, yang diabaikan oleh root di container. Hasilnya `deletedCount 2 / failedCount 0`, bukan `1 / 1`. Sama dengan catatan `00-project-context.md` §6.3 butir 6. Perlu dijalankan sebagai non-root (CI GitHub Actions). |
+| `tests/integration/system.spec.ts` › cleans orphans with partial failures … | **FAIL (lingkungan)** | Injeksi gagal-hapus memakai `chmod 0555`, yang diabaikan oleh root di container. Hasilnya `deletedCount 2 / failedCount 0`, bukan `1 / 1`. Sama dengan catatan `00-project-context.md` §6.3 butir 6. Perlu dijalankan sebagai non-root (CI GitHub Actions). Tindak lanjut: `TASK-186`. |
 | `tests/contracts/cloud-storage.spec.ts` (R2/S3/Spaces) | **not run (skip)** | Butuh kredensial `KABUKI_CLOUD_*` asli. |
-| Build image MinIO dari source | **not run** | Gagal di container ini. Diganti image prabangun dari source yang sama (`KABUKI_TEST_MINIO_IMAGE`). |
+| Build image MinIO dari source | **not run** | Gagal di container ini. Diganti image prabangun dari source yang sama (`KABUKI_TEST_MINIO_IMAGE`). Akar masalah: stage build tidak mengenal CA proxy TLS. Tindak lanjut: `TASK-187`. |
+| Budget web pemain (`scripts/measure-web-budget.ts`, TASK-180) | **not run** dalam run QA ini; hasil terakhir tercatat **FAIL** | `docs/performance-results.md` (2026-11-11): initial JS 353,8 KiB gzip (budget ≤ 300 KiB) dan LCP langkah identitas 4.280 ms (budget ≤ 4 s). Belum ada task perbaikan; tidak tercakup oleh RTM §2, yang hanya memuat test fungsional. |
 
 **Pemeriksaan manual yang tersisa:**
 - Screen reader nyata (NVDA/VoiceOver) untuk alur host dan pemain. Axe dan keyboard-only sudah otomatis.
