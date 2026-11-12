@@ -336,10 +336,11 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 - **Perbaikan**: tangani `room:expired`, `player:kicked`, dan `player:session_replaced` sebelum fence (cukup cek `sessionId` + dedup `eventId`).
 - **Resolusi**: di `game.store.ts` `applyEvent`, `player:kicked`/`player:session_replaced`/`room:expired` ditangani sebelum fence revision/phaseVersion (tetap cek `sessionId` + dedup `eventId`), sehingga `room:expired` dengan revision 1/phaseVersion 1 dari server menghasilkan state terminal. Spec baru di `game.store.spec.ts` (terapan, duplikat ditolak, sesi lain ditolak). Web Vitest stores/hooks/player/host 134/134, tsc, lint PASS.
 
-#### MJ-30 [MAJOR] [OPEN] Kegagalan `/auth/me` apa pun (offline, timeout, 5xx) dianggap sign-out
+#### MJ-30 [MAJOR] [RESOLVED] Kegagalan `/auth/me` apa pun (offline, timeout, 5xx) dianggap sign-out
 - **File:Line**: `apps/web/src/providers/auth-provider.tsx:240-251`.
 - **Masalah**: token valid dibuang dan halaman dilindungi di-unmount, sehingga host stage kehilangan socket. Melanggar "error bukan empty" dan S17.
 - **Perbaikan**: status anonim hanya untuk 401 (`AUTH_REQUIRED`/`TOKEN_REVOKED`/`TOKEN_EXPIRED`). Error lain mempertahankan token dan menampilkan error yang bisa di-retry.
+- **Resolusi**: `loadPrincipal` di `auth-provider.tsx` hanya keluar sesi untuk 401 `AUTH_REQUIRED`/`TOKEN_REVOKED`/`TOKEN_EXPIRED`; kegagalan sementara (offline, timeout, 5xx) mempertahankan token dan halaman — saat pengecekan awal status menjadi `unavailable` dan `RequireAuth` menampilkan alert + Retry (katalog `common.inventory.s17.error`, `common.actions.retry`), halaman terautentikasi tetap tidak berubah. Spec baru (gagal pada kode lama). Web Vitest 51/451, tsc, lint PASS.
 
 #### MJ-31 [MAJOR] [OPEN] "Save and continue" studio bernavigasi saat save sebelumnya masih berjalan
 - **File:Line**: `apps/web/src/components/studio/studio-editor.tsx:317`; `apps/web/src/stores/studio.store.ts` (`save`).

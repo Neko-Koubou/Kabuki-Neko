@@ -67,7 +67,10 @@ function ok(body: unknown) {
  * Fake API with one browser cookie jar: refresh rotates the cookie; replaying a consumed cookie
  * revokes the family (every later refresh fails).
  */
-function fakeServer(options: { meStatus?: number; latencyMs?: number } = {}) {
+function fakeServer(
+  options: { meStatus?: number; latencyMs?: number; meTransientFailures?: number } = {},
+) {
+  let transient = options.meTransientFailures ?? 0;
   const jar = { cookie: "r1" as string | null };
   const consumed = new Set<string>();
   let revoked = false;
@@ -93,6 +96,10 @@ function fakeServer(options: { meStatus?: number; latencyMs?: number } = {}) {
     const auth = new Headers(init?.headers).get("Authorization");
     if (path === "/auth/me") {
       if (options.meStatus) return failure(options.meStatus, "AUTH_REQUIRED");
+      if (transient > 0) {
+        transient -= 1;
+        return failure(503, "DEPENDENCY_UNAVAILABLE");
+      }
       return auth ? ok(USER) : failure(401, "AUTH_REQUIRED");
     }
     if (path === "/auth/logout") {
@@ -357,6 +364,26 @@ describe("AuthProvider", () => {
     expect(await screen.findByText("Please sign in")).toBeInTheDocument();
     expect(second.auth().user).toBeNull();
     expect(screen.queryByRole("heading", { name: "Dashboard" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the token on a transient /auth/me failure and offers a retry instead of signing out (MJ-30)", async () => {
+    const user = userEvent.setup();
+    const server = fakeServer({ meTransientFailures: 1 });
+    const tab = renderTab(
+      server,
+      <RequireAuth fallback={<p>Please sign in</p>} reauthPrompt={null}>
+        <Dashboard />
+      </RequireAuth>,
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Still not working. Check your connection and try again.",
+    );
+    expect(tab.auth().status).toBe("unavailable");
+    expect(tab.auth().getAccessToken()).not.toBeNull();
+    expect(screen.queryByText("Please sign in")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
+    expect(tab.auth().status).toBe("authenticated");
   });
 
   it("does not loop after a consumed/revoked refresh and keeps the page mounted but inert", async () => {

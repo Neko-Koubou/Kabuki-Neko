@@ -51,8 +51,19 @@ import { useLocale } from "@/providers/locale-provider";
 /** Sign-in, setup and register responses. */
 export type AuthResponse = z.infer<typeof authResponseSchema>;
 
-/** Session status. */
-export type AuthStatus = "unknown" | "checking" | "authenticated" | "anonymous" | "reauth";
+/**
+ * Session status. `unavailable`: the session could not be checked for a transient reason
+ * (offline, timeout, 5xx); the token is kept and the user can retry — it is not a sign-out.
+ */
+export type AuthStatus =
+  "unknown" | "checking" | "authenticated" | "anonymous" | "reauth" | "unavailable";
+
+/** `/auth/me` answers that really mean the session is gone (after the client's refresh attempt). */
+const SESSION_LOST_CODES: ReadonlySet<string> = new Set([
+  "AUTH_REQUIRED",
+  "TOKEN_REVOKED",
+  "TOKEN_EXPIRED",
+]);
 
 /** Value exposed by {@link useAuth}. */
 export interface AuthContextValue {
@@ -236,17 +247,28 @@ export function AuthProvider({
     [apiBaseUrl, fetchImpl, coordinator, loseSession],
   );
 
-  /** Loads the principal for the current token; a 401 (e.g. deactivated) ends the session. */
+  /**
+   * Loads the principal for the current token. Only a lost session (401 AUTH_REQUIRED /
+   * TOKEN_REVOKED / TOKEN_EXPIRED, e.g. deactivated) signs out. A transient failure (offline,
+   * timeout, 5xx) keeps the token and the current page (code review MJ-30): during the initial
+   * check the status becomes `unavailable` (retryable); an authenticated page stays as it is.
+   */
   const loadPrincipal = useCallback(async (): Promise<boolean> => {
     try {
       const { data } = await api.request({ path: "/auth/me", schema: userSchema });
       setUser(data);
       setStatus("authenticated");
       return true;
-    } catch {
-      token.current = null;
-      setUser(null);
-      setStatus("anonymous");
+    } catch (error) {
+      if (error instanceof ApiError && SESSION_LOST_CODES.has(error.code)) {
+        token.current = null;
+        setUser(null);
+        setStatus("anonymous");
+        return false;
+      }
+      setStatus((current) =>
+        current === "checking" || current === "unknown" ? "unavailable" : current,
+      );
       return false;
     }
   }, [api]);
@@ -396,6 +418,19 @@ export function RequireAuth({ children, fallback, reauthPrompt }: RequireAuthPro
       </p>
     );
   if (status === "anonymous") return <>{fallback}</>;
+  if (status === "unavailable")
+    return (
+      <div role="alert" className="m-4 flex flex-col items-start gap-3 text-small">
+        <p>{t("common.inventory.s17.error")}</p>
+        <button
+          type="button"
+          className="inline-flex min-h-11 items-center rounded-md border border-border px-4 font-semibold"
+          onClick={() => void ensureSession()}
+        >
+          {t("common.actions.retry")}
+        </button>
+      </div>
+    );
   // Same wrapper for authenticated and reauth, so a lost session never remounts the page.
   const locked = status === "reauth";
   return (
