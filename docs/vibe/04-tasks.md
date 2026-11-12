@@ -2905,7 +2905,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm install --frozen-lockfile`, `pnpm locales:validate`, `pnpm locales:build`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:contracts`, `pnpm test:integration`, `pnpm build`, `pnpm test:e2e`, both Compose configs dan `pnpm exec tsx scripts/verify-release.ts`; gate rejects missing evidence. Jalankan `pnpm test:performance`; review bukti manual/cloud/license yang belum tersedia tetap menjadi release gap.
 
-### - [ ] TASK-182: Siapkan paket self-host Docker siap pakai
+### - [x] TASK-182: Siapkan paket self-host Docker siap pakai
 - **Traceability**: `US-16`, `US-17`, `US-19`, `US-20`, [SA §10.2](03-system-analysis.md#102-environment-tambahan-dan-compose), [SA §10.3](03-system-analysis.md#103-recoveryretention-dan-known-limits); permintaan pengguna 2026-11-10: "sediakan file untuk deployment menggunakan docker ... agar orang bisa self host dengan docker".
 - **Depends On**: `TASK-181`, `TASK-176`, `TASK-177`, `TASK-178`
 - **Target Files**:

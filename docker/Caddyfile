@@ -1,0 +1,70 @@
+# Kabuki Neko HTTPS reverse proxy (TASK-182; SA §10.2; docs/self-hosting.md).
+#
+# Used only with docker/docker-compose.tls.yml. One public domain (KN_DOMAIN) serves everything,
+# so the web app, the API, the game socket and the media share one origin: the refresh cookie
+# stays same-site and the app's Content-Security-Policy ('self' plus the API origin) already
+# allows every path below.
+#
+#   /api/*        -> api:3001  REST API
+#   /socket.io/*  -> api:3001  live game (WebSocket upgrade, long-polling fallback)
+#   /uploads/*    -> api:3001  uploaded media (default profile, local storage)
+#   /kabuki-neko-media/* -> minio:9000  uploaded media (scale profile, public-read bucket)
+#   everything else -> web:3000
+#
+# Certificates: Caddy obtains and renews a publicly trusted certificate for KN_DOMAIN
+# automatically (ports 80 and 443 must be reachable from the internet and DNS must point here).
+# KN_DOMAIN=localhost uses Caddy's own local CA instead (evaluation only; browsers warn).
+#
+# Headers: the app servers already send their CSP, nosniff, Referrer-Policy and frame headers
+# (docs/security-headers.md); this proxy adds only HSTS and never replaces or loosens them.
+# Client addresses: Caddy sets X-Forwarded-For; the API trusts it only from this proxy's fixed
+# address (TRUST_PROXY_CIDRS in the TLS override).
+{
+	# No admin endpoint inside the container network; configuration only changes on restart.
+	admin off
+}
+
+{$KN_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		# Enable only once HTTPS works for the whole domain: browsers remember it for a year.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	# Live game. Socket.IO pings every 25 s; long-polling requests stay open up to that long, so
+	# the upstream read timeout is 120 s (>= 75 s). Responses are flushed immediately. One API
+	# node in this Compose file; the cookie policy keeps a polling session on one node if you add
+	# more upstreams.
+	handle /socket.io/* {
+		reverse_proxy api:3001 {
+			lb_policy cookie kn_sticky
+			flush_interval -1
+			transport http {
+				read_timeout 120s
+				dial_timeout 10s
+			}
+		}
+	}
+
+	handle /api/* {
+		reverse_proxy api:3001
+	}
+
+	handle /uploads/* {
+		reverse_proxy api:3001
+	}
+
+	# Scale profile only: the bucket allows anonymous GetObject and nothing else.
+	handle /kabuki-neko-media/* {
+		reverse_proxy minio:9000
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+
+	# No access log: client addresses stay out of the proxy's output (the API's audit log does
+	# not store raw IPs either). Errors still go to the container log.
+}

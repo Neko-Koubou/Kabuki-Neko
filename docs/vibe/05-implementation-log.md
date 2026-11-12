@@ -2299,3 +2299,41 @@
     - AWS S3/R2/Spaces (no credentials);
     - audio distribution rights (OpenTracks permission, TASK-114A);
     - NFR-01 two-node broadcast and NFR-02 bundle/LCP budgets
+
+## TASK-182 — 2026-11-12T07:24:42+07:00
+
+- **Files**:
+  - `docs/self-hosting.md` (bilingual Indonesian + English operator guide:
+    - requirements (Compose v2.24+, measured idle RAM, disk) and download by release tag;
+    - `cp .env.example docker/.env` with only the public address to change; instance name at `/setup`; no secrets in `.env`;
+    - default vs scale profile and first-run setup;
+    - optional HTTPS override;
+    - named-volume data locations (the compose file uses named volumes, not `docker/data`/`docker/uploads` folders; documented as they are);
+    - upgrade with automatic leader-locked migrations, backup/restore via operations.md, smoke test;
+    - troubleshooting: ports, wrong public URL, same-site cookie, ORIGIN_DENIED/CORS, S3 HTTP refusal, unhealthy containers, proxy CIDRs, certificates;
+    - limits: in-memory rooms lost on restart, capacity not a certification with measured results, one API node, no registry images;
+    - audio-rights warning (release-unverified, OpenTracks permission))
+  - `docker/docker-compose.tls.yml` (Caddy pinned by digest:
+    - only Caddy publishes 80/443(+udp); API/web/MinIO ports reset;
+    - one origin `https://KN_DOMAIN` for the API env and the web build args;
+    - TRUST_PROXY_CIDRS = Caddy's fixed address /32 on a private `edge` network;
+    - cap_drop ALL + NET_BIND_SERVICE, read-only rootfs, certificate volumes)
+  - `docker/Caddyfile` (automatic TLS for `{$KN_DOMAIN}`; routing:
+    - `/socket.io` → API, with cookie affinity, flush and a 120 s read timeout;
+    - `/api` and `/uploads` → API; `/kabuki-neko-media` → MinIO; everything else → web.
+    HSTS only, no CSP override, admin endpoint off, no access log; `caddy fmt` clean)
+  - `scripts/selfhost-smoke.sh` (bash `set -euo pipefail`, no sudo:
+    - isolated `kn-smoke-*` project (refuses other names) on random free ports;
+    - modes `--profile scale`, `--tls`, `--no-build`;
+    - checks `/`, setup-status, `/join`, then first-run setup (password on stdin), restart, persisted setup and admin sign-in;
+    - teardown `down` keeps volumes unless `--purge`, which removes only the smoke project's)
+  - Required by the spec/DoD outside the target list:
+    - `README.md` (new; links the guide, as the spec requires "README menautkan panduan");
+    - `.env.example` (HTTPS override variables, so every variable the guide names is in `.env.example`)
+- **Verification**:
+  - `docker compose -f docker/docker-compose.yml -f docker/docker-compose.tls.yml config --quiet` (with KN_DOMAIN) → pass. Without KN_DOMAIN it refuses with a clear message. Scale + TLS rendered: only caddy publishes ports, trusted proxy `/32`.
+  - `caddy validate` via the pinned caddy 2.11.9 container → Valid configuration, no format warning
+  - Clean checkout (fresh clone + images built from it): `bash scripts/selfhost-smoke.sh` → PASS for the default profile, `--tls` (Caddy, KN_DOMAIN=localhost) and `--profile scale`; no kn-smoke containers, volumes or networks left after `--purge`
+    - Images were built with `docker build` plus the sandbox proxy CA secret, then run with `--no-build`; Compose `--build` cannot pass that CA in this sandbox.
+  - Every environment variable named in the guide/README is present in `.env.example`; all relative links and anchors resolve; secret scan of the new files finds no credential (only the runtime-generated throwaway smoke password)
+  - Prettier check of the markdown/YAML → pass; `verify-release --report` → 0 errors, 12 known gaps
