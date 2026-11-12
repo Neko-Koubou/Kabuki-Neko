@@ -416,7 +416,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 | MN-40 | [OPEN] | `scripts/selfhost-smoke.sh:95-99,194` | Tidak jalan di bash 3.2/macOS. | Ekspansi array aman; UUID portabel. |
 | MN-41 | [OPEN] | `docs/deployment.md:115`; `docs/self-hosting.md:40,200` | Deskripsi healthcheck web salah; `cd kabuki-neko` gagal di FS case-sensitive. | Koreksi dokumen. |
 | MN-42 | [OPEN] | `.github/workflows/ci.yml:186-189` | Overlay TLS, Caddyfile, dan smoke test tidak ada di CI. | Langkah config TLS + `caddy validate`. |
-| MN-43 | [OPEN] | `scripts/benchmark-game.ts:138-146` | Verdict benchmark mengabaikan jawaban ditolak dan laporan tidak durable. | Tambahkan alasan gagal. |
+| MN-43 | [RESOLVED] | `scripts/benchmark-game.ts:138-146` | Verdict benchmark mengabaikan jawaban ditolak dan laporan tidak durable. | Tambahkan alasan gagal. Diselesaikan di TASK-184 (alasan "answer(s) not admitted" dan "report not durable"). |
 | MN-44 | [OPEN] | `scripts/migrate.ts:21-24` | `db:migrate` menyembunyikan field konfigurasi dan tanpa doc comment. | Cetak `fields`/kode; header comment. |
 | MN-45 | [OPEN] | `docker/Dockerfile.api:48`; `Dockerfile.web:42` | pnpm dipasang tanpa verifikasi integritas. | corepack. |
 | MN-46 | [OPEN] | `docker/docker-compose.yml:61-106,141-172` | Tanpa `no-new-privileges`/`cap_drop`/`read_only` pada api, web, dan data. | Hardening per service. |

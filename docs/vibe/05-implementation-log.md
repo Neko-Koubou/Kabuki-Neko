@@ -2393,3 +2393,33 @@
     - the server event loop being busy elsewhere (scheduler ticks, Zod parsing per request, the heartbeat);
     - the load generator, which runs 200 clients in the same 4-core host.
   - Telling these apart needs the per-node event-loop and CPU diagnostics planned in TASK-184. TASK-185 then sets the root cause. No speculative change was made here.
+
+## TASK-184: Tambah diagnostik per node dan verdict jujur pada benchmark — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `scripts/lib/event-loop-probe.cjs` (new). The benchmark's own API children load it with `NODE_OPTIONS=--require`; production images never do. Once per second it writes a `KN_PROBE {json}` line:
+    - event-loop delay p50/p99/max from `monitorEventLoopDelay`, with the 10 ms sampling resolution subtracted so an idle loop reads ≈ 0;
+    - CPU as % of one core from `process.cpuUsage` deltas;
+    - heap in use.
+    The timer is unref'd.
+  - `scripts/benchmark-game.ts`:
+    - Local nodes start with the probe (`startApi` already passes the parent environment, so the test helpers are unchanged; `NODE_OPTIONS` is restored afterwards).
+    - The load generator samples itself the same way.
+    - Every dropped player connection records its node and Socket.io reason, plus clients per node and the first disconnect time.
+    - The record adds `diagnostics.nodes[]`: clients, measured flag, lag/CPU/heap and disconnects by reason. It also adds `diagnostics.loadGenerator` and `disconnectsFirstAtMs`.
+    - The Markdown adds a per-process table.
+    - `--api-urls a[,b]` (+ `--origin`, `KN_BENCH_HOST_EMAIL`/`_PASSWORD`) uses running nodes instead of a local harness, so the load generator can run on another machine. External nodes are marked "not measured".
+    - Verdict (MN-43): answers not admitted and a report that never became durable are FAIL reasons.
+  - `tests/performance/game-benchmark.spec.ts`: new cases for probe-line parsing and its window, per-process aggregation, disconnects per node/reason, `--api-urls` validation, and the MN-43 verdict reasons.
+- **Verification**:
+  - `pnpm test:performance -- tests/performance/game-benchmark.spec.ts` → 22/22.
+  - `pnpm exec eslint scripts tests/performance` → pass.
+  - `pnpm exec tsc --noEmit --strict --noUncheckedIndexedAccess --exactOptionalPropertyTypes --target es2023 --module commonjs --moduleResolution node --esModuleInterop --skipLibCheck --types node scripts/benchmark-game.ts tests/performance/game-benchmark.spec.ts` → pass. There is no workspace typecheck target for `scripts/`; this mirrors the strict base config.
+  - Prettier check of the three files → pass.
+  - Probe sanity: an idle process reads lag p99 ≈ 0.7 ms, and a 300 ms busy loop reads `lagMaxMs` 298.5.
+  - `pnpm benchmark:game --clients 20 --transitions 10 --mode redis --out test-results/benchmark/redis-short.json` → PASS, with the per-process table:
+    - API node A: lag p99 median 2.55 ms, CPU mean 8.5%;
+    - API node B: lag p99 median 0.96 ms;
+    - load generator: lag p99 median 0.62 ms, CPU 1%;
+    - 0 disconnects; admission p50 15.85 ms at 20 clients.
+  - Not run: a live `--api-urls` run against nodes on another machine (no second machine here). The path is covered by the unit validation only.

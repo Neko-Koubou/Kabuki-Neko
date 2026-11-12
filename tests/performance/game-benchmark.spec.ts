@@ -1,18 +1,25 @@
 /**
  * TASK-179 unit tests of the game benchmark's measuring tools (scripts/benchmark-game.ts): clock
- * calibration, latency correction, percentiles, delivery loss and the pass/fail verdict. The
- * benchmark's numbers are only as good as these.
+ * calibration, latency correction, percentiles, delivery loss, the pass/fail verdict and the
+ * per-process diagnostics (TASK-184: probe parsing, aggregation, disconnect reasons, external
+ * origins). The benchmark's numbers are only as good as these.
  */
 import { describe, expect, it } from "vitest";
 import {
   P95_TARGET_MS,
+  PROBE_PREFIX,
   deliveryLoss,
+  disconnectsByReason,
   estimateClock,
+  parseApiUrls,
+  parseProbeLines,
   percentile,
   summarize,
+  summarizeProbe,
   transportLatency,
   verdict,
   type ClockSample,
+  type ProbeSample,
 } from "../../scripts/benchmark-game";
 
 /** A sample for a client whose clock is `skew` ms behind the server, with symmetric paths. */
@@ -129,5 +136,92 @@ describe("verdict", () => {
     expect(verdict(summary(10), 0.001).reasons).toEqual(["delivery loss 0.100%"]);
     expect(verdict({ ...summary(0), count: 0 }, 0).reasons).toContain("no transport samples");
     expect(verdict(summary(10), 0, 2).reasons).toEqual(["2 player connection(s) dropped"]);
+  });
+
+  it("fails on answers that were not admitted and on a report that never became durable (MN-43)", () => {
+    expect(verdict(summary(10), 0, 0, { rejectedAnswers: 0, reportReady: true })).toEqual({
+      pass: true,
+      reasons: [],
+    });
+    expect(verdict(summary(10), 0, 0, { rejectedAnswers: 13 }).reasons).toEqual([
+      "13 answer(s) not admitted",
+    ]);
+    expect(verdict(summary(10), 0, 0, { reportReady: false }).reasons).toEqual([
+      "report not durable",
+    ]);
+  });
+});
+
+describe("per-process diagnostics (TASK-184)", () => {
+  const sample = (t: number, lagP99Ms: number, cpuPercent: number): ProbeSample => ({
+    t,
+    lagP50Ms: lagP99Ms / 2,
+    lagP99Ms,
+    lagMaxMs: lagP99Ms * 2,
+    cpuPercent,
+    heapMiB: 50 + t / 1000,
+  });
+
+  it("parses probe lines among other output, inside the measured window only", () => {
+    const output = [
+      "[Nest] 123 LOG Application started",
+      `${PROBE_PREFIX}${JSON.stringify(sample(1_000, 4, 20))}`,
+      `${PROBE_PREFIX}{not json`,
+      `${PROBE_PREFIX}${JSON.stringify({ t: 2_000, lagP99Ms: "slow" })}`,
+      `prefix ${PROBE_PREFIX}${JSON.stringify(sample(3_000, 8, 90))}\r`,
+      `${PROBE_PREFIX}${JSON.stringify(sample(9_000, 1, 5))}`,
+    ].join("\n");
+    expect(parseProbeLines(output)).toEqual([
+      sample(1_000, 4, 20),
+      sample(3_000, 8, 90),
+      sample(9_000, 1, 5),
+    ]);
+    expect(parseProbeLines(output, 2_000, 5_000)).toEqual([sample(3_000, 8, 90)]);
+  });
+
+  it("aggregates lag, CPU and heap per process, and reports an unmeasured one as null", () => {
+    expect(summarizeProbe([])).toBeNull();
+    const diagnostics = summarizeProbe([
+      sample(1_000, 2, 40),
+      sample(2_000, 30, 100),
+      sample(3_000, 4, 70),
+    ]);
+    expect(diagnostics).toMatchObject({
+      samples: 3,
+      lagP99Ms: { count: 3, p50: 4, max: 30 },
+      lagMaxMs: 60,
+      cpuPercentMean: 70,
+      cpuPercentMax: 100,
+      heapMaxMiB: 53,
+    });
+  });
+
+  it("counts dropped connections per node and reason", () => {
+    expect(
+      disconnectsByReason([
+        { node: "B", reason: "transport close", atMs: 10 },
+        { node: "B", reason: "transport close", atMs: 11 },
+        { node: "B", reason: "ping timeout", atMs: 12 },
+        { node: "A", reason: "transport close", atMs: 13 },
+      ]),
+    ).toEqual({ B: { "transport close": 2, "ping timeout": 1 }, A: { "transport close": 1 } });
+    expect(disconnectsByReason([])).toEqual({});
+  });
+
+  it("accepts one or two external API origins and rejects anything else", () => {
+    expect(parseApiUrls(undefined)).toBeNull();
+    expect(parseApiUrls(" ")).toBeNull();
+    expect(parseApiUrls("http://10.0.0.5:3001")).toEqual([
+      "http://10.0.0.5:3001",
+      "http://10.0.0.5:3001",
+    ]);
+    expect(parseApiUrls("https://a.example.org/, https://b.example.org")).toEqual([
+      "https://a.example.org",
+      "https://b.example.org",
+    ]);
+    expect(() => parseApiUrls("a,b,c")).toThrow("one or two");
+    expect(() => parseApiUrls("not a url")).toThrow("not a URL");
+    expect(() => parseApiUrls("ftp://a.example.org")).toThrow("origin");
+    expect(() => parseApiUrls("http://a.example.org/api/v1")).toThrow("origin");
   });
 });
