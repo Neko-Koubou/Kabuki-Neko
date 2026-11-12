@@ -3006,7 +3006,7 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - `pnpm exec eslint scripts tests/performance` dan `pnpm exec tsc --noEmit` untuk script lulus.
   - Run singkat `pnpm benchmark:game --clients 20 --transitions 10 --mode redis` menghasilkan tabel per node.
 
-### - [ ] TASK-185: Ukur ulang topologi Redis dua node dan tetapkan akar masalah
+### - [~] TASK-185: Ukur ulang topologi Redis dua node dan tetapkan akar masalah
 - **Traceability**: `US-16`, `US-20`, NFR-01, [07-qa-report.md §2 US-20](07-qa-report.md)
 - **Depends On**: `TASK-183`, `TASK-183A`, `TASK-184`
 - **Target Files**:

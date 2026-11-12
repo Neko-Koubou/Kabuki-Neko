@@ -2423,3 +2423,9 @@
     - load generator: lag p99 median 0.62 ms, CPU 1%;
     - 0 disconnects; admission p50 15.85 ms at 20 clients.
   - Not run: a live `--api-urls` run against nodes on another machine (no second machine here). The path is covered by the unit validation only.
+
+## TASK-185: Ukur ulang topologi Redis dua node dan tetapkan akar masalah — IN PROGRESS
+- **Started**: 2026-11-12 (Asia/Jakarta)
+- **Plan**: `docs/performance-results.md`, `docs/vibe/07-qa-report.md`
+- **Done so far**: none yet
+- **Verification**: pending (memory + redis 200-client runs with per-node diagnostics)
