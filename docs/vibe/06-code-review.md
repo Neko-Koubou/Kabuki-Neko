@@ -145,7 +145,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 - **Perbaikan**: recovery dengan `sessionToken` menerima `ACTIVE|FINALIZING`. `check_pin`, friendly name, dan join baru tetap hanya `ACTIVE`.
 - **Resolusi**: `RecoveryService.room(pin, statuses)` menerima daftar status; `join` dengan `sessionToken` menerima `ACTIVE|FINALIZING`, sedangkan `checkPin`, friendly name, dan join baru tetap hanya `ACTIVE`. Spec baru di `recovery.service.spec.ts` (recovery saat FINALIZING sukses; check_pin dan join baru 404; gagal pada kode lama). API Jest 234/234, tsc, lint PASS.
 
-#### MJ-05 [MAJOR] [OPEN] Map gateway bocor dan klien room yang dilepas tidak menerima `room:expired`
+#### MJ-05 [MAJOR] [RESOLVED] Map gateway bocor dan klien room yang dilepas tidak menerima `room:expired`
 - **File:Line**:
   - `apps/api/src/modules/game-engine/game.gateway.ts:168-169,463-480,631-644`;
   - `room-scheduler.ts:181-186,211-215,248-258`;
@@ -157,6 +157,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 - **Perbaikan**:
   - `GameGateway.forget(identity, reason)` dipanggil scheduler melalui notifier saat LOST/release.
   - Prune `outstanding`.
+- **Resolusi**: Scheduler memanggil `GameService.roomEnded(identity, reason)` saat LOST (`ROOM_LOST` untuk state hilang, `ROOM_EXPIRED` untuk lobby idle/kedaluwarsa) dan saat release setelah retensi (`null`, tanpa push); `NotifyingGameService` meneruskannya ke `GameGateway.forget`, yang mengirim `room:expired` dengan alasan sebenarnya (lewat adapter Redis ke semua instance) lalu menghapus summary sehingga heartbeat berhenti. Antrian publish dihapus begitu selesai (`enqueue`), dan `RecoveryService.outstanding` disapu tiap menit. Regresi: `game-gateway-lifecycle.spec.ts`, `room-scheduler.spec.ts`, `recovery.service.spec.ts` (5 kasus gagal di kode lama); API jest 249/249, tsc/eslint bersih.
 
 #### MJ-06 [MAJOR] [OPEN] Batas umur 8 jam di luar fase ANSWERING membuang game yang sudah dimainkan
 - **File:Line**: `apps/api/src/modules/game-engine/room-scheduler.ts:197-216`.

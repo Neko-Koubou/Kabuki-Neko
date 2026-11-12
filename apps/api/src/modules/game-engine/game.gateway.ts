@@ -54,7 +54,7 @@ import {
   type RoomIdentity,
 } from "../../providers/state/game-state.interface";
 import { StateConnections } from "../../providers/state/state.module";
-import { GameService, type PlayerBinding } from "./game.service";
+import { GameService, type PlayerBinding, type RoomEndReason } from "./game.service";
 import { RecoveryService, stateError } from "./recovery.service";
 import { projectHost, projectPlayer } from "./room-projector";
 import { RoomRegistryService } from "./room-registry.service";
@@ -202,6 +202,14 @@ export class GameGateway
       this.game as GameService & { setNotifier?: (fn: (id: RoomIdentity) => Promise<void>) => void }
     ).setNotifier;
     notify?.call(this.game, (identity) => this.publish(identity));
+    const ended = (
+      this.game as GameService & {
+        setEndNotifier?: (
+          fn: (id: RoomIdentity, reason: RoomEndReason | null) => Promise<void>,
+        ) => void;
+      }
+    ).setEndNotifier;
+    ended?.call(this.game, (identity, reason) => this.forget(identity, reason));
     this.heartbeat = setInterval(() => this.beat(), SOCKET_LIMITS.heartbeatMs);
     this.heartbeat.unref();
   }
@@ -480,12 +488,39 @@ export class GameGateway
       data,
     };
   }
+  /**
+   * Runs `step` after the room's queued publishes. The queue entry is removed once the last queued
+   * step settles, so the map holds only rooms with work in flight (code review MJ-05).
+   */
+  private enqueue(sessionId: string, step: () => Promise<void> | void): Promise<void> {
+    const previous = this.queues.get(sessionId) ?? Promise.resolve();
+    const next: Promise<void> = previous
+      .then(step)
+      .catch(() => undefined)
+      .finally(() => {
+        if (this.queues.get(sessionId) === next) this.queues.delete(sessionId);
+      });
+    this.queues.set(sessionId, next);
+    return next;
+  }
   /** Serializes publishes per room so diffs are computed against a consistent summary. */
   publish(identity: RoomIdentity): Promise<void> {
-    const previous = this.queues.get(identity.sessionId) ?? Promise.resolve();
-    const next = previous.then(() => this.diff(identity)).catch(() => undefined);
-    this.queues.set(identity.sessionId, next);
-    return next;
+    return this.enqueue(identity.sessionId, () => this.diff(identity));
+  }
+  /**
+   * Forgets a room the scheduler dropped (code review MJ-05): after the queued publishes, sends
+   * `room:expired` with `reason` to its host and players (null: released quietly after retention)
+   * and removes its summary, which also stops its heartbeat. With the Redis adapter the push
+   * reaches clients connected to every instance.
+   */
+  forget(identity: RoomIdentity, reason: RoomEndReason | null): Promise<void> {
+    return this.enqueue(identity.sessionId, () => {
+      if (reason)
+        this.server
+          .to([`host:${identity.sessionId}`, `players:${identity.sessionId}`])
+          .emit("room:expired", this.push(identity, null, { reason }));
+      this.summaries.delete(identity.sessionId);
+    });
   }
   /** Emits the role-safe events implied by the change since the last published summary. */
   private async diff(identity: RoomIdentity): Promise<void> {

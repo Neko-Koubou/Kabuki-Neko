@@ -111,6 +111,8 @@ const TICKET_TTL_MS = 120_000;
 export class RecoveryService {
   /** `${sessionId}|${ip}` → ticket expiry times (process-local reservation bound). */
   private readonly outstanding = new Map<string, number[]>();
+  /** Next time `outstanding` is swept for expired entries. */
+  private nextSweep = 0;
 
   constructor(
     @Inject(RuntimeRepository) private readonly runtime: RuntimeRepository,
@@ -165,6 +167,7 @@ export class RecoveryService {
     RecoveryService.assertJoinable(state);
     if (!state.friendlyNicknames) throw new ApiError("INVALID_PHASE", 409);
     const now = Date.now();
+    this.sweep(now);
     const key = `${identity.sessionId}|${context.ip}`;
     const live = (this.outstanding.get(key) ?? []).filter((expiry) => expiry > now);
     if (live.length >= FRIENDLY_TICKETS_PER_IP)
@@ -194,6 +197,17 @@ export class RecoveryService {
       return { nickname, friendlyNameTicket: ticket, expiresAt };
     }
     throw new ApiError("NICKNAME_TAKEN", 409);
+  }
+
+  /**
+   * Drops `outstanding` entries whose tickets have all expired, at most once a minute, so rooms
+   * and clients that are gone do not keep memory (code review MJ-05).
+   */
+  private sweep(now: number): void {
+    if (now < this.nextSweep) return;
+    this.nextSweep = now + 60_000;
+    for (const [key, expiries] of this.outstanding)
+      if (expiries.every((expiry) => expiry <= now)) this.outstanding.delete(key);
   }
 
   /** Validates a typed nickname: schema, then the current profanity list (normalized). */

@@ -207,15 +207,19 @@ it("lets exactly one instance lead a room and hands over after the lease expires
 
 it("marks rooms LOST on missing state, idle lobbies and non-answering hard expiry, then releases them", async () => {
   const worker = scheduler();
+  // Connected clients learn why their room ended (code review MJ-05).
+  const ended = jest.spyOn(game, "roomEnded");
   const missing = await room(0);
   await store.releaseRoom(missing);
   await worker.scan(now);
   expect(await status(missing)).toBe("LOST");
+  expect(ended).toHaveBeenCalledWith(missing, "ROOM_LOST");
   const idle = await room(0);
   // Allocations are stamped with the real clock, slightly after the fake clock's start.
   now += 2 * 3_600_000 + 1_000;
   await worker.scan(now);
   expect(await status(idle)).toBe("LOST");
+  expect(ended).toHaveBeenCalledWith(idle, "ROOM_EXPIRED");
   expect(await phase(idle)).toBeNull();
   now += 3_600_001;
   await worker.scan(now);

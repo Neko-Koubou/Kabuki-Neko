@@ -234,6 +234,13 @@ it("bounds outstanding friendly reservations per IP and room", async () => {
   await expect(
     service.requestFriendlyName(ack.pinCode, ctx(randomUUID(), "198.51.100.8")),
   ).resolves.toMatchObject({ nickname: expect.any(String) });
+  // Expired reservations are swept (code review MJ-05): once every ticket of both IPs has
+  // expired, the process-local map no longer holds them.
+  const outstanding = Reflect.get(service, "outstanding") as Map<string, number[]>;
+  expect(outstanding.size).toBe(2);
+  const sweep = Reflect.get(service, "sweep") as (now: number) => void;
+  sweep.call(service, Date.now() + 120_000 + 60_001);
+  expect(outstanding.size).toBe(0);
   const draws = [0, 0, FRIENDLY_ADJECTIVES.length - 1, FRIENDLY_NOUNS.length - 1];
   expect(friendlyName(() => draws.shift() ?? 0)).toBe(
     `${FRIENDLY_ADJECTIVES[0]} ${FRIENDLY_NOUNS[0]}`,

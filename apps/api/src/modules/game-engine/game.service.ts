@@ -186,6 +186,9 @@ export function buildFrozenReport(state: Readonly<ActiveRoomState>, endedAt: num
   };
 }
 
+/** Why a room's state was dropped, as sent to clients in `room:expired`. */
+export type RoomEndReason = "ROOM_EXPIRED" | "ROOM_LOST";
+
 @Injectable()
 export class GameService {
   private hook: ReportHook | null = null;
@@ -299,6 +302,15 @@ export class GameService {
       if (error instanceof StateDomainError) return false;
       throw error;
     }
+  }
+
+  /**
+   * Called by the scheduler when a room's state is dropped (code review MJ-05): `reason` tells
+   * connected clients why (`room:expired`), null when the room is released quietly after its
+   * retention. The base service has no transport; NotifyingGameService forwards to the gateway.
+   */
+  async roomEnded(_identity: RoomIdentity, _reason: RoomEndReason | null): Promise<void> {
+    // No transport attached.
   }
 
   /** Commits the frozen question while a skip/end command waits for it (bounded ~5 s). */

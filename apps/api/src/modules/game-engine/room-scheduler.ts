@@ -39,7 +39,7 @@ import {
   type Lease,
   type RoomIdentity,
 } from "../../providers/state/game-state.interface";
-import { GAME_CLOCK, GameService } from "./game.service";
+import { GAME_CLOCK, GameService, type RoomEndReason } from "./game.service";
 import { RoomRegistryService } from "./room-registry.service";
 
 /** Minimum interval between finalization re-syncs of one room by its leader. */
@@ -178,18 +178,22 @@ export class RoomScheduler implements OnApplicationBootstrap, OnModuleDestroy {
     this.timers.set(identity.sessionId, timer);
   }
 
-  /** Marks an allocation LOST (state missing or unrecoverable) and drops local scheduling. */
-  private async lose(row: Allocation, now: number) {
+  /**
+   * Marks an allocation LOST (state missing, idle or expired before any report could exist), drops
+   * local scheduling and tells connected clients why (`room:expired`, code review MJ-05).
+   */
+  private async lose(row: Allocation, now: number, reason: RoomEndReason) {
     if (row.status === "ACTIVE" || row.status === "FINALIZING")
       await this.runtime.transition(row.id, row.status, "LOST", now);
     this.forget(row.id);
+    await this.game.roomEnded({ pin: row.pin_code, sessionId: row.id }, reason);
   }
 
   /** Lifetime, timer and retention handling for one active allocation (leader only). */
   async visit(row: Allocation, now: number = this.clock()): Promise<void> {
     const identity = { pin: row.pin_code, sessionId: row.id };
     const state = await this.store.getPrivateSnapshot(identity);
-    if (!state) return this.lose(row, now);
+    if (!state) return this.lose(row, now, "ROOM_LOST");
     if (!(await this.lead(identity, now))) return;
     if (now - (this.heartbeats.get(row.id) ?? 0) >= ROOM_LIMITS.allocationHeartbeatMs) {
       await this.runtime.heartbeat(row.id, now);
@@ -211,7 +215,7 @@ export class RoomScheduler implements OnApplicationBootstrap, OnModuleDestroy {
         await this.game.settle(identity);
       } else {
         await this.store.releaseRoom(identity);
-        await this.lose(row, now);
+        await this.lose(row, now, "ROOM_EXPIRED");
       }
       return;
     }
@@ -220,7 +224,7 @@ export class RoomScheduler implements OnApplicationBootstrap, OnModuleDestroy {
       if (!(error instanceof StateDomainError && error.code === "ROOM_EXPIRED")) throw error;
     });
     const after = await this.store.getPrivateSnapshot(identity);
-    if (!after) return this.lose(row, now);
+    if (!after) return this.lose(row, now, "ROOM_LOST");
     if (FINAL.has(after.phase) && after.frozenReport && row.status === "ACTIVE")
       await this.runtime.transition(row.id, "ACTIVE", "FINALIZING", now);
     if (
@@ -256,6 +260,8 @@ export class RoomScheduler implements OnApplicationBootstrap, OnModuleDestroy {
     ) {
       await this.runtime.transition(row.id, "FINALIZING", "CLOSED", now);
       this.forget(row.id);
+      // Released after retention with a durable report: the gateway forgets it without a push.
+      await this.game.roomEnded(identity, null);
       return;
     }
     this.arm(identity, after);

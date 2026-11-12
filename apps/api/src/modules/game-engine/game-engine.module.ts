@@ -9,19 +9,36 @@ import { CommonModule } from "../../common/common.module";
 import type { RoomIdentity } from "../../providers/state/game-state.interface";
 import { StateModule } from "../../providers/state/state.module";
 import { GameGateway } from "./game.gateway";
-import { GameService } from "./game.service";
+import { GameService, type RoomEndReason } from "./game.service";
 import { RecoveryService } from "./recovery.service";
 import { RoomRegistryService } from "./room-registry.service";
 import { RoomScheduler } from "./room-scheduler";
 
-/** GameService that notifies a publisher (the gateway) after each timed tick. */
+/** Gateway callback for a dropped room (code review MJ-05). */
+type EndNotifier = (identity: RoomIdentity, reason: RoomEndReason | null) => Promise<void>;
+
+/**
+ * GameService that notifies a publisher (the gateway) after each timed tick and when the
+ * scheduler drops a room.
+ */
 @Injectable()
 export class NotifyingGameService extends GameService {
   private notifier: ((identity: RoomIdentity) => Promise<void>) | null = null;
+  private ended: EndNotifier | null = null;
 
   /** Installs the publish callback (set by the gateway during initialization). */
   setNotifier(notifier: ((identity: RoomIdentity) => Promise<void>) | null): void {
     this.notifier = notifier;
+  }
+
+  /** Installs the dropped-room callback (set by the gateway during initialization). */
+  setEndNotifier(notifier: EndNotifier | null): void {
+    this.ended = notifier;
+  }
+
+  /** Tells the gateway to send `room:expired` (when `reason` is set) and forget the room. */
+  override async roomEnded(identity: RoomIdentity, reason: RoomEndReason | null): Promise<void> {
+    await this.ended?.(identity, reason).catch(() => undefined);
   }
 
   /** Runs the timed step, then publishes the resulting room changes. */
