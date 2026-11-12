@@ -431,6 +431,14 @@ export class RedisStateStore implements IGameStateStore {
       ).result,
     );
   }
+  /** See IGameStateStore.expireToPodium; Redis TIME decides whether the lifetime has passed. */
+  async expireToPodium(identity: RoomIdentity, expectedPhaseVersion: number) {
+    return decode(
+      z.boolean(),
+      (await this.run("mutate-room", identity, { kind: "expireToPodium", expectedPhaseVersion }))
+        .result,
+    );
+  }
   async acquireLease(identity: RoomIdentity, ownerId: string, ttlMs: number) {
     const result = (
       await this.run("release-room", identity, { kind: "acquireLease", ownerId, ttlMs })

@@ -7,9 +7,11 @@
  * missed timers — correctness never depends on the lease, because every transition is a phase CAS
  * in GameService. Host presence is never consulted, so a disconnected host does not pause timers.
  *
- * Lifetime: hard expiry 8 h from creation (an ANSWERING question is closed with EXPIRED and the
- * game goes to PODIUM; any other phase cannot be frozen and is marked LOST — no invented report),
- * lobby idle 2 h (LOST), SQL heartbeat every 30 s, FINISHED retention 1 h after which a room whose
+ * Lifetime: hard expiry 8 h from creation. An ANSWERING question is closed with EXPIRED and the
+ * game goes to PODIUM; a started game in another pre-podium phase (countdown, preview, reveal,
+ * leaderboard) goes to PODIUM with endReason EXPIRED through `expireToPodium` (code review MJ-06),
+ * so the questions already played still produce a report. Only a LOBBY (nothing played) is marked
+ * LOST. Lobby idle 2 h (LOST), SQL heartbeat every 30 s, FINISHED retention 1 h after which a room whose
  * report is durable (finalization ready) is released and its allocation CLOSED. A frozen report that
  * is not yet durable is never evicted (the store refuses to release it). Missing state means LOST.
  * CLOSED/LOST allocations are released conditionally after 1 h, retried every scan.
@@ -213,9 +215,16 @@ export class RoomScheduler implements OnApplicationBootstrap, OnModuleDestroy {
           if (!(error instanceof StateDomainError)) throw error;
         }
         await this.game.settle(identity);
-      } else {
+      } else if (state.phase === "LOBBY") {
         await this.store.releaseRoom(identity);
         await this.lose(row, now, "ROOM_EXPIRED");
+      } else {
+        try {
+          await this.store.expireToPodium(identity, state.phaseVersion);
+        } catch (error) {
+          if (!(error instanceof StateDomainError)) throw error;
+        }
+        await this.game.finalize(identity);
       }
       return;
     }

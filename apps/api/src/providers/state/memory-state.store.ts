@@ -8,7 +8,7 @@ import {
 } from "@kabuki-neko/shared/schemas/game.schema";
 import type { FinalizeStatus } from "@kabuki-neko/shared/schemas/game.schema";
 import { clientContracts } from "@kabuki-neko/shared/socket-events";
-import { StateDomainError } from "./game-state.interface";
+import { EXPIRABLE_TO_PODIUM, StateDomainError } from "./game-state.interface";
 import type {
   ActiveRoomState,
   ActivePlayer,
@@ -576,6 +576,15 @@ export class MemoryStateStore implements IGameStateStore {
     }
     if (s.phase === "LOBBY") s.lobbyActiveAt = now;
     return this.finishCommand(s, input);
+  }
+  /** See IGameStateStore.expireToPodium (maintenance access: allowed after logical expiry). */
+  async expireToPodium(identity: RoomIdentity, expectedPhaseVersion: number): Promise<boolean> {
+    const s = this.entry(identity, true).state;
+    if (s.phaseVersion !== expectedPhaseVersion) return false;
+    if (!EXPIRABLE_TO_PODIUM.includes(s.phase) || this.clock() < s.hardExpiresAt)
+      return fail("INVALID_PHASE");
+    this.podium(s, "EXPIRED");
+    return true;
   }
   async transitionPhase(
     identity: RoomIdentity,

@@ -516,6 +516,31 @@ for (const driver of ["memory", "redis"] as const)
       expect(s.phase).toBe("ANSWER_REVEAL");
       expect(s.results[0]).toBeDefined();
     });
+    it("expires a started game outside ANSWERING to PODIUM only after the hard lifetime", async () => {
+      // Code review MJ-06: the same atomic step on both stores.
+      const state = activeRoomStateSchema.parse(room());
+      state.players = { [uuid(6)]: player() };
+      state.phase = "LEADERBOARD";
+      state.questionIndex = 0;
+      state.createdAt = now;
+      state.lobbyActiveAt = now;
+      state.hardExpiresAt = Date.now() + 300;
+      expect(await store.createRoom(identity.pin, state, 28_800_000)).toBe("CREATED");
+      await expect(store.expireToPodium(identity, 1)).rejects.toMatchObject({
+        code: "INVALID_PHASE",
+      });
+      await delay(400);
+      now = Date.now();
+      expect(await store.expireToPodium(identity, 7)).toBe(false);
+      expect(await store.expireToPodium(identity, 1)).toBe(true);
+      const ended = required(await store.getPrivateSnapshot(identity));
+      expect(ended).toMatchObject({ phase: "PODIUM", phaseVersion: 2, endReason: "EXPIRED" });
+      expect(ended.finalization).toMatchObject({ status: "pending", retryable: true });
+      expect(ended.timing.phaseEndsAt).toBe(required(ended.timing.phaseStartedAt) + 8_000);
+      await expect(store.expireToPodium(identity, 2)).rejects.toMatchObject({
+        code: "INVALID_PHASE",
+      });
+    });
     it("holds host ACK until result commit and preserves the command receipt", async () => {
       await seed(answering());
       let settled = false;

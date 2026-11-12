@@ -159,12 +159,13 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Prune `outstanding`.
 - **Resolusi**: Scheduler memanggil `GameService.roomEnded(identity, reason)` saat LOST (`ROOM_LOST` untuk state hilang, `ROOM_EXPIRED` untuk lobby idle/kedaluwarsa) dan saat release setelah retensi (`null`, tanpa push); `NotifyingGameService` meneruskannya ke `GameGateway.forget`, yang mengirim `room:expired` dengan alasan sebenarnya (lewat adapter Redis ke semua instance) lalu menghapus summary sehingga heartbeat berhenti. Antrian publish dihapus begitu selesai (`enqueue`), dan `RecoveryService.outstanding` disapu tiap menit. Regresi: `game-gateway-lifecycle.spec.ts`, `room-scheduler.spec.ts`, `recovery.service.spec.ts` (5 kasus gagal di kode lama); API jest 249/249, tsc/eslint bersih.
 
-#### MJ-06 [MAJOR] [OPEN] Batas umur 8 jam di luar fase ANSWERING membuang game yang sudah dimainkan
+#### MJ-06 [MAJOR] [RESOLVED] Batas umur 8 jam di luar fase ANSWERING membuang game yang sudah dimainkan
 - **File:Line**: `apps/api/src/modules/game-engine/room-scheduler.ts:197-216`.
 - **Masalah**: hard TTL pada fase PREVIEW/REVEAL/LEADERBOARD/COUNTDOWN berakhir LOST tanpa laporan. Melanggar SA §5.5, BR-18, dan AC-14-02.
 - **Perbaikan**:
   - Operasi atomik `expireToPodium` (memory + Lua) untuk fase pra-PODIUM non-LOBBY, lalu `game.finalize`.
   - LOST hanya untuk LOBBY atau state yang hilang.
+- **Resolusi**: Operasi atomik baru `IGameStateStore.expireToPodium` (memory + Lua `mutate-room`, Redis TIME) memindahkan COUNTDOWN/PREVIEW/REVEAL/LEADERBOARD ke PODIUM dengan `endReason: EXPIRED` dan finalisasi `pending`, hanya setelah `hardExpiresAt`; `RoomScheduler.visit` memakainya lalu `game.finalize`, sehingga soal yang sudah dimainkan tetap menghasilkan laporan. LOST kini hanya untuk LOBBY (atau state hilang). Regresi: `room-scheduler.spec.ts` (REVEAL kedaluwarsa → PODIUM + laporan PLAYED, gagal di kode lama; LOBBY tetap LOST) dan kontrak `state-parity.spec.ts` untuk memory dan Redis; parity 26/26, API jest 251/251, tsc/eslint bersih.
 
 #### MJ-07 [MAJOR] [RESOLVED] `correctCount`/`unansweredCount` ikut menghitung soal ×0 (dan POLL untuk unanswered)
 - **File:Line**: `apps/api/src/modules/game-engine/score-calculator.ts:273`; `game.service.ts:110-111`.

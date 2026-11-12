@@ -264,6 +264,42 @@ it("expires an answering question as EXPIRED at the hard lifetime and keeps a pe
   expect(await status(identity)).toBe("CLOSED");
 });
 
+it("ends a hard-expired game outside ANSWERING at PODIUM with a report instead of LOST", async () => {
+  // Code review MJ-06: question 0 was played; the room expires while its answer is revealed.
+  const identity = await room();
+  const worker = scheduler();
+  const ended = jest.spyOn(game, "roomEnded");
+  await command(identity, "host:start_game");
+  now += 3_000;
+  await worker.scan(now);
+  now += 4_000;
+  await worker.scan(now);
+  now += 21_501;
+  await worker.scan(now);
+  expect(await phase(identity)).toBe("ANSWER_REVEAL");
+  const state = await store.getPrivateSnapshot(identity);
+  now = (state?.hardExpiresAt ?? now) + 1;
+  await worker.scan(now);
+  const podium = await store.getPrivateSnapshot(identity);
+  expect(podium).toMatchObject({ phase: "PODIUM", endReason: "EXPIRED" });
+  expect(podium?.finalization?.status).toBe("pending");
+  expect(podium?.frozenReport?.session.endReason).toBe("EXPIRED");
+  expect(podium?.frozenReport?.questions[0]?.status).toBe("PLAYED");
+  expect(ended).not.toHaveBeenCalled();
+  await worker.scan(now);
+  expect(await status(identity)).toBe("FINALIZING");
+});
+
+it("still marks a hard-expired LOBBY as LOST: nothing was played", async () => {
+  const identity = await room();
+  const worker = scheduler();
+  const state = await store.getPrivateSnapshot(identity);
+  now = (state?.hardExpiresAt ?? now) + 1;
+  await worker.scan(now);
+  expect(await status(identity)).toBe("LOST");
+  expect(await phase(identity)).toBeNull();
+});
+
 it("raises one alarm when a frozen report is still not durable 24 h after the game, never evicting it", async () => {
   const errors = jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
   try {
