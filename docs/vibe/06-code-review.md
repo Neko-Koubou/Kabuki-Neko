@@ -273,7 +273,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Verifikasi `ffprobe -version` saat build.
   - Catat versi aktual di inventaris image.
 
-#### MJ-22 [MAJOR] [OPEN] Socket host tidak pernah memperbarui access token (perintah host gagal setelah 15 menit)
+#### MJ-22 [MAJOR] [RESOLVED] Socket host tidak pernah memperbarui access token (perintah host gagal setelah 15 menit)
 - **File:Line**: `apps/web/src/components/host/host-stage.tsx:93-97,176`; `apps/web/src/hooks/use-socket.ts:313-316`; `host-phase-controls.tsx:90`.
 - **Masalah**:
   - Server memeriksa ulang token pada tiap perintah host, padahal token berumur 900 s.
@@ -281,6 +281,11 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 - **Perbaikan**:
   - Pada `TOKEN_EXPIRED`/`TOKEN_REVOKED`/`AUTH_REQUIRED`: refresh token → `auth:update` → kirim ulang sekali dengan `requestId` yang sama.
   - Handshake reconnect host memakai token terbaru.
+- **Resolusi**:
+  - `createHostCommands` menerima `renewAuth`. Untuk `TOKEN_EXPIRED`/`TOKEN_REVOKED`/`AUTH_REQUIRED`, perintah memperbarui token (`reloadPrincipal` → refresh REST), mengirim `auth:update`, lalu mengirim ulang sekali dengan `requestId` yang sama. Bila renew gagal, error aslinya dikembalikan.
+  - `useGameSocket` mendapat opsi `onAuthError`: `connect_error` berkode auth menunggu refresh token sebelum reconnect, sehingga handshake berikutnya membawa token baru. Host stage memakai keduanya.
+  - Spec baru `host-stage.spec.ts` (3 test) dan `use-socket.spec.tsx` (2 test).
+  - Web Vitest 51 file / 444 test, tsc, dan lint PASS.
 
 #### MJ-23 [MAJOR] [OPEN] Socket anonim halaman join diputus server setelah 120 s dan tidak pernah tersambung lagi
 - **File:Line**: `apps/web/src/components/player/pin-join-scanner.tsx:118-125,141-145`; `apps/web/src/lib/socket-client.ts:106`.

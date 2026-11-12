@@ -27,6 +27,12 @@ import type { GameState } from "@/stores/game.store";
 export interface UseGameSocketOptions extends Omit<GameSocketOptions, "getAccessToken"> {
   store: StoreApi<GameState>;
   getAccessToken?: () => string | null;
+  /**
+   * Called when the server rejects the handshake because the access token is missing, expired or
+   * revoked; resolves once a fresh token is available (code review MJ-22). The reconnect waits
+   * for it, so the next handshake carries the new token instead of retrying the stale one.
+   */
+  onAuthError?: () => Promise<unknown>;
   /** Randomness for jitter (tests). */
   random?: () => number;
 }
@@ -39,6 +45,19 @@ function retryAfterOf(error: unknown): number | null {
   const data = (error as { data?: { params?: { retryAfterMs?: unknown } } } | undefined)?.data;
   const value = data?.params?.retryAfterMs;
   return typeof value === "number" && value >= 0 ? value : null;
+}
+
+/** Handshake rejections that a token refresh can fix. */
+const AUTH_ERROR_CODES: ReadonlySet<string> = new Set([
+  "AUTH_REQUIRED",
+  "TOKEN_EXPIRED",
+  "TOKEN_REVOKED",
+]);
+
+/** Error code carried by a Socket.IO connect error, if any. */
+function errorCodeOf(error: unknown): string | null {
+  const code = (error as { data?: { errorCode?: unknown } } | undefined)?.data?.errorCode;
+  return typeof code === "string" ? code : null;
 }
 
 /** Creates, connects and supervises the page's game socket. */
@@ -56,6 +75,8 @@ export function useGameSocket(options: UseGameSocketOptions): GameSocket {
   );
   const { store, role } = options;
   const random = useRef(options.random ?? Math.random);
+  const authErrorHandler = useRef(options.onAuthError);
+  authErrorHandler.current = options.onAuthError;
 
   useEffect(() => {
     let attempt = 0;
@@ -105,6 +126,15 @@ export function useGameSocket(options: UseGameSocketOptions): GameSocket {
       }),
       client.onLifecycle("connect_error", (error) => {
         store.getState().setTransport("reconnecting");
+        const renew = authErrorHandler.current;
+        const code = errorCodeOf(error);
+        if (renew && code !== null && AUTH_ERROR_CODES.has(code)) {
+          // Refresh first; reconnect afterwards whatever the outcome (the auth view handles failure).
+          void renew()
+            .catch(() => undefined)
+            .then(() => scheduleReconnect(retryAfterOf(error)));
+          return;
+        }
         scheduleReconnect(retryAfterOf(error));
       }),
     );

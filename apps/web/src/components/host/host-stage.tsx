@@ -51,7 +51,7 @@ import { useGameClock } from "@/hooks/use-game-clock";
 import { useSessionRecovery } from "@/hooks/use-session-recovery";
 import { useGameSocket } from "@/hooks/use-socket";
 import { useAudioEngine } from "@/hooks/useAudioEngine";
-import type { EmitResult, GameSocket } from "@/lib/socket-client";
+import type { EmitPayload, EmitResult, GameSocket } from "@/lib/socket-client";
 import { RequireAuth, useAuth } from "@/providers/auth-provider";
 import { useLocale } from "@/providers/locale-provider";
 import { createGameStore, useGame, type GameState } from "@/stores/game.store";
@@ -77,10 +77,26 @@ export function toOutcome<E extends ClientEventName>(result: EmitResult<E>): Com
   return { status: "unknown" };
 }
 
-/** Builds the lobby and phase commands; each reads the latest snapshot when it runs. */
+/** Error codes meaning the socket's access token is no longer accepted for host commands. */
+const AUTH_CODES: ReadonlySet<string> = new Set([
+  "TOKEN_EXPIRED",
+  "TOKEN_REVOKED",
+  "AUTH_REQUIRED",
+]);
+
+/**
+ * Builds the lobby and phase commands; each reads the latest snapshot when it runs.
+ *
+ * The server re-checks the socket's access token on every host command, and access tokens
+ * live 15 minutes (code review MJ-22). When a command fails with an auth error and `renewAuth`
+ * is given, the stage obtains a fresh token, announces it with `auth:update` (renewAuth's job),
+ * and re-sends the command once with the same `requestId`, so a host can run a long game
+ * without reloading the page. A failed renewal returns the original auth error.
+ */
 export function createHostCommands(
   socket: Pick<GameSocket, "emit">,
   store: StoreApi<GameState>,
+  renewAuth?: () => Promise<boolean>,
 ): HostLobbyCommands & HostPhaseCommands {
   /** Room identity of the current host snapshot, or null while none is synced. */
   const member = () => {
@@ -96,42 +112,47 @@ export function createHostCommands(
     return outcome;
   };
   const notSynced: CommandOutcome = { status: "error", errorCode: "INVALID_PHASE" };
+  /** Emits once and, on an auth error, renews the token and re-sends with the same requestId. */
+  const send = async <E extends ClientEventName>(
+    event: E,
+    payload: EmitPayload<E>,
+  ): Promise<CommandOutcome> => {
+    const first = await socket.emit(event, payload);
+    if (first.status !== "error" || !renewAuth || !AUTH_CODES.has(first.error.errorCode))
+      return settle(first);
+    if (!(await renewAuth())) return settle(first);
+    return settle(await socket.emit(event, { ...payload, requestId: first.requestId }));
+  };
   /** Sends a phase command with the snapshot's phase version. */
   const phase = async (
     event: "host:start_game" | "host:skip_timer" | "host:next_step" | "host:end_game",
   ): Promise<CommandOutcome> => {
     const room = member();
     if (!room) return notSynced;
-    return settle(
-      await socket.emit(event, {
-        sessionId: room.sessionId,
-        pinCode: room.pinCode,
-        expectedPhaseVersion: room.version,
-      }),
-    );
+    return send(event, {
+      sessionId: room.sessionId,
+      pinCode: room.pinCode,
+      expectedPhaseVersion: room.version,
+    });
   };
   return {
     lock: async (isLocked) => {
       const room = member();
       if (!room) return notSynced;
-      return settle(
-        await socket.emit("host:lock_room", {
-          sessionId: room.sessionId,
-          pinCode: room.pinCode,
-          isLocked,
-        }),
-      );
+      return send("host:lock_room", {
+        sessionId: room.sessionId,
+        pinCode: room.pinCode,
+        isLocked,
+      });
     },
     kick: async (playerId) => {
       const room = member();
       if (!room) return notSynced;
-      return settle(
-        await socket.emit("host:kick_player", {
-          sessionId: room.sessionId,
-          pinCode: room.pinCode,
-          playerId,
-        }),
-      );
+      return send("host:kick_player", {
+        sessionId: room.sessionId,
+        pinCode: room.pinCode,
+        playerId,
+      });
     },
     start: () => phase("host:start_game"),
     skip: () => phase("host:skip_timer"),
@@ -173,13 +194,20 @@ export function HostStage({ sessionId }: HostStageProps) {
   const { api, getAccessToken, reloadPrincipal } = useAuth();
   const [store] = useState(createGameStore);
   const [authExpired, setAuthExpired] = useState(false);
-  const socket = useGameSocket({ url: SOCKET_URL, role: "host", store, getAccessToken });
-  const clock = useGameClock({ socket, store });
   const onAuthExpired = useCallback(async () => {
     const token = (await reloadPrincipal()) ? getAccessToken() : null;
     if (!token) setAuthExpired(true);
     return token;
   }, [reloadPrincipal, getAccessToken]);
+  // A rejected handshake (expired token) refreshes the token before the next reconnect (MJ-22).
+  const socket = useGameSocket({
+    url: SOCKET_URL,
+    role: "host",
+    store,
+    getAccessToken,
+    onAuthError: onAuthExpired,
+  });
+  const clock = useGameClock({ socket, store });
   useSessionRecovery({
     socket,
     store,
@@ -192,7 +220,16 @@ export function HostStage({ sessionId }: HostStageProps) {
   const terminal = useGame(store, (state) => state.terminal);
   const host = snapshot?.role === "host" ? snapshot : null;
   const audio = useAudioEngine({ role: "host", snapshot: host, serverNow: clock.serverNow });
-  const commands = useMemo(() => createHostCommands(socket, store), [socket, store]);
+  /** Gets a fresh token and announces it on the live socket; false when that failed. */
+  const renewAuth = useCallback(async () => {
+    const token = await onAuthExpired();
+    if (!token) return false;
+    return (await socket.emit("auth:update", { accessToken: token })).status === "ok";
+  }, [onAuthExpired, socket]);
+  const commands = useMemo(
+    () => createHostCommands(socket, store, renewAuth),
+    [socket, store, renewAuth],
+  );
   const known = useRef<{ sessionId: string; ids: Set<string> } | null>(null);
   const { signal } = audio;
 
