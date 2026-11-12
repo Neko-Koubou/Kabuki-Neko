@@ -433,6 +433,34 @@ describe("transport and lifecycle", () => {
     expect(store.getState().terminal).toBeNull();
   });
 
+  it("advances publicRevision with applied room-wide events so heartbeats stay quiet (MJ-25)", () => {
+    const store = createGameStore();
+    store.getState().applySync(playerSnapshot({ revision: 5 }));
+    const player = store.getState().snapshot?.players[0];
+    expect(player).toBeDefined();
+    if (!player) return;
+    store
+      .getState()
+      .applyEvent("room:player_joined", push({ player: { ...player, nickname: "Bima" } }, 6, 3));
+    expect(store.getState().snapshot?.publicRevision).toBe(6);
+    store.getState().applyEvent("room:version", push({ publicRevision: 6 }, 6, 3));
+    expect(store.getState().syncRequested).toBe(false);
+    store.getState().applyEvent("room:version", push({ publicRevision: 7 }, 7, 3));
+    expect(store.getState().syncRequested).toBe(true);
+
+    const host = createGameStore();
+    host.getState().applySync(hostSnapshot(5));
+    host
+      .getState()
+      .applyEvent(
+        "game:answer_count_updated",
+        push({ answeredCount: 1, totalPlayers: 1, optionalAnswerCount: 0 }, 7, 3),
+      );
+    expect(host.getState().snapshot?.publicRevision).toBe(5);
+    host.getState().applyEvent("room:version", push({ publicRevision: 5 }, 7, 3));
+    expect(host.getState().syncRequested).toBe(false);
+  });
+
   it("applies room:expired despite the server's revision 1 / phaseVersion 1 (MJ-29)", () => {
     const store = createGameStore();
     store.getState().applySync(playerSnapshot({ revision: 10 }));

@@ -147,6 +147,12 @@ function phaseTiming(serverTime: number, durationMs: number | null): RoomSnapsho
   };
 }
 
+/** Pushes sent only to the host channel; they never advance the public revision. */
+const HOST_ONLY_EVENTS: ReadonlySet<string> = new Set([
+  "game:answer_count_updated",
+  "report:status_changed",
+]);
+
 /** Applies a validated event payload to the snapshot; returns null for unknown events. */
 function reduce(
   snapshot: RoomSnapshot,
@@ -156,6 +162,13 @@ function reduce(
 ): RoomSnapshot | null {
   const base = {
     revision: Math.max(snapshot.revision, envelope.revision),
+    // A room-wide push reflects the public state at its revision (the server sets
+    // publicRevision = revision on every public mutation), so the heartbeat comparison stays
+    // quiet after applied events. Host-only pushes do not change the public revision
+    // (code review MJ-25).
+    publicRevision: HOST_ONLY_EVENTS.has(name)
+      ? snapshot.publicRevision
+      : Math.max(snapshot.publicRevision, envelope.revision),
     phaseVersion: Math.max(snapshot.phaseVersion, envelope.phaseVersion),
     serverTime: envelope.serverTime,
   };

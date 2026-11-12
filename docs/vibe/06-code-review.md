@@ -304,10 +304,11 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Spec baru membuktikan URL `/uploads` absolut dari API dan basis bucket ter-render secara default, sedangkan origin asing tetap ditolak.
   - Web Vitest, tsc, dan lint PASS; E2E `security-headers` 8/8; Compose config default + TLS PASS.
 
-#### MJ-25 [MAJOR] [OPEN] `publicRevision` snapshot tidak ikut maju oleh event → `room:sync` penuh berulang
+#### MJ-25 [MAJOR] [RESOLVED] `publicRevision` snapshot tidak ikut maju oleh event → `room:sync` penuh berulang
 - **File:Line**: `apps/web/src/stores/game.store.ts:157-161,360-366`; `connection-recovery.tsx:64,200`.
 - **Masalah**: heartbeat selalu terlihat lebih baru, sehingga semua klien (hingga 200) meminta snapshot penuh beberapa kali per soal. Selama itu UI menjadi `inert` ("Catching up…").
 - **Perbaikan**: event room-scope memajukan `publicRevision`. Event khusus host tidak.
+- **Resolusi**: `reduce` di `game.store.ts` kini memajukan `publicRevision` ke revisi envelope untuk setiap push room-wide; push khusus host (`game:answer_count_updated`, `report:status_changed`) tidak. Heartbeat dengan publicRevision yang sama tidak lagi memicu `room:sync`; heartbeat lebih baru tetap memicu. Spec baru di `game.store.spec.ts`. Web Vitest 51/448, tsc, lint PASS.
 
 #### MJ-26 [MAJOR] [OPEN] Kegagalan recovery non-terminal diabaikan: tanpa backoff, `retryAfter` diabaikan, tanpa tombol Retry
 - **File:Line**: `apps/web/src/hooks/use-session-recovery.ts:239-241,262-268`; `connection-recovery.tsx:140-145`.
