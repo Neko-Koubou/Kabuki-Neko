@@ -453,6 +453,8 @@ interface BenchNode {
   label: "A" | "B";
   url: string;
   logs: (() => string) | null;
+  /** Exit code once a local node's process has exited (null while running or external). */
+  exitCode: () => number | null;
 }
 
 /** Benchmark options (see the CLI usage). */
@@ -466,6 +468,14 @@ export interface BenchmarkOptions {
   origin?: string;
   /** Existing CREATOR account on external nodes (`KN_BENCH_HOST_EMAIL`/`_PASSWORD`). */
   credentials?: { email: string; password: string };
+}
+
+/** The last `count` non-empty output lines of a process, without probe lines. */
+function outputTail(output: string, count: number): string[] {
+  return output
+    .split("\n")
+    .filter((line) => line.trim() !== "" && !line.includes(PROBE_PREFIX))
+    .slice(-count);
 }
 
 /** Runs one benchmark; returns the JSON record. */
@@ -490,8 +500,10 @@ export async function runBenchmark(options: BenchmarkOptions) {
         const host = (login.json as { accessToken?: string } | null)?.accessToken;
         if (login.status !== 200 || !host)
           throw new Error(`host sign-in on ${first} failed with HTTP ${login.status}`);
-        const nodeA: BenchNode = { label: "A", url: first, logs: null };
-        const nodeB: BenchNode = second === first ? nodeA : { label: "B", url: second, logs: null };
+        const none = () => null;
+        const nodeA: BenchNode = { label: "A", url: first, logs: null, exitCode: none };
+        const nodeB: BenchNode =
+          second === first ? nodeA : { label: "B", url: second, logs: null, exitCode: none };
         return {
           nodes: [nodeA, nodeB] as const,
           env: {} as Record<string, string>,
@@ -515,8 +527,8 @@ export async function runBenchmark(options: BenchmarkOptions) {
             const [a, b] = scaled.nodes;
             return {
               nodes: [
-                { label: "A", url: a.url, logs: a.logs },
-                { label: "B", url: b.url, logs: b.logs },
+                { label: "A", url: a.url, logs: a.logs, exitCode: a.exitCode },
+                { label: "B", url: b.url, logs: b.logs, exitCode: b.exitCode },
               ] as const satisfies readonly BenchNode[],
               env: scaled.env,
               call: scaled.call,
@@ -530,7 +542,12 @@ export async function runBenchmark(options: BenchmarkOptions) {
             };
           }
           const single = await startSingleApi("sqlite", "memory");
-          const node: BenchNode = { label: "A", url: single.api.url, logs: single.api.logs };
+          const node: BenchNode = {
+            label: "A",
+            url: single.api.url,
+            logs: single.api.logs,
+            exitCode: single.api.exitCode,
+          };
           return {
             nodes: [node, node] as const,
             env: single.env,
@@ -776,6 +793,9 @@ export async function runBenchmark(options: BenchmarkOptions) {
         ? summarizeProbe(parseProbeLines(node.logs(), benchmarkStart, finishedAt))
         : null,
       disconnects: byReason[node.label] ?? {},
+      // A node that died during the run: its exit code and last output (probe lines excluded).
+      exitCode: node.exitCode(),
+      lastOutput: node.exitCode() === null || !node.logs ? null : outputTail(node.logs(), 40),
     }));
     const transport = summarize(clients.flatMap((client) => client.latencies));
     const loss = deliveryLoss(
@@ -829,10 +849,8 @@ export async function runBenchmark(options: BenchmarkOptions) {
     const tails = [...new Set(cluster.nodes)]
       .filter((node) => node.logs !== null)
       .map((node) => {
-        const lines = (node.logs?.() ?? "")
-          .split("\n")
-          .filter((line) => line.trim() !== "" && !line.includes(PROBE_PREFIX));
-        return `--- API node ${node.label} (last ${Math.min(lines.length, 40)} lines) ---\n${lines.slice(-40).join("\n")}`;
+        const lines = outputTail(node.logs?.() ?? "", 40);
+        return `--- API node ${node.label} (exit ${node.exitCode() ?? "running"}, last ${lines.length} lines) ---\n${lines.join("\n")}`;
       });
     const message = error instanceof Error ? error.message : String(error);
     throw new Error([message, ...tails].join("\n"), { cause: error });
@@ -886,6 +904,16 @@ function diagnosticsTable(record: Awaited<ReturnType<typeof runBenchmark>>): str
     ...(record.disconnectsFirstAtMs === null
       ? []
       : ["", `First disconnect ${Math.round(record.disconnectsFirstAtMs / 1000)} s after start.`]),
+    ...record.diagnostics.nodes
+      .filter((node) => node.exitCode !== null)
+      .flatMap((node) => [
+        "",
+        `API node ${node.node} exited during the run with code ${node.exitCode}. Last output:`,
+        "",
+        "```text",
+        ...(node.lastOutput ?? []),
+        "```",
+      ]),
   ];
 }
 
