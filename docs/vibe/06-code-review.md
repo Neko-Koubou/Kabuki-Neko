@@ -310,12 +310,13 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 - **Perbaikan**: event room-scope memajukan `publicRevision`. Event khusus host tidak.
 - **Resolusi**: `reduce` di `game.store.ts` kini memajukan `publicRevision` ke revisi envelope untuk setiap push room-wide; push khusus host (`game:answer_count_updated`, `report:status_changed`) tidak. Heartbeat dengan publicRevision yang sama tidak lagi memicu `room:sync`; heartbeat lebih baru tetap memicu. Spec baru di `game.store.spec.ts`. Web Vitest 51/448, tsc, lint PASS.
 
-#### MJ-26 [MAJOR] [OPEN] Kegagalan recovery non-terminal diabaikan: tanpa backoff, `retryAfter` diabaikan, tanpa tombol Retry
+#### MJ-26 [MAJOR] [RESOLVED] Kegagalan recovery non-terminal diabaikan: tanpa backoff, `retryAfter` diabaikan, tanpa tombol Retry
 - **File:Line**: `apps/web/src/hooks/use-session-recovery.ts:239-241,262-268`; `connection-recovery.tsx:140-145`.
 - **Masalah**: RATE_LIMITED/DEPENDENCY_UNAVAILABLE membuat pemain macet di "Connecting…" atau mengulang join tiap ±2 s. Melanggar SA §5.1.
 - **Perbaikan**:
   - Jadwalkan `recover` single-flight dengan `backoffDelay(attempt, retryAfterMs)`.
   - Tampilkan Retry/Leave.
+- **Resolusi**: error recovery non-terminal (RATE_LIMITED, DEPENDENCY_UNAVAILABLE, INTERNAL_ERROR, …) untuk pemain dan host kini menjadwalkan retry dengan `backoffDelay(attempt, retryAfterMs)` lewat satu timer terkelola (dibatalkan saat sukses, retry manual, unmount; dilewati saat terputus) dan menyetel `recoveryFailed`; `ConnectionRecovery` menampilkan Retry/Leave (`lost`/`stale lost`) alih-alih "Connecting…" tanpa akhir; Retry di player/host memicu `retryNow` pada socket hidup. Spec baru (tidak ada join sebelum 9 s, tepat satu setelahnya, flag gagal lalu pulih, tidak ada timer setelah unmount; gagal pada kode lama) + kasus `recoveryView`. Web Vitest 51/450, tsc, lint PASS.
 
 #### MJ-27 [MAJOR] [RESOLVED] Reconnect pemain mengirim `room:sync` sebelum rejoin → join ganda
 - **File:Line**: `apps/web/src/stores/game.store.ts:407-414`; `use-session-recovery.ts:293-305`; `use-socket.ts:301-304`.
@@ -376,7 +377,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 | MN-25 | [OPEN] | `room-scheduler.ts:137-164,193` | Map/timer scheduler bocor saat instance lain mengambil lease. | `forget` saat `lead()` gagal. |
 | MN-26 | [OPEN] | `room-scheduler.ts:20,235-245`; `docs/operations.md:143` | Alarm 24 jam tanpa status/errorCode dan hanya sekali per proses. | Sertakan status; ulangi tiap 24 jam. |
 | MN-27 | [OPEN] | `apps/api/src/main.ts:24,56` | `securityHeaders` di modul entry, sehingga tidak bisa diuji unit. | Pindah ke `common/security-headers.middleware.ts`. |
-| MN-28 | [OPEN] | `apps/web/src/hooks/use-session-recovery.ts:223,264` | Timer retry `recover()` tidak dibatalkan atau dibatasi. | Bersihkan saat cleanup; skip saat terputus. |
+| MN-28 | [RESOLVED] | `apps/web/src/hooks/use-session-recovery.ts:223,264` | Timer retry `recover()` tidak dibatalkan atau dibatasi. | Bersihkan saat cleanup; skip saat terputus. **Resolusi:** timer retry `recover()` kini satu timer terkelola di `use-session-recovery.ts` (diganti oleh jadwal baru, dibatalkan saat sukses/retry manual/unmount, dilewati saat socket terputus); dikerjakan bersama MJ-26 dan diuji oleh spec MJ-26 (tidak ada emit setelah unmount). |
 | MN-29 | [OPEN] | `player-game.tsx:95`; `use-socket.ts:305-334` | Halaman player membuka socket anonim walau tanpa kredensial. | Flag `enabled`. |
 | MN-30 | [OPEN] | `studio-editor.tsx:348-358,475,480` | Kegagalan resolve konflik senyap dan rejection tidak ditangani. | Notice error + Retry. |
 | MN-31 | [OPEN] | `user-invites.tsx:590`; `admin-settings-health.tsx:232` | Idempotency-Key baru per tekan setelah hasil tidak pasti. | Simpan key sampai respons definitif. |

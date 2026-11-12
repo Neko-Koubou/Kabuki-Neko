@@ -16,7 +16,7 @@
  *   answer was not accepted and the server still accepts answers is the identical submission
  *   (same submissionId and payload) sent again.
  */
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { StoreApi } from "zustand";
 import { pinCodeSchema } from "@kabuki-neko/shared/schemas/game.schema";
 import { uuidSchema } from "@kabuki-neko/shared/schemas/users.schema";
@@ -209,9 +209,48 @@ export function useSessionRecovery(options: SessionRecoveryOptions) {
    * AUTH_REQUIRED and a second join (code review MJ-27). Reset on every disconnect.
    */
   const bound = useRef(false);
+  /**
+   * The one scheduled recovery retry (code review MJ-26/MN-28): replaced by newer schedules,
+   * cleared on success, on a manual retry and on unmount, and skipped while disconnected (the
+   * next `connect` recovers anyway).
+   */
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** True once a recovery attempt failed without ending the session (Retry/Leave are shown). */
+  const [recoveryFailed, setRecoveryFailed] = useState(false);
   /** The single-flight `recover` (defined below), for retries scheduled from inside a run. */
   const recoverRef = useRef<(requestId?: string, attempt?: number) => Promise<void>>(
     async () => undefined,
+  );
+
+  /** Schedules one retry after `delayMs` (replacing any earlier schedule). */
+  const scheduleRetry = useCallback(
+    (delayMs: number, requestId: string | undefined, attempt: number) => {
+      if (retryTimer.current) clearTimeout(retryTimer.current);
+      retryTimer.current = setTimeout(() => {
+        retryTimer.current = null;
+        if (!socket.connected || store.getState().terminal !== null) return;
+        void recoverRef.current(requestId, attempt);
+      }, delayMs);
+    },
+    [socket, store],
+  );
+
+  /**
+   * Handles a recovery error that does not end the session (RATE_LIMITED,
+   * DEPENDENCY_UNAVAILABLE, INTERNAL_ERROR, …): shows Retry/Leave and retries with backoff,
+   * never sooner than the server's `retryAfterMs` (SA §5.1; code review MJ-26).
+   */
+  const retryLater = useCallback(
+    (error: { params: Record<string, unknown> }, attempt: number) => {
+      setRecoveryFailed(true);
+      const after = error.params.retryAfterMs;
+      scheduleRetry(
+        backoffDelay(attempt, typeof after === "number" && after >= 0 ? after : null),
+        undefined,
+        attempt + 1,
+      );
+    },
+    [scheduleRetry],
   );
 
   /** Rejoins (player) or recovers (host) after a connect. */
@@ -229,14 +268,12 @@ export function useSessionRecovery(options: SessionRecoveryOptions) {
           ...(requestId ? { requestId } : {}),
         });
         if (result.status === "ok") {
+          setRecoveryFailed(false);
           store.getState().applySync(result.data.snapshot);
           return;
         }
         if (result.status === "unknown") {
-          setTimeout(
-            () => void recoverRef.current(result.requestId, attempt + 1),
-            backoffDelay(attempt),
-          );
+          scheduleRetry(backoffDelay(attempt), result.requestId, attempt + 1);
           return;
         }
         const code = result.error.errorCode;
@@ -254,6 +291,7 @@ export function useSessionRecovery(options: SessionRecoveryOptions) {
         }
         const terminal = TERMINAL_CODES[code];
         if (terminal) terminate(terminal, null);
+        else retryLater(result.error, attempt);
         return;
       }
       const pinCode = state.snapshot?.pinCode ?? opts.pinCode;
@@ -271,6 +309,7 @@ export function useSessionRecovery(options: SessionRecoveryOptions) {
       });
       if (result.status === "ok") {
         bound.current = true;
+        setRecoveryFailed(false);
         remember(result.data);
         store.getState().applySync(result.data.snapshot);
         await retryPending();
@@ -289,8 +328,9 @@ export function useSessionRecovery(options: SessionRecoveryOptions) {
       // A replaced session's credentials now belong to the replacing tab, which shares this
       // storage key: keep them (MJ-28). A dead token (INVALID_SESSION_TOKEN) is cleared.
       if (terminal) terminate(terminal, code === "SESSION_REPLACED" ? null : record.sessionId);
+      else retryLater(result.error, attempt);
     },
-    [socket, store, remember, retryPending, terminate],
+    [socket, store, remember, retryPending, terminate, scheduleRetry, retryLater],
   );
 
   /** Single-flight wrapper: concurrent callers share the recovery already in progress. */
@@ -372,6 +412,8 @@ export function useSessionRecovery(options: SessionRecoveryOptions) {
       offConnect();
       offDisconnect();
       offStore();
+      if (retryTimer.current) clearTimeout(retryTimer.current);
+      retryTimer.current = null;
     };
   }, [socket, store, recover, sync]);
 
@@ -418,5 +460,12 @@ export function useSessionRecovery(options: SessionRecoveryOptions) {
     return code === "TIME_EXPIRED" ? "closed" : "rejected";
   }, [socket, store]);
 
-  return { submit, recover, sync };
+  /** Manual retry: drops any scheduled retry and recovers now on the live socket. */
+  const retryNow = useCallback(() => {
+    if (retryTimer.current) clearTimeout(retryTimer.current);
+    retryTimer.current = null;
+    if (socket.connected) void recover();
+  }, [socket, recover]);
+
+  return { submit, recover, sync, recoveryFailed, retryNow };
 }

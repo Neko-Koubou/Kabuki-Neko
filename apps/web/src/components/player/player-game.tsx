@@ -94,7 +94,7 @@ export function PlayerGame({ pinCode }: PlayerGameProps) {
   const [store] = useState(createGameStore);
   const socket = useGameSocket({ url: SOCKET_URL, role: "player", store });
   const clock = useGameClock({ socket, store });
-  const { submit } = useSessionRecovery({
+  const { submit, recoveryFailed, retryNow } = useSessionRecovery({
     socket,
     store,
     role: "player",
@@ -114,10 +114,15 @@ export function PlayerGame({ pinCode }: PlayerGameProps) {
     setRecord(findPlayerSessionByPin(pinCode));
   }, [pinCode]);
 
+  /** Manual retry: recover now on a live socket, otherwise reconnect (which recovers). */
   const retry = useCallback(() => {
+    if (socket.connected) {
+      retryNow();
+      return;
+    }
     store.getState().setTransport("connecting");
     socket.connect();
-  }, [socket, store]);
+  }, [socket, store, retryNow]);
   const leave = useCallback(() => {
     socket.disconnect();
     router.push("/join");
@@ -143,6 +148,7 @@ export function PlayerGame({ pinCode }: PlayerGameProps) {
         role="player"
         store={store}
         sessionId={sessionId}
+        recoveryFailed={recoveryFailed}
         onRetry={retry}
         onLeave={leave}
       >

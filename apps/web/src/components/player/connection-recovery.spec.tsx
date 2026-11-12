@@ -255,5 +255,11 @@ describe("ConnectionRecovery", () => {
       kind: "terminal",
       reason: "KICKED",
     });
+    // A failed (non-terminal) recovery offers Retry/Leave instead of endless "Connecting…" (MJ-26).
+    expect(recoveryView(base, { ...flags, recoveryFailed: true })).toEqual({ kind: "lost" });
+    expect(recoveryView({ ...base, ...live }, { ...flags, recoveryFailed: true })).toEqual({
+      kind: "stale",
+      reason: "lost",
+    });
   });
 });

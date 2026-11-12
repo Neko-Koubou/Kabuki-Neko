@@ -50,16 +50,26 @@ export type RecoveryView =
 /** Derives the view from the game state and the socket layer's flags. */
 export function recoveryView(
   state: Pick<GameState, "snapshot" | "transport" | "syncRequested" | "terminal">,
-  flags: { hasCredentials: boolean; outage: boolean; authExpired: boolean },
+  flags: {
+    hasCredentials: boolean;
+    outage: boolean;
+    authExpired: boolean;
+    /** A recovery attempt failed without ending the session (MJ-26); defaults to false. */
+    recoveryFailed?: boolean;
+  },
 ): RecoveryView {
   if (state.terminal) return { kind: "terminal", reason: state.terminal };
   if (flags.authExpired) return { kind: "auth" };
   if (!flags.hasCredentials) return { kind: "empty" };
   const transport = state.transport.status;
+  // A failed recovery offers Retry/Leave instead of an endless "Connecting…" (MJ-26).
   if (!state.snapshot)
-    return transport === "disconnected" ? { kind: "lost" } : { kind: "connecting" };
+    return transport === "disconnected" || flags.recoveryFailed
+      ? { kind: "lost" }
+      : { kind: "connecting" };
   if (flags.outage) return { kind: "stale", reason: "outage" };
-  if (transport === "disconnected") return { kind: "stale", reason: "lost" };
+  if (transport === "disconnected" || flags.recoveryFailed)
+    return { kind: "stale", reason: "lost" };
   if (transport !== "connected") return { kind: "stale", reason: "reconnecting" };
   if (state.syncRequested) return { kind: "stale", reason: "resyncing" };
   return { kind: "live" };
@@ -77,6 +87,8 @@ export interface ConnectionRecoveryProps {
   outage?: boolean;
   /** Host only: the sign-in expired and could not be renewed. */
   authExpired?: boolean;
+  /** A recovery attempt failed and is being retried with backoff: show Retry/Leave. */
+  recoveryFailed?: boolean;
   /** Reconnect now (manual retry). */
   onRetry: () => void;
   /** Leave the game screen. */
@@ -93,6 +105,7 @@ export function ConnectionRecovery({
   nextRetryInSec = null,
   outage = false,
   authExpired = false,
+  recoveryFailed = false,
   onRetry,
   onLeave,
   storage,
@@ -107,7 +120,7 @@ export function ConnectionRecovery({
   const cleared = useRef(false);
   const view = recoveryView(
     { snapshot, transport, syncRequested, terminal },
-    { hasCredentials: sessionId !== null, outage, authExpired },
+    { hasCredentials: sessionId !== null, outage, authExpired, recoveryFailed },
   );
 
   useEffect(() => {
