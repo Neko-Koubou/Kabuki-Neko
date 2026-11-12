@@ -458,6 +458,23 @@ for (const driver of ["memory", "redis"] as const)
         });
       }
     });
+    it("runs scheduler lease operations without decoding the room state (TASK-185H)", async () => {
+      if (driver !== "redis") return;
+      await seed();
+      // A state Redis cannot decode: only the release, which needs it, may read it.
+      const meta = `kabukineko:parity:room:{${identity.pin}}:meta`;
+      await redis.hset(meta, "state", "{not json");
+      const lease = required(await store.acquireLease(identity, uuid(60), 3000));
+      expect(lease).toMatchObject({ ownerId: uuid(60), epoch: 1 });
+      expect(await store.renewLease(identity, lease, 3000)).toBe(true);
+      expect(await store.releaseLease(identity, lease)).toBe(true);
+      await expect(
+        store.acquireLease({ ...identity, sessionId: uuid(90) }, uuid(61), 3000),
+      ).rejects.toMatchObject({ code: "ROOM_NOT_FOUND" });
+      await expect(store.releaseRoom(identity)).rejects.toMatchObject({
+        code: "STATE_UNAVAILABLE",
+      });
+    });
     it("retries joins without a second slot, recovers and rejects old generations", async () => {
       await seed();
       const first = await join();

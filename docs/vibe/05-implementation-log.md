@@ -2596,3 +2596,21 @@
     - `admit-answer`: under 5 ms.
 - **Conclusion**: the next bottleneck is server-side work inside Redis, which is a server defect, not a host limit. Corrective task TASK-185H was added.
 - **Verification**: `pnpm exec prettier --check docs/performance-results.md` → pass. Records `test-results/benchmark/redis.json`, `memory.json` (copies in the scratchpad).
+
+## TASK-185H: Kurangi kerja server Redis per pembacaan dan per operasi lease — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/providers/state/redis-state.store.ts`:
+    - The `read` script returns a multi-bulk reply `{state, expiresAt, now}` (empty when missing), so the stored string is no longer re-encoded by `cjson.encode` inside Redis or double-parsed in Node.
+    - `evaluate` (shared EVALSHA/EVAL with NOSCRIPT fallback) and `readRaw` (validated by `readReplySchema`) back both `read` and `readPrivateSnapshot`. `run` keeps the JSON reply contract for the other scripts.
+  - `apps/api/src/providers/state/lua/release-room.lua`:
+    - Room presence and session are checked with `HEXISTS state` + `HGET sessionId`; meta always sets both together (`mutate-room.lua`).
+    - The state is decoded only for `releaseRoom` (report durability). Lease acquire/renew/release never decode it.
+    - Results, errors and epochs are unchanged.
+  - `tests/contracts/state-parity.spec.ts`: new Redis case. With an undecodable `state` field, lease acquire/renew/release still work, an unknown session gets `ROOM_NOT_FOUND`, and only `releaseRoom` fails (STATE_UNAVAILABLE). It FAILS with the old `release-room.lua`.
+- **Verification**:
+  - `pnpm exec eslint tests/contracts/state-parity.spec.ts` → pass.
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 39/39 suites, 277/277 tests.
+  - `pnpm test:contracts --testPathPatterns='state-parity|redis'` → 4/4 suites (incl. Redis Cluster), 63/63 tests.
+  - `pnpm test:integration --testPathPatterns='realtime-races|room-retention'` → 2/2 suites, 28/28 tests.

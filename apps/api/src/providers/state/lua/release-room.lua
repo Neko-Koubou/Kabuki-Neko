@@ -7,13 +7,17 @@ for _, key in ipairs(KEYS) do
   local owner = redis.call('HGET', key, 'sessionId')
   if owner and owner ~= session then return cjson.encode({result=false}) end
 end
-local raw = redis.call('HGET', KEYS[1], 'state')
-if not raw then return cjson.encode({result=false}) end
-local s = cjson.decode(raw)
-if s.sessionId ~= session then return cjson.encode({result=false}) end
+-- The room exists for this session: meta holds 'sessionId' and 'state' together (mutate-room).
+if redis.call('HEXISTS', KEYS[1], 'state') == 0 or redis.call('HGET', KEYS[1], 'sessionId') ~= session then
+  return cjson.encode({result=false})
+end
 local time = redis.call('TIME')
 local now = tonumber(time[1])*1000 + math.floor(tonumber(time[2])/1000)
 if op.kind == 'releaseRoom' then
+  -- Only the release needs the state (report durability); lease operations never decode it,
+  -- which cost a full multi-megabyte decode on every scheduler lease call (TASK-185H).
+  local s = cjson.decode(redis.call('HGET', KEYS[1], 'state'))
+  if s.sessionId ~= session then return cjson.encode({result=false}) end
   if s.frozenReport ~= cjson.null and (redis.call('HGET',KEYS[1],'durable') ~= '1' or s.finalization == cjson.null or s.finalization.status ~= 'ready') then return cjson.encode({result=false}) end
   redis.call('DEL', unpack(KEYS)); return cjson.encode({result=true})
 end

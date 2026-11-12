@@ -54,11 +54,20 @@ const commandResultSchema = z.object({
   phaseVersion: z.number().int(),
   ack: commandAckSchema,
 });
+/**
+ * Returns `{state, expiresAt, now}` as a multi-bulk reply (empty when the room is missing). The
+ * state goes back as the stored bulk string: wrapping it in `cjson.encode` re-escaped the whole
+ * multi-megabyte JSON inside Redis on every read (QA follow-up TASK-185H).
+ */
 const readScript = `
 local raw=redis.call('HGET',KEYS[1],'state')
-if not raw or redis.call('HGET',KEYS[1],'sessionId') ~= ARGV[1] then return cjson.encode({missing=true}) end
+if not raw or redis.call('HGET',KEYS[1],'sessionId') ~= ARGV[1] then return {} end
 local t=redis.call('TIME')
-return cjson.encode({state=raw,expiresAt=tonumber(redis.call('HGET',KEYS[1],'expiresAt')),now=tonumber(t[1])*1000+math.floor(tonumber(t[2])/1000)})`;
+return {raw,redis.call('HGET',KEYS[1],'expiresAt') or '0',tostring(tonumber(t[1])*1000+math.floor(tonumber(t[2])/1000))}`;
+const readReplySchema = z.union([
+  z.tuple([]),
+  z.tuple([z.string(), z.coerce.number().finite(), z.coerce.number().finite()]),
+]);
 
 /** Restore only schema-declared arrays encoded as {} by Redis cjson. Records,
  * including empty player/result maps, retain their object representation. */
@@ -216,38 +225,51 @@ export class RedisStateStore implements IGameStateStore {
     const prefix = `kabukineko:${this.namespace}:room:{${identity.pin}}`;
     return ["meta", "join-receipts", "lease"].map((suffix) => `${prefix}:${suffix}`);
   }
-  private async run(
-    name: string,
-    identity: RoomIdentity,
-    operation: object,
-  ): Promise<Record<string, unknown>> {
+  /** Runs a script for a room and returns its raw reply (STATE_UNAVAILABLE on any failure). */
+  private async evaluate(name: string, identity: RoomIdentity, operation: object) {
     const keys = this.keys(identity);
     const script = this.scripts.get(name);
     if (!script || this.destroyed) return fail("STATE_UNAVAILABLE");
-    let raw: unknown;
     try {
       try {
-        raw = await this.redis.evalsha(
+        return (await this.redis.evalsha(
           script.sha,
           keys.length,
           ...keys,
           identity.sessionId,
           JSON.stringify(operation),
-        );
+        )) as unknown;
       } catch (error: unknown) {
         if (!(error instanceof Error) || !error.message.startsWith("NOSCRIPT")) throw error;
         // EVAL routes to the room's cluster node and repopulates that node's cache.
-        raw = await this.redis.eval(
+        return (await this.redis.eval(
           script.source,
           keys.length,
           ...keys,
           identity.sessionId,
           JSON.stringify(operation),
-        );
+        )) as unknown;
       }
     } catch {
       return fail("STATE_UNAVAILABLE");
     }
+  }
+  /** The stored state string with its expiry and Redis' clock, or null for a missing room. */
+  private async readRaw(
+    identity: RoomIdentity,
+  ): Promise<{ state: string; expiresAt: number; now: number } | null> {
+    const reply = readReplySchema.safeParse(await this.evaluate("read", identity, {}));
+    if (!reply.success) return fail("STATE_UNAVAILABLE");
+    if (reply.data.length === 0) return null;
+    const [state, expiresAt, now] = reply.data;
+    return { state, expiresAt, now };
+  }
+  private async run(
+    name: string,
+    identity: RoomIdentity,
+    operation: object,
+  ): Promise<Record<string, unknown>> {
+    const raw = await this.evaluate(name, identity, operation);
     let parsed: unknown;
     try {
       parsed = JSON.parse(z.string().parse(raw));
@@ -259,12 +281,8 @@ export class RedisStateStore implements IGameStateStore {
     return result;
   }
   private async read(identity: RoomIdentity) {
-    const result = await this.run("read", identity, {});
-    if (result.missing === true) return null;
-    const envelope = decode(
-      z.object({ state: z.string(), expiresAt: z.number(), now: z.number() }),
-      result,
-    );
+    const envelope = await this.readRaw(identity);
+    if (!envelope) return null;
     let raw: unknown;
     try {
       raw = JSON.parse(envelope.state);
@@ -317,12 +335,12 @@ export class RedisStateStore implements IGameStateStore {
    * contract (never mutated) makes safe to share.
    */
   async readPrivateSnapshot(identity: RoomIdentity): Promise<Readonly<ActiveRoomState> | null> {
-    const result = await this.run("read", identity, {});
-    if (result.missing === true) {
+    const envelope = await this.readRaw(identity);
+    if (!envelope) {
       this.lightCache.delete(identity.sessionId);
       return null;
     }
-    const { state: raw } = decode(z.object({ state: z.string() }).passthrough(), result);
+    const raw = envelope.state;
     const cached = this.lightCache.get(identity.sessionId);
     if (cached && cached.raw === raw) return cached.state;
     let parsed: unknown;
