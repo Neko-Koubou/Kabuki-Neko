@@ -183,7 +183,7 @@ Tindak lanjut QA-01/02 juga dicatat di bawah MJ-25 pada [06-code-review.md](06-c
 
 | Item | Status | Alasan / tindakan |
 | --- | --- | --- |
-| `tests/integration/system.spec.ts` › cleans orphans with partial failures … | **FAIL (lingkungan)** | Injeksi gagal-hapus memakai `chmod 0555`, yang diabaikan oleh root di container. Hasilnya `deletedCount 2 / failedCount 0`, bukan `1 / 1`. Sama dengan catatan `00-project-context.md` §6.3 butir 6. Perlu dijalankan sebagai non-root (CI GitHub Actions). Tindak lanjut: `TASK-186`. |
+| `tests/integration/system.spec.ts` › cleans orphans with partial failures … | **FAIL (lingkungan)** | Injeksi gagal-hapus memakai `chmod 0555`, yang diabaikan oleh root di container. Hasilnya `deletedCount 2 / failedCount 0`, bukan `1 / 1`. Sama dengan catatan `00-project-context.md` §6.3 butir 6. Perlu dijalankan sebagai non-root (CI GitHub Actions). **Diselesaikan TASK-186** (injeksi kini lewat file yang diganti direktori; lulus sebagai root dan non-root). |
 | `tests/contracts/cloud-storage.spec.ts` (R2/S3/Spaces) | **not run (skip)** | Butuh kredensial `KABUKI_CLOUD_*` asli. |
 | Build image MinIO dari source | **not run** | Gagal di container ini. Diganti image prabangun dari source yang sama (`KABUKI_TEST_MINIO_IMAGE`). Akar masalah: stage build tidak mengenal CA proxy TLS. Tindak lanjut: `TASK-187`. |
 | Budget web pemain (`scripts/measure-web-budget.ts`, TASK-180) | **not run** dalam run QA ini; hasil terakhir tercatat **FAIL** | `docs/performance-results.md` (2026-11-11): initial JS 353,8 KiB gzip (budget ≤ 300 KiB) dan LCP langkah identitas 4.280 ms (budget ≤ 4 s). Belum ada task perbaikan; tidak tercakup oleh RTM §2, yang hanya memuat test fungsional. |

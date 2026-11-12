@@ -2647,3 +2647,16 @@
   - `pnpm test:contracts --testPathPatterns='state-parity|redis'` → 65/65 twice in a row (incl. Redis Cluster failover and AOF restart).
   - `pnpm test:integration --testPathPatterns='realtime-races|payload-privacy|room-retention'` → pass.
   - The Redis benchmark effect is not measured here. The remaining layout bottleneck is TASK-185K, deferred by the user's decision (2026-11-12) until after TASK-186–189.
+
+## TASK-186: Buat injeksi gagal-hapus `system.spec` tidak bergantung pada uid — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `tests/integration/system.spec.ts`: the "cleans orphans with partial failures" case no longer makes the `covers` folder read-only with `chmod 0555`, which root ignores.
+    - The cover's stored file (path from its `publicUrl` basename under `LOCAL_STORAGE_PATH/covers`) is replaced by a directory. `LocalStorageAdapter.delete` refuses a non-regular file, so exactly that delete fails as `DELETE_FAILED`.
+    - The original bytes are restored in `finally`.
+    - All assertions are unchanged (scanned 2, deleted 1, failed 1 with the cover's id, freed bytes, the cover still listed, metrics, cleanup tier).
+    - No application code changed.
+- **Verification**:
+  - `pnpm exec eslint tests/integration/system.spec.ts` and Prettier → pass.
+  - `pnpm test:integration --testPathPatterns=system` as root (uid 0) → 3/3. Before this change it failed in this container with deleted 2 / failed 0.
+  - The same suite as a temporary non-root user (uid 30033, `node node_modules/jest/bin/jest.js --config tests/jest.integration.config.cjs --testPathPatterns=system`) → 3/3. The user was removed afterwards.
