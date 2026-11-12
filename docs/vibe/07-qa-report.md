@@ -71,17 +71,19 @@ Pemetaan memakai peta `TRACE` di `tests/e2e/journeys.spec.ts`. Test "traces ever
 | US-20 Kinerja & audit | AC-20-01, AC-20-02 | `tests/integration/auth-races.spec.ts` › never writes passwords, tokens, cookies or invite codes to the API output; `tests/integration/room-retention.spec.ts` › never evicts a report that is not durable and raises one 24 h alarm; `apps/api/src/common/audit.service.spec.ts`; `tests/performance/*.spec.ts`; `pnpm benchmark:game` mode memory dan Redis | **FAIL (sebagian)** — audit, AC-20-02 dan benchmark memory PASS (p95 20,59 ms); benchmark Redis 2 node FAIL (lihat catatan) |
 | US-21 Multibahasa | AC-21-01 – AC-21-04 | `tests/e2e/localization.spec.ts` (5 kasus); `tests/contracts/locale-coverage.spec.ts`, `locale-build.spec.ts`, `locale-packages.spec.ts`, `localization-roundtrip.spec.ts`; `tests/e2e/responsive.spec.ts` › Japanese and Simplified Chinese wrap at 320 px; `pnpm locales:validate` | **PASS** |
 
-**Catatan US-20 (diperbarui TASK-185E, 2026-11-12): memory PASS, Redis 2 node masih FAIL.** Rincian di [docs/performance-results.md](../performance-results.md).
-- **Memory, 1 node: PASS.**
-  - Transport p95 12,44 ms.
-  - Admission p50 1,1 ms / p95 36 ms (sebelumnya 2,8 s / 11 s).
-  - 0 jawaban ditolak; laporan durable dalam 806 ms.
-- **Redis, 2 node: FAIL**, dengan perbaikan nyata:
-  - 0 pemain terputus (sebelumnya node B mati dan 100 pemain terputus);
-  - 0% kehilangan pesan (sebelumnya 28,9%).
-  - Masih gagal: transport p95 327 ms dan 3.899 dari 5.000 jawaban ditolak (`STATE_UNAVAILABLE`/`DEPENDENCY_UNAVAILABLE`), karena perintah Redis timeout saat event loop sibuk.
-- **Bottleneck berikutnya**: 83% CPU sibuk node ada di validasi Zod penuh private state pada setiap pembacaan Redis.
-- **Tindak lanjut**: [04-tasks.md](04-tasks.md) TASK-185F (pembacaan ringan) dan TASK-185G (ukur ulang). Target p95 < 50 ms untuk multi-instance **belum terbukti**.
+**Catatan US-20 (diperbarui TASK-185G, 2026-11-12): memory PASS, Redis 2 node masih FAIL.** Rincian di [docs/performance-results.md](../performance-results.md).
+- **Memory, 1 node: PASS** (diulang di TASK-185G).
+  - Transport p95 15,17 ms.
+  - Admission p95 25 ms.
+  - 0 jawaban ditolak.
+- **Redis, 2 node: FAIL.**
+  - Transport p95 250,9 ms (sebelumnya 327 ms).
+  - 3.809 jawaban ditolak.
+  - Tetap 0 pemain terputus dan 0% kehilangan pesan.
+- **Bottleneck sekarang ada di server Redis**, bukan di node API. CPU Redis mencapai 100% saat burst, dan menurut `SLOWLOG`:
+  - skrip `read` meng-encode ulang seluruh state di setiap pembacaan (rata-rata 14,5 ms);
+  - operasi lease scheduler men-decode seluruh state hanya untuk cek `sessionId` (rata-rata 25 ms).
+- **Tindak lanjut**: [04-tasks.md](04-tasks.md) TASK-185H (perbaikan skrip) dan TASK-185I (ukur ulang). Target p95 < 50 ms multi-instance **belum terbukti**.
 
 ## 3. Bug dan perbaikan dalam run ini
 

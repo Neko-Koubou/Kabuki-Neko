@@ -274,6 +274,56 @@ in `RedisStateStore.read`**: every read validates the whole private room state w
 and the state grows with every played question. This is the Redis-mode counterpart of the memory
 clone removed by TASK-185B. The fix is planned in TASK-185F, with a re-measure in TASK-185G.
 
+## After the read-only Redis decode (2026-11-12, TASK-185G)
+
+The commit includes TASK-185F: the read-only Redis read uses no full schema validation.
+
+### Redis mode, two nodes, 200 clients: **FAIL**
+
+Record `test-results/benchmark/redis.json`. 102 transitions.
+
+- No disconnects; delivery loss 0/20,400.
+- Transport p95 **250.9 ms** (327 ms before).
+- 3,809 answers not admitted: 2,366 `STATE_UNAVAILABLE`, 1,443 `DEPENDENCY_UNAVAILABLE`.
+
+| Measure (ms)                 | n       | p50      | p95      | p99      | max      |
+| ---------------------------- | ------- | -------- | -------- | -------- | -------- |
+| Transport (commit → receipt) | 149,342 | 10.72    | 250.90   | 810.93   | 3,857.69 |
+| Admission (answer ACK RTT)   | 1,191   | 3,847.47 | 5,417.37 | 5,808.63 | 6,078.40 |
+| State commit (host ACK RTT)  | 52      | 487.23   | 1,246.53 | 3,173.70 | 3,173.70 |
+
+| Process        | Loop lag p99 per 1 s, median / max (ms) | CPU mean / max (% of one core) |
+| -------------- | --------------------------------------- | ------------------------------ |
+| API node A     | 12.12 / 502.75                          | 43.9 / 118.2                   |
+| API node B     | 22.29 / 380.07                          | 45.4 / 127.8                   |
+| Load generator | 1.98 / 15.72                            | 1.3 / 10.0                     |
+
+The memory run on the same commit (regression check) passed:
+
+- transport p95 15.17 ms;
+- admission p50 1.1 ms / p95 25.26 ms;
+- 0 rejected answers.
+
+### Next bottleneck: the Redis server
+
+The nodes' event loops are now mostly free (median p99 lag 12–22 ms), yet the rejections barely
+changed. A diagnostic run (200 clients, 40 transitions) sampled the Redis container every ~3 s
+and kept its `SLOWLOG` (commands over 5 ms):
+
+- **Redis CPU**: median 11%, p90 71%, max 100%. Redis saturates during answer bursts, so client
+  commands wait past their 2 s timeout.
+- **`read` script** (`e1dcbecf2d4e`): 95 slow calls, mean 14.5 ms. It returns
+  `cjson.encode({state=raw, …})`, which re-escapes the whole multi-megabyte state string on every
+  read.
+- **`release-room.lua`** (`b3d091d9136a`): 28 slow calls, mean 25 ms. The scheduler's lease
+  operations (acquire/renew/release) decode the whole state with `cjson.decode` only to compare
+  its `sessionId`, which the script has already checked with `HGET`.
+- `close-question.lua` and `mutate-room.lua`: a few calls at 57–117 ms (once per question).
+- `admit-answer.lua` stayed under 5 ms.
+
+Fixes are planned in TASK-185H (read reply without re-encoding; lease operations without the
+state decode), with a re-measure in TASK-185I.
+
 ## Not covered
 
 - More than 200 clients: needs a separate harness and run. The CLI refuses `--clients` above 200.

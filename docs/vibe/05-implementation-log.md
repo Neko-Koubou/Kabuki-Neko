@@ -2575,8 +2575,24 @@
   - `pnpm test:contracts --testPathPatterns='state-parity|redis'` → 4/4 suites, 61/61 tests.
   - `pnpm test:integration --testPathPatterns='payload-privacy|realtime-races'` → 2/2 suites, 11/11 tests.
 
-## TASK-185G: Ukur ulang mode Redis setelah TASK-185F — IN PROGRESS
-- **Started**: 2026-11-12 (Asia/Jakarta)
-- **Plan**: `docs/performance-results.md`, `docs/vibe/07-qa-report.md`
-- **Done so far**: API built at the TASK-185F commit; redis then memory 200-client runs started
-- **Verification**: pending
+## TASK-185G: Ukur ulang mode Redis setelah TASK-185F — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `docs/performance-results.md`: section "After the read-only Redis decode".
+  - `docs/vibe/07-qa-report.md`: US-20.
+  - `docs/vibe/04-tasks.md`: TASK-185H and TASK-185I.
+- **Runs**:
+  - **Redis, 200 clients, 100 transitions** → FAIL.
+    - Transport p95 250.9 ms (was 327).
+    - 3,809 answers not admitted (STATE_UNAVAILABLE 2,366, DEPENDENCY_UNAVAILABLE 1,443).
+    - 0 disconnects, 0 loss.
+    - Node loop lag p99 median 12/22 ms (was 59/10).
+  - **Memory, 200 clients, 100 transitions** (regression) → PASS. Transport p95 15.17 ms; admission p95 25.26 ms; 0 rejected.
+  - **Redis diagnostic, 200 clients, 40 transitions**, with the Redis container's CPU sampled about every 3 s and SLOWLOG > 5 ms collected:
+    - CPU median 11%, p90 71%, max 100%.
+    - `read` script: 95 calls, mean 14.5 ms (`cjson.encode` of the raw state).
+    - `release-room.lua` lease operations: 28 calls, mean 25 ms (full state decode for a `sessionId` check).
+    - `close-question`/`mutate-room`: 57–117 ms (rare).
+    - `admit-answer`: under 5 ms.
+- **Conclusion**: the next bottleneck is server-side work inside Redis, which is a server defect, not a host limit. Corrective task TASK-185H was added.
+- **Verification**: `pnpm exec prettier --check docs/performance-results.md` → pass. Records `test-results/benchmark/redis.json`, `memory.json` (copies in the scratchpad).
