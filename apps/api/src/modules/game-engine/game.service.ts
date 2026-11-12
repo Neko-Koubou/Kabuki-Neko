@@ -405,7 +405,10 @@ export class GameService {
 
   /** One settle round: scores and commits the frozen question if it is still unscored. */
   private async settleOnce(identity: RoomIdentity): Promise<boolean> {
-    const state = await this.store.getPrivateSnapshot(identity);
+    // Copy-free read (TASK-185D): everything taken from the live state (revision, hash and the
+    // computed result) is read before the commit's await; the store validates and copies the
+    // result, so it shares nothing with the state.
+    const state = await this.store.readPrivateSnapshot(identity);
     const index = state?.questionIndex ?? null;
     if (!state || index === null || state.phase !== "QUESTION_ANSWERING" || state.accepting)
       return false;

@@ -2517,3 +2517,19 @@
   - `pnpm --filter @kabuki-neko/api test` → 39/39 suites, 276/276 tests.
   - `pnpm test:integration --testPathPatterns='payload-privacy|game-gateway|realtime-races|recovery'` → 4/4 suites, 22/22 tests. The payload-privacy suite runs across two nodes on PostgreSQL + Redis.
   - `pnpm test:e2e tests/e2e/player.spec.ts tests/e2e/host.spec.ts` → 9/9.
+
+## TASK-185D: Pakai pembacaan read-only di settle — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/modules/game-engine/game.service.ts`: `settleOnce` reads with `readPrivateSnapshot`.
+    - Revision, closed-question hash and the computed result are all taken before the commit's `await`.
+    - The stores validate and copy the result (memory: `questionResultSchema.parse`; Redis: serialization), so nothing is shared with the state.
+    - CAS on revision + hash is unchanged.
+  - `apps/api/src/modules/game-engine/game.service.spec.ts`:
+    - New case: with the commit refused, a settle round reads the live state without the copying read and leaves it unchanged (deep-equal before/after). The next round commits exactly once.
+    - The TASK-183 case now counts both reads (≤ 3 per burst; 1 for a later round).
+- **Verification**:
+  - New case FAILS on the old `game.service.ts` (copying read) and PASSES now.
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 39/39 suites, 277/277 tests.
+  - `pnpm test:integration --testPathPatterns='recovery|realtime-races|finalization-failures'` → 3/3 suites, 30/30 tests.

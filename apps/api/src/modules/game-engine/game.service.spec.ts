@@ -389,6 +389,8 @@ it("coalesces settles of a burst of answers and still scores the closing answer 
   const questionId = s.quiz.questions[0]?.id ?? "";
   const correct = await publicIndex(identity, 0);
   const snapshots = jest.spyOn(store, "getPrivateSnapshot");
+  const reads = jest.spyOn(store, "readPrivateSnapshot");
+  const fullReads = () => snapshots.mock.calls.length + reads.mock.calls.length;
   const commits = jest.spyOn(store, "commitQuestionResult");
 
   const acks = await Promise.all(
@@ -404,7 +406,7 @@ it("coalesces settles of a burst of answers and still scores the closing answer 
   expect(acks.every((ack) => ack.accepted)).toBe(true);
   // One round in flight plus one coalesced round, plus the one read `finalize` makes after the
   // commit, instead of one full-state read per answer.
-  expect(snapshots.mock.calls.length).toBeLessThanOrEqual(3);
+  expect(fullReads()).toBeLessThanOrEqual(3);
   // The last answer closed the question; it was scored before the ACKs resolved, exactly once.
   expect(commits).toHaveBeenCalledTimes(1);
   await expect(commits.mock.results[0]?.value).resolves.toBe("COMMITTED");
@@ -415,7 +417,31 @@ it("coalesces settles of a burst of answers and still scores the closing answer 
 
   // Later calls start fresh rounds (no stale shared result) and commit nothing twice.
   snapshots.mockClear();
+  reads.mockClear();
   expect(await game.settle(identity)).toBe(false);
-  expect(snapshots).toHaveBeenCalledTimes(1);
+  expect(fullReads()).toBe(1);
   expect(commits).toHaveBeenCalledTimes(1);
+});
+
+it("settles from the live state without changing it outside the commit (TASK-185D)", async () => {
+  const { identity, bindings } = await room(["SINGLE_CHOICE"], 2);
+  await toAnswering(identity);
+  const [a, b] = bindings as [PlayerBinding, PlayerBinding];
+  await submit(identity, a, await publicIndex(identity, 0));
+  // Close the question but keep the result uncommitted: the admission's settle is refused.
+  const commit = jest.spyOn(store, "commitQuestionResult").mockResolvedValueOnce("RETRY");
+  await submit(identity, b, await publicIndex(identity, 1));
+  expect((await state(identity)).phase).toBe("QUESTION_ANSWERING");
+  const copies = jest.spyOn(store, "getPrivateSnapshot");
+  commit.mockResolvedValueOnce("RETRY");
+  const live = await store.readPrivateSnapshot(identity);
+  const before = structuredClone(live);
+  expect(await game.settle(identity)).toBe(false);
+  // The refused round read the live state without copying it and left it unchanged.
+  expect(copies).not.toHaveBeenCalled();
+  expect(await store.readPrivateSnapshot(identity)).toEqual(before);
+  // The next round commits once, as before.
+  expect(await game.settle(identity)).toBe(true);
+  expect(commit.mock.results.filter((r) => r.type === "return")).toHaveLength(3);
+  expect((await state(identity)).phase).toBe("ANSWER_REVEAL");
 });
