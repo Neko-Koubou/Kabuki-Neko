@@ -212,7 +212,7 @@ jobs:
           mkdir -p test-results/images
           for image in kabuki-neko-api:ci kabuki-neko-web:ci; do
             docker image inspect "$image" --format '{{.Id}} {{.Size}} {{json .Config.User}}' >> test-results/images/inventory.txt
-            docker run --rm --entrypoint sh "$image" -c 'id -u; node --version; command -v ffprobe || true' >> test-results/images/inventory.txt
+            docker run --rm --entrypoint sh "$image" -c 'id -u; node --version; if command -v ffprobe >/dev/null; then ffprobe -version | head -n 1; fi' >> test-results/images/inventory.txt
           done
       - name: Keep image records
         if: always()

@@ -16,7 +16,8 @@
 #    - the deployed API;
 #    - the immutable locale bundle, the published audio set with its manifest and credits (the API
 #      checks that every manifest entry exists), and the legal texts;
-#    - a pinned ffprobe (Debian's ffmpeg package) for media probing;
+#    - ffprobe (Debian bookworm's ffmpeg package, current security release) for media probing,
+#      checked with `ffprobe -version` during the build;
 #    - tini for signal forwarding.
 #    It runs as the unprivileged user 10001. Only /app/data (SQLite, runtime secrets),
 #    /app/uploads (local media) and /tmp are writable.
@@ -31,8 +32,12 @@
 
 ARG NODE_IMAGE=node:26.13.0-bookworm-slim@sha256:add5c17c14752c54d2f3d519ec46a3815684d41c33f198bcb09fb998f7dcbf68
 ARG PNPM_VERSION=10.34.9
-# Debian bookworm's ffmpeg (ffprobe), pinned to the reviewed version.
-ARG FFMPEG_VERSION=7:5.1.9-0+deb12u1
+# Debian bookworm's ffmpeg (ffprobe). Not pinned by default (code review MJ-21): the Debian mirrors
+# keep only the current version, so an exact pin stops every build at the next security update
+# ("Version ... was not found") while leaving the older, vulnerable build in place. Set
+# FFMPEG_VERSION only to reproduce a build while that exact version is still published. The
+# installed version is printed during the build and recorded in CI's image inventory.
+ARG FFMPEG_VERSION=""
 ARG TINI_VERSION=0.19.0-1+b3
 
 FROM ${NODE_IMAGE} AS assets
@@ -62,7 +67,8 @@ FROM ${NODE_IMAGE} AS runtime
 ARG FFMPEG_VERSION
 ARG TINI_VERSION
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates "ffmpeg=${FFMPEG_VERSION}" "tini=${TINI_VERSION}" \
+  && apt-get install -y --no-install-recommends ca-certificates "ffmpeg${FFMPEG_VERSION:+=${FFMPEG_VERSION}}" "tini=${TINI_VERSION}" \
+  && ffprobe -version | head -n 1 \
   && rm -rf /var/lib/apt/lists/* \
   && groupadd --system --gid 10001 kabuki \
   && useradd --system --uid 10001 --gid kabuki --home-dir /app --no-create-home --shell /usr/sbin/nologin kabuki \

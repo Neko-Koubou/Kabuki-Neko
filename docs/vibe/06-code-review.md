@@ -281,7 +281,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 - **Perbaikan**: langkah CI yang membangun kedua image sebelum Integration.
 - **Resolusi**: Job CI `drivers` kini menjalankan `KN_IMAGE_TAG=local docker compose -f docker/docker-compose.yml build api web` sebelum Integration, sehingga suite deployment/katalog yang berjalan paralel tidak menarik image yang tidak ada atau membangunnya bersamaan. `catalog-deployment.spec.ts` memeriksa kedua image di `beforeAll` dan gagal dengan instruksi build yang jelas (diverifikasi dengan tag yang tidak ada).
 
-#### MJ-21 [MAJOR] [OPEN] Build image gagal setelah Debian memperbarui ffmpeg (pin versi apt eksak)
+#### MJ-21 [MAJOR] [RESOLVED] Build image gagal setelah Debian memperbarui ffmpeg (pin versi apt eksak)
 - **File:Line**: `docker/Dockerfile.api:34,42,63`; `docker/Dockerfile.web:28,36`.
 - **Masalah**:
   - Mirror bookworm hanya menyimpan versi terkini, sehingga `ffmpeg=7:5.1.9-0+deb12u1` akan "not found".
@@ -290,6 +290,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Pasang ffmpeg tanpa pin versi eksak (paket keamanan terbaru dari repo resmi).
   - Verifikasi `ffprobe -version` saat build.
   - Catat versi aktual di inventaris image.
+- **Resolusi**: `Dockerfile.api` tidak lagi mem-pin versi ffmpeg secara eksak: `FFMPEG_VERSION` default kosong (rilis keamanan bookworm terkini; pin opsional hanya untuk reproduksi), build menjalankan `ffprobe -version` (gagal bila tidak ada), dan inventaris image di CI mencatat versi ffprobe sebenarnya. Dockerfile.web sudah tidak memasang ffmpeg sejak audio di-commit teroptimasi. Diverifikasi: `apt-get -s` dengan pin lama → "Version ... was not found", tanpa pin → versi keamanan terbaru; stage runtime mini berhasil dibangun dan mencetak `ffprobe version 5.1.9-0+deb12u1`.
 
 #### MJ-22 [MAJOR] [RESOLVED] Socket host tidak pernah memperbarui access token (perintah host gagal setelah 15 menit)
 - **File:Line**: `apps/web/src/components/host/host-stage.tsx:93-97,176`; `apps/web/src/hooks/use-socket.ts:313-316`; `host-phase-controls.tsx:90`.
