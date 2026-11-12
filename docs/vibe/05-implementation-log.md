@@ -2614,3 +2614,9 @@
   - `pnpm --filter @kabuki-neko/api test` → 39/39 suites, 277/277 tests.
   - `pnpm test:contracts --testPathPatterns='state-parity|redis'` → 4/4 suites (incl. Redis Cluster), 63/63 tests.
   - `pnpm test:integration --testPathPatterns='realtime-races|room-retention'` → 2/2 suites, 28/28 tests.
+
+## TASK-185I: Ukur ulang mode Redis setelah TASK-185H — IN PROGRESS
+- **Started**: 2026-11-12 (Asia/Jakarta)
+- **Plan**: `docs/performance-results.md`, `docs/vibe/07-qa-report.md`
+- **Done so far**: API built at the TASK-185H commit; redis 200-client run with Redis CPU/SLOWLOG sampling started
+- **Verification**: pending
