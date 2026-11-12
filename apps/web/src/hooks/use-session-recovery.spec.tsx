@@ -14,7 +14,7 @@ import { describe, expect, it, vi } from "vitest";
 import { GAME_TIMING } from "@kabuki-neko/shared/constants/game";
 import { hostRoomSyncSchema, playerRoomSyncSchema } from "@kabuki-neko/shared/schemas/game.schema";
 import { deserializeCatalog, type CatalogLoader } from "@/lib/i18n/catalog-loader";
-import type { SocketLike } from "@/lib/socket-client";
+import { ACK_TIMEOUT_MS, type SocketLike } from "@/lib/socket-client";
 import { LocaleProvider, createLocalePreferences, useLocale } from "@/providers/locale-provider";
 import { createGameStore, currentDraft, type GameState } from "@/stores/game.store";
 import { testInitialLocale } from "@/test/locale";
@@ -522,6 +522,61 @@ describe("session recovery", () => {
     expect(socket.connects).toBe(after);
     await settle(1);
     expect(socket.connects).toBe(after + 1);
+  });
+
+  it("does not send room:sync (and a second join) while a reconnected player is still unbound (MJ-27)", async () => {
+    vi.useFakeTimers();
+    const storage = memoryStorage();
+    savePlayerSession(
+      { sessionId: SESSION, playerId: PLAYER, sessionToken: TOKEN, pinCode: PIN },
+      storage,
+    );
+    let bound = false;
+    let dropNextJoin = false;
+    const socket = new FakeSocket((event, payload) => {
+      const requestId = String(payload.requestId);
+      if (event === "player:join_room") {
+        if (dropNextJoin) {
+          dropNextJoin = false;
+          return DROP; // lost ACK: the recovery retries later with the same requestId
+        }
+        bound = true;
+        return ok(requestId, {
+          playerId: PLAYER,
+          sessionId: SESSION,
+          sessionToken: TOKEN,
+          recovered: true,
+          snapshot: playerSnapshot(10),
+        });
+      }
+      if (event === "room:sync")
+        return bound
+          ? ok(requestId, { snapshot: playerSnapshot(10) })
+          : fail(requestId, 401, "AUTH_REQUIRED");
+      return DROP;
+    });
+    const store = createGameStore();
+    mount({ role: "player", socket, store, storage });
+    await settle();
+    expect(socket.count("player:join_room")).toBe(1);
+    act(() => {
+      bound = false;
+      dropNextJoin = true;
+      socket.drop();
+    });
+    await settle(1_500); // reconnected; the rejoin ACK is still outstanding
+    expect(socket.connected).toBe(true);
+    expect(socket.count("player:join_room")).toBe(2);
+    // A sync request in this window (missed heartbeat, newer heartbeat) must not run room:sync
+    // on the unbound socket, which would fail AUTH_REQUIRED and start a second recovery.
+    act(() => store.getState().requestSync());
+    await settle();
+    expect(socket.count("room:sync")).toBe(0);
+    expect(socket.count("player:join_room")).toBe(2);
+    await settle(ACK_TIMEOUT_MS + 2_000); // the lost ACK times out and the same request is retried
+    expect(socket.count("player:join_room")).toBe(3);
+    expect(store.getState().syncRequested).toBe(false);
+    expect(store.getState().terminal).toBeNull();
   });
 
   it("refreshes the host token with auth:update and recovers the room", async () => {

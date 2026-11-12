@@ -201,8 +201,21 @@ export function useSessionRecovery(options: SessionRecoveryOptions) {
     else if (result.status === "unknown") store.getState().requestSync();
   }, [socket, store]);
 
+  /** The recovery currently running, shared by concurrent callers (single-flight). */
+  const inflight = useRef<Promise<void> | null>(null);
+  /**
+   * Player: whether this connection is bound to the player again. A reconnected socket is
+   * anonymous until `player:join_room` succeeds, so a `room:sync` sent before that only earns
+   * AUTH_REQUIRED and a second join (code review MJ-27). Reset on every disconnect.
+   */
+  const bound = useRef(false);
+  /** The single-flight `recover` (defined below), for retries scheduled from inside a run. */
+  const recoverRef = useRef<(requestId?: string, attempt?: number) => Promise<void>>(
+    async () => undefined,
+  );
+
   /** Rejoins (player) or recovers (host) after a connect. */
-  const recover = useCallback(
+  const recoverOnce = useCallback(
     async (requestId?: string, attempt = 0): Promise<void> => {
       const opts = latest.current;
       const state = store.getState();
@@ -220,7 +233,10 @@ export function useSessionRecovery(options: SessionRecoveryOptions) {
           return;
         }
         if (result.status === "unknown") {
-          setTimeout(() => void recover(result.requestId, attempt + 1), backoffDelay(attempt));
+          setTimeout(
+            () => void recoverRef.current(result.requestId, attempt + 1),
+            backoffDelay(attempt),
+          );
           return;
         }
         const code = result.error.errorCode;
@@ -232,7 +248,7 @@ export function useSessionRecovery(options: SessionRecoveryOptions) {
           const token = await opts.onAuthExpired();
           if (token) {
             const updated = await socket.emit("auth:update", { accessToken: token });
-            if (updated.status === "ok") await recover(undefined, 1);
+            if (updated.status === "ok") await recoverOnce(undefined, 1);
           }
           return;
         }
@@ -254,6 +270,7 @@ export function useSessionRecovery(options: SessionRecoveryOptions) {
         ...(requestId ? { requestId } : {}),
       });
       if (result.status === "ok") {
+        bound.current = true;
         remember(result.data);
         store.getState().applySync(result.data.snapshot);
         await retryPending();
@@ -261,7 +278,10 @@ export function useSessionRecovery(options: SessionRecoveryOptions) {
       }
       if (result.status === "unknown") {
         // Lost ACK: retry with the same requestId to get the same slot/token back.
-        setTimeout(() => void recover(result.requestId, attempt + 1), backoffDelay(attempt));
+        setTimeout(
+          () => void recoverRef.current(result.requestId, attempt + 1),
+          backoffDelay(attempt),
+        );
         return;
       }
       const code = result.error.errorCode;
@@ -273,11 +293,28 @@ export function useSessionRecovery(options: SessionRecoveryOptions) {
     [socket, store, remember, retryPending, terminate],
   );
 
+  /** Single-flight wrapper: concurrent callers share the recovery already in progress. */
+  const recover = useCallback(
+    (requestId?: string, attempt = 0): Promise<void> => {
+      if (inflight.current) return inflight.current;
+      const run = recoverOnce(requestId, attempt).finally(() => {
+        if (inflight.current === run) inflight.current = null;
+      });
+      inflight.current = run;
+      return run;
+    },
+    [recoverOnce],
+  );
+  recoverRef.current = recover;
+
   /** Fetches a fresh snapshot when the store asks for one. */
   const sync = useCallback(async () => {
     const state = store.getState();
     const snapshot = state.snapshot;
     if (!snapshot || state.terminal !== null || !socket.connected) return;
+    // A player socket that is not rebound yet waits for the recovery join, whose ACK carries a
+    // fresh snapshot (and clears the sync request); syncing now would only cause a second join.
+    if (latest.current.role === "player" && !bound.current) return;
     store.getState().clearSyncRequest();
     const result = await socket.emit("room:sync", {
       sessionId: snapshot.sessionId,
@@ -308,6 +345,9 @@ export function useSessionRecovery(options: SessionRecoveryOptions) {
   // Wire connect → recover, sync requests → room:sync, terminal → clear credentials (once).
   useEffect(() => {
     const offConnect = socket.onLifecycle("connect", () => void recover());
+    const offDisconnect = socket.onLifecycle("disconnect", () => {
+      bound.current = false;
+    });
     const offStore = store.subscribe((state, previous) => {
       if (state.syncRequested && !previous.syncRequested) void sync();
       // A pushed `player:session_replaced` means another tab took over this player with the same
@@ -330,6 +370,7 @@ export function useSessionRecovery(options: SessionRecoveryOptions) {
     if (socket.connected) void recover();
     return () => {
       offConnect();
+      offDisconnect();
       offStore();
     };
   }, [socket, store, recover, sync]);

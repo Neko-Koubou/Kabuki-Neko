@@ -317,10 +317,11 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Jadwalkan `recover` single-flight dengan `backoffDelay(attempt, retryAfterMs)`.
   - Tampilkan Retry/Leave.
 
-#### MJ-27 [MAJOR] [OPEN] Reconnect pemain mengirim `room:sync` sebelum rejoin → join ganda
+#### MJ-27 [MAJOR] [RESOLVED] Reconnect pemain mengirim `room:sync` sebelum rejoin → join ganda
 - **File:Line**: `apps/web/src/stores/game.store.ts:407-414`; `use-session-recovery.ts:293-305`; `use-socket.ts:301-304`.
 - **Masalah**: socket yang belum terikat mendapat AUTH_REQUIRED lalu `recover()` kedua, sehingga token CHECK_JOIN terpakai dua kali per reconnect.
 - **Perbaikan**: `recover` single-flight; `sync` pemain ditunda sampai rebind.
+- **Resolusi**: `recover` di `use-session-recovery.ts` kini single-flight (pemanggil konkuren berbagi run yang sedang berjalan; retry terjadwal lewat ref), dan `sync` pemain dilewati sampai socket ter-bind ulang (`bound` di-reset pada `disconnect`, di-set setelah `player:join_room` sukses), sehingga `room:sync` dari socket yang belum ter-bind tidak lagi memicu join kedua. Spec baru mereproduksi jendela reconnect→ACK join (gagal tanpa perbaikan, lulus dengan perbaikan). Web Vitest 51/450, tsc, lint PASS.
 
 #### MJ-28 [MAJOR] [RESOLVED] `player:session_replaced` menghapus kredensial yang dipakai tab pengganti
 - **File:Line**: `apps/web/src/hooks/use-session-recovery.ts:306-316`; `connection-recovery.tsx:117-122`.
