@@ -2554,3 +2554,23 @@
   - eslint/tsc for the script → pass.
   - `pnpm exec prettier --check docs/performance-results.md` → pass.
   - Records `test-results/benchmark/memory.json` and `redis.json` (copies in the scratchpad).
+
+## TASK-185F: Hentikan validasi Zod penuh pada pembacaan read-only Redis state — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/providers/state/redis-state.store.ts`, `readPrivateSnapshot`:
+    - Uses the same Lua read, then `JSON.parse`, an envelope check (schemaVersion 1, sessionId, pinCode), and `restoreArrays(activeRoomStateSchema, …)`.
+    - `restoreArrays` restores the cjson-encoded empty arrays by the schema's structure only: object, array, record and union nodes, through optional/nullable/default wrappers. A pipe is followed on its input side, or on its output side when the input is `unknown` (the accessibility size check). No validation, regex or grapheme check runs.
+    - A per-room cache keyed by the raw JSON returns the previous object for an unchanged state. It is capped at 256 rooms and dropped on release or a missing room.
+    - `getPrivateSnapshot`, the role snapshots and every mutation keep the full validation.
+  - `tests/contracts/state-parity.spec.ts`:
+    - Memory and Redis: through lobby, release, answering, frozen and scored states, the read-only state deep-equals the validated read. An unchanged state returns the same object, and a released or unknown room gives null.
+    - Redis only: a state with a 500-character nickname is still refused by the validated read.
+    - A cjson round-trip of four fixtures (lobby, answering, scored, podium with frozen report and finalization), with every empty array turned into `{}`, is restored exactly.
+    - The first contract run caught the accessibility pipe (captions `{}`), which was fixed in `baseOf`.
+- **Verification**:
+  - `pnpm exec eslint tests/contracts/state-parity.spec.ts` → pass.
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 39/39 suites, 277/277 tests.
+  - `pnpm test:contracts --testPathPatterns='state-parity|redis'` → 4/4 suites, 61/61 tests.
+  - `pnpm test:integration --testPathPatterns='payload-privacy|realtime-races'` → 2/2 suites, 11/11 tests.

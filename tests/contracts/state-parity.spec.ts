@@ -19,7 +19,10 @@ import type {
 } from "../../apps/api/src/providers/state/game-state.interface";
 import Redis from "ioredis";
 import { setTimeout as delay } from "node:timers/promises";
-import { RedisStateStore } from "../../apps/api/src/providers/state/redis-state.store";
+import {
+  RedisStateStore,
+  restoreArrays,
+} from "../../apps/api/src/providers/state/redis-state.store";
 import { StateConnections, StateProjection } from "../../apps/api/src/providers/state/state.module";
 import { ConfigService } from "../../apps/api/src/config/config.service";
 import { createTestRuntime } from "../helpers/runtime";
@@ -409,6 +412,52 @@ for (const driver of ["memory", "redis"] as const)
       expect(await store.getPrivateSnapshot({ ...identity, sessionId: uuid(90) })).toBeNull();
       expect(await store.releaseRoom({ ...identity, sessionId: uuid(90) })).toBe(false);
     });
+    it("serves the read-only state equal to the validated read through a scored question (TASK-185F)", async () => {
+      const same = async () => {
+        const light = await store.readPrivateSnapshot(identity);
+        expect(light).toEqual(await store.getPrivateSnapshot(identity));
+        return light;
+      };
+      // Lobby: empty arrays (cjson stores them as {}) and empty records stay distinct.
+      await seed();
+      const lobby = required(await same());
+      expect(lobby.requiredPlayerIds).toEqual([]);
+      expect(lobby.players).toEqual({});
+      expect(lobby.quiz.questions[0]?.publicOptions).toEqual([]);
+      // An unchanged state is served without parsing it again.
+      expect(await store.readPrivateSnapshot(identity)).toBe(lobby);
+      await store.releaseRoom(identity);
+      expect(await store.readPrivateSnapshot(identity)).toBeNull();
+      // Answering, frozen and scored.
+      await seed(answering());
+      await same();
+      await store.admitAnswer(answer());
+      const frozen = required(await same());
+      expect(frozen.closedQuestions[0]?.answers).toHaveLength(1);
+      await store.commitQuestionResult({
+        ...identity,
+        expectedRevision: frozen.revision,
+        closedQuestionHash: required(frozen.closedQuestions[0]).hash,
+        result: result(frozen),
+      });
+      const scored = required(await same());
+      expect(scored.players[uuid(6)]?.score).toBe(1000);
+      expect(await store.readPrivateSnapshot({ ...identity, sessionId: uuid(90) })).toBeNull();
+      if (driver === "redis") {
+        // A state the schema rejects is still refused by the validated read.
+        const [meta] = ["meta"].map(
+          (suffix) => `kabukineko:parity:room:{${identity.pin}}:${suffix}`,
+        );
+        const stored = JSON.parse(required(await redis.hget(required(meta), "state"))) as {
+          players: Record<string, { nickname: string }>;
+        };
+        required(stored.players[uuid(6)]).nickname = "x".repeat(500);
+        await redis.hset(required(meta), "state", JSON.stringify(stored));
+        await expect(store.getPrivateSnapshot(identity)).rejects.toMatchObject({
+          code: "STATE_UNAVAILABLE",
+        });
+      }
+    });
     it("retries joins without a second slot, recovers and rejects old generations", async () => {
       await seed();
       const first = await join();
@@ -658,6 +707,44 @@ for (const driver of ["memory", "redis"] as const)
       expect(joined.generation).toBe(1);
     });
   });
+
+describe("read-only Redis state decoding (TASK-185F)", () => {
+  /** What Redis cjson does to a stored state: every empty array becomes `{}`. */
+  function cjsonEncoded(value: unknown): unknown {
+    if (Array.isArray(value)) return value.length === 0 ? {} : value.map(cjsonEncoded);
+    if (value && typeof value === "object")
+      return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, cjsonEncoded(v)]));
+    return value;
+  }
+  /** States that together hold every kind of empty array: lobby, answering, scored, frozen. */
+  function fixtures(): ActiveRoomState[] {
+    const lobby = activeRoomStateSchema.parse(room());
+    const scored = answering([]);
+    scored.results = { "0": result(scored) };
+    scored.phase = "LEADERBOARD";
+    scored.accepting = false;
+    const frozen = activeRoomStateSchema.parse({
+      ...scored,
+      phase: "PODIUM",
+      frozenReport: frozenReportSchema.parse(report()),
+      finalization: {
+        sessionId: uuid(1),
+        status: "pending",
+        reportId: null,
+        retryable: true,
+        errorCode: null,
+        updatedAt: 1,
+      },
+    });
+    return [lobby, answering(), scored, frozen];
+  }
+
+  it.each([0, 1, 2, 3])("restores every cjson-encoded empty array of fixture %i", (n) => {
+    const state = required(fixtures()[n]);
+    const encoded = cjsonEncoded(JSON.parse(JSON.stringify(state)));
+    expect(restoreArrays(activeRoomStateSchema, encoded)).toEqual(state);
+  });
+});
 
 describe("Redis lifecycle", () => {
   it("reloads scripts after SCRIPT FLUSH, reconnects and never falls back on outages", async () => {

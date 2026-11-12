@@ -98,11 +98,94 @@ function decode<T>(schema: z.ZodType<T>, value: unknown): T {
   return fail("STATE_UNAVAILABLE");
 }
 
+/** The parts of a Zod 4 schema definition the array restoration walks. */
+interface SchemaDef {
+  type: string;
+  shape?: Record<string, z.ZodType>;
+  element?: z.ZodType;
+  valueType?: z.ZodType;
+  innerType?: z.ZodType;
+  in?: z.ZodType;
+  out?: z.ZodType;
+  options?: readonly z.ZodType[];
+}
+const defOf = (schema: z.ZodType) => (schema as unknown as { _zod: { def: SchemaDef } })._zod.def;
+const WRAPPERS = new Set(["optional", "nullable", "default", "readonly", "catch", "prefault"]);
+/** Schema kinds that say nothing about the value's shape. */
+const SHAPELESS = new Set(["unknown", "any"]);
+/**
+ * The schema under optional/nullable/default wrappers. A pipe is followed on its input side (a
+ * transform's source object), or on its output side when the input accepts anything (a size
+ * check piped into the real object, like the accessibility fields).
+ */
+function baseOf(schema: z.ZodType): SchemaDef {
+  let def = defOf(schema);
+  for (let depth = 0; depth < 20; depth++) {
+    if (WRAPPERS.has(def.type) && def.innerType) def = defOf(def.innerType);
+    else if (def.type === "pipe" && def.in && def.out)
+      def = SHAPELESS.has(baseOf(def.in).type) ? defOf(def.out) : defOf(def.in);
+    else break;
+  }
+  return def;
+}
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+const isEmptyRecord = (value: unknown) => isRecord(value) && Object.keys(value).length === 0;
+
+/**
+ * Restores, in place, the arrays Redis cjson encoded as `{}`, guided only by the schema's
+ * structure: no validation, refinement, regex or grapheme check runs. This is what `decode` does
+ * besides validating, for the copy-free read-only path (QA follow-up TASK-185F).
+ */
+export function restoreArrays(schema: z.ZodType, value: unknown): unknown {
+  const def = baseOf(schema);
+  switch (def.type) {
+    case "array":
+      if (isEmptyRecord(value)) return [];
+      if (Array.isArray(value) && def.element) {
+        const element = def.element;
+        for (let i = 0; i < value.length; i++) value[i] = restoreArrays(element, value[i]);
+      }
+      return value;
+    case "object":
+      if (isRecord(value) && def.shape)
+        for (const [key, child] of Object.entries(def.shape))
+          if (key in value) value[key] = restoreArrays(child, value[key]);
+      return value;
+    case "record":
+      if (isRecord(value) && def.valueType) {
+        const valueType = def.valueType;
+        for (const key of Object.keys(value)) value[key] = restoreArrays(valueType, value[key]);
+      }
+      return value;
+    case "union": {
+      const options = def.options ?? [];
+      if (isEmptyRecord(value) && options.some((option) => baseOf(option).type === "array"))
+        return [];
+      if (!isRecord(value)) return value;
+      // The object option whose fields cover the value's keys (e.g. an ACK's ok/error variants).
+      const keys = Object.keys(value);
+      const match = options.find((option) => {
+        const shape = baseOf(option).shape;
+        return shape !== undefined && keys.every((key) => key in shape);
+      });
+      return match ? restoreArrays(match, value) : value;
+    }
+    default:
+      return value;
+  }
+}
+
+/** Rooms whose last read-only state is cached, at most (oldest dropped first). */
+const LIGHT_CACHE_ROOMS = 256;
+
 /** Scripts alone mutate gameplay. Preliminary reads validate immutable quiz data;
  * every session, generation, phase and revision guard is repeated atomically. */
 export class RedisStateStore implements IGameStateStore {
   private readonly scripts = new Map<string, { source: string; sha: string }>();
   private destroyed = false;
+  /** Last read-only state per room, keyed by its raw JSON (see `readPrivateSnapshot`). */
+  private readonly lightCache = new Map<string, { raw: string; state: ActiveRoomState }>();
   constructor(
     private readonly redis: Redis | Cluster,
     private readonly project: RoomProjector,
@@ -223,9 +306,46 @@ export class RedisStateStore implements IGameStateStore {
   async getPrivateSnapshot(identity: RoomIdentity) {
     return (await this.read(identity))?.state ?? null;
   }
-  /** Same parsed read as `getPrivateSnapshot`: the object already belongs to the caller. */
+  /**
+   * Read-only private state without the full schema validation (QA follow-up TASK-185F). A full
+   * `activeRoomStateSchema` decode of a 200-player room took most of a node's CPU in the Redis
+   * benchmark, so Redis commands timed out and answers were refused. Here the stored JSON is
+   * parsed, its envelope (schema version, session, PIN) checked and its cjson-encoded empty
+   * arrays restored by the schema's structure. The state is written only by this store, from
+   * validated input and its own scripts; `getPrivateSnapshot` and every mutation keep validating
+   * it fully. An unchanged state (same raw JSON) returns the previous object, which the read-only
+   * contract (never mutated) makes safe to share.
+   */
   async readPrivateSnapshot(identity: RoomIdentity): Promise<Readonly<ActiveRoomState> | null> {
-    return this.getPrivateSnapshot(identity);
+    const result = await this.run("read", identity, {});
+    if (result.missing === true) {
+      this.lightCache.delete(identity.sessionId);
+      return null;
+    }
+    const { state: raw } = decode(z.object({ state: z.string() }).passthrough(), result);
+    const cached = this.lightCache.get(identity.sessionId);
+    if (cached && cached.raw === raw) return cached.state;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return fail("STATE_UNAVAILABLE");
+    }
+    if (
+      !isRecord(parsed) ||
+      parsed["schemaVersion"] !== 1 ||
+      parsed["sessionId"] !== identity.sessionId ||
+      parsed["pinCode"] !== identity.pin
+    )
+      return fail("STATE_UNAVAILABLE");
+    const state = restoreArrays(activeRoomStateSchema, parsed) as ActiveRoomState;
+    this.lightCache.delete(identity.sessionId);
+    this.lightCache.set(identity.sessionId, { raw, state });
+    if (this.lightCache.size > LIGHT_CACHE_ROOMS) {
+      const oldest = this.lightCache.keys().next().value;
+      if (oldest !== undefined) this.lightCache.delete(oldest);
+    }
+    return state;
   }
   async getRoleSnapshot(identity: RoomIdentity, principal: Principal) {
     const entry = await this.read(identity);
@@ -463,6 +583,7 @@ export class RedisStateStore implements IGameStateStore {
     );
   }
   async releaseRoom(identity: RoomIdentity) {
+    this.lightCache.delete(identity.sessionId);
     return decode(
       z.boolean(),
       (await this.run("release-room", identity, { kind: "releaseRoom" })).result,
