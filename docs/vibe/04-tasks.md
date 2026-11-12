@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 226 task selesai, 5 task Pending (Phase 7 tindak lanjut QA, 2026-11-12)** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 227 task selesai, 6 task Pending (Phase 7 tindak lanjut QA, 2026-11-12)** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -20,7 +20,7 @@ Status Legend: `- [ ]` Pending | `- [~]` In Progress | `- [x]` Completed | `- [!
 | 4. Frontend Design Tokens, Base UI & State Layer | TASK-087–TASK-131 | 45 | Fondasi M5–M6; source katalog M1 dituntaskan sebelum UI |
 | 5. Feature Screens, API Integration & 5 UI States | TASK-132–TASK-163 | 32 | M5 → M6 |
 | 6. Hardening, Edge Cases & Polish | TASK-164–TASK-182 | 19 | M7 + release evidence + paket self-host Docker |
-| 7. Tindak lanjut QA | TASK-183–TASK-189 (+ TASK-183A, TASK-185A–E) | 13 | Temuan terbuka [07-qa-report.md](07-qa-report.md): benchmark Redis dua node (US-20), fixture uji root/proxy; ruang disk Docker yang dapat diatur (TASK-188–189, permintaan pengguna 2026-11-12) |
+| 7. Tindak lanjut QA | TASK-183–TASK-189 (+ TASK-183A, TASK-185A–G) | 15 | Temuan terbuka [07-qa-report.md](07-qa-report.md): benchmark Redis dua node (US-20), fixture uji root/proxy; ruang disk Docker yang dapat diatur (TASK-188–189, permintaan pengguna 2026-11-12) |
 
 **Urutan:** ambil task Pending bernomor terkecil yang semua Depends On-nya Completed. Dependensi per-task adalah DAG operasional; phase merangkum milestone, bukan izin mengerjakan seluruh phase dalam satu `/vibe-code`. API/DB/adapter selesai sebelum integrasi UI; catalog tools/contracts lebih awal dan enam katalog lengkap tersedia sebelum provider UI. Tidak ada delegasi atau eksekusi agen paralel yang diperlukan oleh plan ini.
 
@@ -3116,7 +3116,7 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
   - Integration `recovery|realtime-races|finalization-failures` lulus.
 
-### - [~] TASK-185E: Ukur ulang setelah perbaikan jalur publish
+### - [x] TASK-185E: Ukur ulang setelah perbaikan jalur publish
 - **Traceability**: `US-16`, `US-20`, NFR-01, [07-qa-report.md §2 US-20](07-qa-report.md)
 - **Depends On**: `TASK-185A`, `TASK-185C`, `TASK-185D`, `TASK-184`
 - **Target Files**:
@@ -3129,6 +3129,45 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
 - **Definition of Done (Verification)**:
   - Dua record JSON baru dirujuk dari `docs/performance-results.md` dengan verdict.
   - `07-qa-report.md` US-20 diperbarui.
+  - `pnpm exec prettier --check docs/performance-results.md` lulus.
+
+### - [ ] TASK-185F: Hentikan validasi Zod penuh pada pembacaan read-only Redis state
+- **Traceability**: `US-16`, `US-20`, NFR-01, temuan TASK-185E (CPU profile mode Redis di [docs/performance-results.md](../performance-results.md)).
+- **Depends On**: `TASK-185E`, `TASK-185B`, `TASK-050`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/providers/state/redis-state.store.ts`
+  - `MODIFY` `tests/contracts/state-parity.spec.ts`
+- **Implementation Specs**:
+  - Masalah (TASK-185E):
+    - 83% CPU sibuk node Redis ada di `decode(activeRoomStateSchema, …)` di `RedisStateStore.read`, sehingga setiap pembacaan memvalidasi seluruh state;
+    - event loop sibuk membuat perintah Redis timeout, sehingga jawaban ditolak `STATE_UNAVAILABLE`/`DEPENDENCY_UNAVAILABLE`.
+  - `readPrivateSnapshot` di Redis memakai jalur ringan: JSON.parse plus cek envelope (sessionId, pinCode, schemaVersion, phase), dengan **cache per room berdasarkan string mentah**. Bila string state sama dengan bacaan sebelumnya, objek parse sebelumnya dipakai ulang. Ini aman karena kontrak read-only melarang mutasi.
+  - Validasi skema penuh tetap berlaku untuk `getPrivateSnapshot`, mutasi, recovery, dan semua jalur yang menulis.
+  - State di Redis hanya ditulis oleh store ini (input tervalidasi plus skrip Lua milik sendiri). Kerusakan data tetap terdeteksi oleh pembacaan penuh berikutnya.
+  - Cache dibatasi per room dan dibuang saat room dilepas atau kedaluwarsa (tidak bocor, MJ-05).
+- **Definition of Done (Verification)**:
+  - Contract state-parity (Redis):
+    - `readPrivateSnapshot` mengembalikan state yang sama dengan `getPrivateSnapshot`;
+    - mencerminkan perubahan sesudahnya;
+    - memakai ulang objek bila state tidak berubah;
+    - mengembalikan null untuk room yang dilepas;
+    - state rusak tetap ditolak oleh `getPrivateSnapshot`.
+  - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
+  - `pnpm test:contracts --testPathPatterns='state-parity|redis'` dan integration `payload-privacy|realtime-races` lulus.
+
+### - [ ] TASK-185G: Ukur ulang mode Redis setelah TASK-185F
+- **Traceability**: `US-16`, `US-20`, NFR-01, [07-qa-report.md §2 US-20](07-qa-report.md)
+- **Depends On**: `TASK-185F`
+- **Target Files**:
+  - `MODIFY` `docs/performance-results.md`
+  - `MODIFY` `docs/vibe/07-qa-report.md`
+- **Implementation Specs**:
+  - Jalankan `pnpm benchmark:game --clients 200 --transitions 100 --mode redis` (dan memory sebagai regresi).
+  - Catat hasil apa adanya beserta kode penolakan dan tabel per node.
+  - Bila masih FAIL, tetapkan bottleneck berikutnya dari profil dan buat task korektif. Bedakan juga batas host 4 core bersama (dua node + PostgreSQL + Redis + load generator) dari cacat server.
+- **Definition of Done (Verification)**:
+  - Record JSON baru dirujuk dari `docs/performance-results.md`.
+  - US-20 di `07-qa-report.md` diperbarui.
   - `pnpm exec prettier --check docs/performance-results.md` lulus.
 
 ### - [ ] TASK-186: Buat injeksi gagal-hapus `system.spec` tidak bergantung pada uid

@@ -2534,8 +2534,23 @@
   - `pnpm --filter @kabuki-neko/api test` → 39/39 suites, 277/277 tests.
   - `pnpm test:integration --testPathPatterns='recovery|realtime-races|finalization-failures'` → 3/3 suites, 30/30 tests.
 
-## TASK-185E: Ukur ulang setelah perbaikan jalur publish — IN PROGRESS
-- **Started**: 2026-11-12 (Asia/Jakarta)
-- **Plan**: `docs/performance-results.md`, `docs/vibe/07-qa-report.md`
-- **Done so far**: API rebuilt at the TASK-185D commit; memory + redis 200-client runs started
-- **Verification**: pending
+## TASK-185E: Ukur ulang setelah perbaikan jalur publish — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `docs/performance-results.md`: section "After the publish-path fixes".
+  - `docs/vibe/07-qa-report.md`: US-20 note.
+  - `docs/vibe/04-tasks.md`: next corrective tasks TASK-185F (light read-only Redis decode) and TASK-185G (re-measure).
+  - Scope extensions in the benchmark, recorded because the run could not finish or explain itself without them:
+    - `scripts/benchmark-game.ts`: min/max without spreading more than 100k samples (the first redis attempt threw "Maximum call stack size exceeded"). The record now holds answer rejection codes, also shown in the Markdown.
+    - `tests/performance/game-benchmark.spec.ts`: 500,000-sample summary case, which fails on the old code.
+- **Runs**:
+  - **Memory, 200 clients, 100 transitions** → **PASS**. Transport p95 12.44 ms; admission p50 1.10 ms / p95 35.87 ms; 0 rejected. API loop lag max 629.63 ms, CPU mean 10.6%.
+  - **Redis, 200 clients, 100 transitions** → FAIL. Transport p95 327 ms; 3,899 of 5,000 answers not admitted.
+    - 0 disconnects and 0% delivery loss (was 100 disconnects and 28.9%).
+    - Both nodes logged adapter publish timeouts and survived them (TASK-185A works).
+  - **Profiled redis run, 200 clients, 24 transitions**: rejections were STATE_UNAVAILABLE 339 and DEPENDENCY_UNAVAILABLE 188. The busier node spent 79 of 95 s of busy CPU in `decode` within `RedisStateStore.read` (full `activeRoomStateSchema` validation per read).
+- **Verification**:
+  - `pnpm test:performance -- tests/performance/game-benchmark.spec.ts` → 23/23.
+  - eslint/tsc for the script → pass.
+  - `pnpm exec prettier --check docs/performance-results.md` → pass.
+  - Records `test-results/benchmark/memory.json` and `redis.json` (copies in the scratchpad).

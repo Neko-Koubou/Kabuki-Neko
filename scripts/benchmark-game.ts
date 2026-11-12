@@ -709,6 +709,7 @@ export async function runBenchmark(options: BenchmarkOptions) {
       }
       throw new Error(`${event} refused: ${refusals.slice(-1).join("")}`);
     };
+    const rejectionCodes: Record<string, number> = {};
     let rejectedAnswers = 0;
     let unclosed = 0;
     const benchmarkStart = Date.now();
@@ -745,10 +746,17 @@ export async function runBenchmark(options: BenchmarkOptions) {
                 answer: open.options[0]?.index ?? 0,
               });
               if (answered.ack.ok) admission.push(answered.rttMs);
-              else rejectedAnswers++;
+              else {
+                rejectedAnswers++;
+                const code =
+                  (answered.ack.error as { errorCode?: string } | undefined)?.errorCode ??
+                  "UNKNOWN";
+                rejectionCodes[code] = (rejectionCodes[code] ?? 0) + 1;
+              }
             } catch {
               // No ACK (timeout or dropped connection): an observed failure, kept in the record.
               rejectedAnswers++;
+              rejectionCodes["NO_ACK"] = (rejectionCodes["NO_ACK"] ?? 0) + 1;
             }
           }),
         );
@@ -849,6 +857,8 @@ export async function runBenchmark(options: BenchmarkOptions) {
       reportQueueAgeMs: reportReadyMs,
       answersWritten: admission.length,
       answersRejected: rejectedAnswers,
+      /** Why answers were not admitted: server error code, or NO_ACK. */
+      answerRejectionCodes: rejectionCodes,
       disconnects,
       disconnectsFirstAtMs: disconnectEvents[0]?.atMs ?? null,
       questionsClosedBySkip: unclosed,
@@ -883,7 +893,7 @@ export function markdownSummary(record: Awaited<ReturnType<typeof runBenchmark>>
     "",
     `- ${record.clients} clients, ${record.phaseTransitionsObserved} phase transitions, ${Math.round(record.durationMs / 1000)} s, ${record.environment.network}`,
     `- ${record.environment.cpu}, ${record.environment.cores} cores, ${record.environment.memoryGiB} GiB, ${record.environment.platform}, versions ${JSON.stringify(record.environment.versions)}`,
-    `- Clock error bound p95 ${record.clockErrorBoundMs.p95} ms; delivery loss ${record.delivery.missing}/${record.delivery.expected}; report queue age ${record.reportQueueAgeMs ?? "not ready"} ms for ${record.answersWritten} answers (${record.answersRejected} rejected; ${record.questionsClosedBySkip} questions closed by Skip; ${record.disconnects.length} player disconnects${record.disconnects.length ? `: ${[...new Set(record.disconnects.map((item) => item.split(": ")[1]))].join(", ")}` : ""})`,
+    `- Clock error bound p95 ${record.clockErrorBoundMs.p95} ms; delivery loss ${record.delivery.missing}/${record.delivery.expected}; report queue age ${record.reportQueueAgeMs ?? "not ready"} ms for ${record.answersWritten} answers (${record.answersRejected} rejected${rejectionSummary(record.answerRejectionCodes)}; ${record.questionsClosedBySkip} questions closed by Skip; ${record.disconnects.length} player disconnects${record.disconnects.length ? `: ${[...new Set(record.disconnects.map((item) => item.split(": ")[1]))].join(", ")}` : ""})`,
     `- Target p95 < ${record.target.p95Ms} ms: **${record.target.pass ? "PASS" : `FAIL (${record.target.reasons.join("; ")})`}**`,
     "",
     "| Measure (ms) | n | p50 | p95 | p99 | max |",
@@ -895,6 +905,14 @@ export function markdownSummary(record: Awaited<ReturnType<typeof runBenchmark>>
     ...diagnosticsTable(record),
     "",
   ].join("\n");
+}
+
+/** " [CODE n, …]" for rejected answers, or "" when none were rejected. */
+function rejectionSummary(codes: Record<string, number>): string {
+  const entries = Object.entries(codes);
+  return entries.length === 0
+    ? ""
+    : ` [${entries.map(([code, count]) => `${code} ${count}`).join(", ")}]`;
 }
 
 /** Per-process table: each API node and the load generator (TASK-184). */
