@@ -30,7 +30,7 @@ Status final setelah semua perbaikan di §3. Kolom "Run pertama" mencatat temuan
 | Integration (Jest + Docker) | `pnpm test:integration` | 18/20 suite; 146/148 | **19/20 suite; 147/148** (1 FAIL lingkungan) | 7,7 m |
 | E2E (Playwright, Chromium) | `pnpm test:e2e` | 45 pass, 3 fail, 6 tidak jalan (run 2) | **54/54 PASS** | 9,9 m |
 | Benchmark game, memory | `pnpm benchmark:game --clients 200 --transitions 100 --mode memory` | — | **PASS** (transport p95 20,59 ms) | 7 m |
-| Benchmark game, Redis 2 node | `pnpm benchmark:game --clients 200 --transitions 100 --mode redis` | — | lihat §2 US-20 | — |
+| Benchmark game, Redis 2 node | `pnpm benchmark:game --clients 200 --transitions 100 --mode redis` | — | **FAIL** (transport p95 282,57 ms; 26,96% kehilangan; 100 pemain node B terputus) | 18 m |
 
 **Catatan per suite:**
 - **Contract**: 11 kegagalan run pertama berasal dari dua sebab lingkungan.
@@ -68,10 +68,22 @@ Pemetaan memakai peta `TRACE` di `tests/e2e/journeys.spec.ts`. Test "traces ever
 | US-17 Self-host Docker | AC-17-01, AC-17-02 | `tests/integration/deployment.spec.ts` (profile default & scale); `tests/integration/backup-restore.spec.ts`; `tests/integration/catalog-deployment.spec.ts`; `tests/integration/room-retention.spec.ts` › treats in-memory rooms as LOST after a restart | **PASS** |
 | US-18 Visual & aksesibilitas | AC-18-01, AC-18-02 | `tests/e2e/accessibility.spec.ts` (3 kasus axe + keyboard-only game); `tests/e2e/responsive.spec.ts` (5 kasus); `tests/e2e/audio.spec.ts` (3 kasus); `apps/web/src/components/host/AudioController.spec.tsx` | **PASS** (sempat FAIL, diperbaiki QA-01/03) |
 | US-19 Distribusi & atribusi | AC-19-01, AC-19-02 | `tests/contracts/distribution.spec.ts`; `tests/e2e/journeys.spec.ts` › AC-15/17/19 … the About page shows the license; `apps/web/src/components/ui/document-view.spec.tsx` | **PASS** |
-| US-20 Kinerja & audit | AC-20-01, AC-20-02 | `tests/integration/auth-races.spec.ts` › never writes passwords, tokens, cookies or invite codes to the API output; `tests/integration/room-retention.spec.ts` › never evicts a report that is not durable and raises one 24 h alarm; `apps/api/src/common/audit.service.spec.ts`; `tests/performance/*.spec.ts`; benchmark memory | **PASS** — audit & benchmark memory (p95 20,59 ms). Mode Redis: lihat catatan di bawah tabel. |
+| US-20 Kinerja & audit | AC-20-01, AC-20-02 | `tests/integration/auth-races.spec.ts` › never writes passwords, tokens, cookies or invite codes to the API output; `tests/integration/room-retention.spec.ts` › never evicts a report that is not durable and raises one 24 h alarm; `apps/api/src/common/audit.service.spec.ts`; `tests/performance/*.spec.ts`; `pnpm benchmark:game` mode memory dan Redis | **FAIL (sebagian)** — audit, AC-20-02 dan benchmark memory PASS (p95 20,59 ms); benchmark Redis 2 node FAIL (lihat catatan) |
 | US-21 Multibahasa | AC-21-01 – AC-21-04 | `tests/e2e/localization.spec.ts` (5 kasus); `tests/contracts/locale-coverage.spec.ts`, `locale-build.spec.ts`, `locale-packages.spec.ts`, `localization-roundtrip.spec.ts`; `tests/e2e/responsive.spec.ts` › Japanese and Simplified Chinese wrap at 320 px; `pnpm locales:validate` | **PASS** |
 
-**Catatan US-20 (mode Redis 2 node):** run ulang dari commit QA sedang berjalan saat commit ini; hasilnya ditambahkan di sini setelah selesai. Hasil terakhir yang tercatat (TASK-179) adalah **FAIL**: transport p95 310 ms, 28,9% kehilangan pengiriman, node B memutus 100 pemain.
+**Catatan US-20 (mode Redis 2 node): FAIL, terkonfirmasi ulang dari commit QA.**
+- **Hasil**: 200 klien, 102 transisi, 1.057 s, PostgreSQL + Redis 7.4.12 + 2 node API, loopback pada satu host 4 core.
+  - Transport p50 13,97 ms, **p95 282,57 ms**, p99 656,72 ms, max 2.484 ms.
+  - Kehilangan pengiriman 5.500/20.400 (26,96%).
+  - **100 pemain di node B terputus** (`transport close`).
+  - 2.568 jawaban ditolak; antrean laporan 9.857 ms untuk 1.132 jawaban.
+  - Record: `test-results/benchmark/redis.json`.
+- **Perbandingan**: hasil ini sama polanya dengan TASK-179 (p95 310 ms, kehilangan 28,9%, node B memutus 100 pemain). Masalahnya belum diperbaiki dan tidak tercatat di `06-code-review.md`.
+- **Akar masalah**: belum ditemukan. Kandidat:
+  - saturasi CPU: dua node API, PostgreSQL, Redis, dan 200 klien berbagi 4 core, sehingga ping Socket.io atau adapter Redis tertunda;
+  - jalur fan-out `@socket.io/redis-adapter` ke node kedua.
+  Diagnosis butuh profiling per node dan run di host terpisah, di luar batas 3 percobaan terfokus run QA ini.
+- **Rekomendasi**: buat task korektif (Stage 5) untuk menyelidiki pemutusan node B dan latensi fan-out Redis, lalu ulangi benchmark di hardware terpisah. Target PRD p95 < 50 ms **belum terbukti** untuk topologi multi-instance.
 
 ## 3. Bug dan perbaikan dalam run ini
 
@@ -178,5 +190,5 @@ Tindak lanjut QA-01/02 juga dicatat di bawah MJ-25 pada [06-code-review.md](06-c
 - Pemindaian QR dengan kamera fisik di ponsel. E2E memakai kamera palsu/ditolak.
 - Kualitas audio dan autoplay di Safari iOS serta perangkat Android nyata.
 - Benchmark di jaringan nyata (Wi-Fi/WAN, beberapa host), karena baseline di sini loopback.
-- Benchmark mode Redis setelah perbaikan (lihat US-20).
+- Benchmark mode Redis di hardware terpisah setelah task korektif (lihat US-20).
 - Deploy Docker di host non-root dengan volume nyata, termasuk restore backup oleh operator.
