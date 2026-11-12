@@ -198,6 +198,20 @@ export class MediaRepository {
       .getRawOne<{ count: unknown; bytes: unknown }>();
     return { fileCount: safeInteger(result?.count), totalBytes: safeInteger(result?.bytes) };
   }
+  /**
+   * Bytes held in storage for the upload quota (TASK-188): READY assets plus DELETING ones whose
+   * blob may still exist. UPLOADING reservations carry 0 bytes until they finish.
+   */
+  async totalStoredBytes(manager: EntityManager = this.db.manager): Promise<number> {
+    if (manager.connection !== this.db) throw new Error("INVALID_REFERENCE");
+    const result = await manager
+      .getRepository<MediaRow>("media_assets")
+      .createQueryBuilder("a")
+      .select("COALESCE(SUM(a.size_bytes),0)", "bytes")
+      .where("a.state IN (:...states)", { states: ["READY", "DELETING"] })
+      .getRawOne<{ bytes: unknown }>();
+    return safeInteger(result?.bytes);
+  }
   /** One asset by ID in any state, optionally inside the caller's transaction. */
   find(id: string, manager: EntityManager = this.db.manager): Promise<MediaRow | null> {
     if (manager.connection !== this.db) throw new Error("INVALID_REFERENCE");

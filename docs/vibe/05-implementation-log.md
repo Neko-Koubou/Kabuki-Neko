@@ -2682,3 +2682,25 @@
     - `docker history` shows only the final COPY layers.
   - `docker compose -f docker/docker-compose.yml config --quiet` → pass, also with `--profile scale`, with `-f docker/docker-compose.tls.yml` (KN_DOMAIN=localhost), and with `KN_BUILD_CA_FILE` set (secret rendered).
   - `pnpm exec eslint tests/helpers/runtime.ts` → pass; Prettier for the three files → pass.
+
+## TASK-188: Terapkan kuota total penyimpanan media yang dapat diatur — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/config/env.schema.ts`: `MEDIA_STORAGE_QUOTA_MIB`, a whole number 0–16,777,216; 0 = unlimited. Default **10240** (10 GiB, the recommended self-host default).
+  - `packages/database/src/repositories/media.repository.ts`: `totalStoredBytes(manager?)`, the SUM of `size_bytes` over READY and DELETING assets through the dialect-neutral query builder with bound parameters. UPLOADING reservations hold 0 bytes until they finish.
+  - `apps/api/src/modules/media/media.service.ts`: `checkQuota` runs inside the `operations.reserve` create callback, so only new uploads are checked and a retry of a finished upload replays its receipt.
+    - An upload that would pass the budget is refused with the existing `CAPACITY_REACHED` (HTTP 507), before any row, receipt or blob exists. The six locale catalogs are unchanged.
+    - The soft bound under concurrency (parallel uploads × per-file limit) is documented in the code.
+  - `apps/api/src/modules/media/media.service.spec.ts`: new case.
+    - An upload under the quota is accepted.
+    - Crossing it is refused with CAPACITY_REACHED / 507, and the refused key leaves no row and no receipt.
+    - The finished key still replays with the quota full.
+    - Quota 0 accepts; the default is 10240.
+    - Deleted and FAILED assets free the space.
+    - `-1`, `1.5` and `lots` are refused by the env schema.
+- **Verification**:
+  - The new case FAILS on the old `media.service.ts` and PASSES now.
+  - `pnpm --filter @kabuki-neko/database build`/`lint`/`typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 39/39 suites, 278/278 tests.
+  - `KABUKI_TEST_BUILD_CA=/root/.ccr/ca-bundle.crt pnpm test:integration --testPathPatterns='media'` → 2/2 suites, 15/15 tests (media + media-failures, including MinIO).

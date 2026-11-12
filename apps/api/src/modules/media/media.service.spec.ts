@@ -296,3 +296,64 @@ it("guards accessibility metadata by owner and revision without foreign library 
   expect(own).toMatchObject({ id: media.id, inUse: true, canDelete: false });
   expect((await service.list(owner, { inUse: "false" })).items).toEqual([]);
 });
+
+it("enforces the total media storage quota before any row, receipt or blob exists (TASK-188)", async () => {
+  /** A service whose instance allows `quotaMib` MiB of stored media. */
+  const withQuota = (quotaMib: string) =>
+    new MediaService(
+      repo,
+      new SettingsRepository(db),
+      registry,
+      new ConfigService(
+        parseEnvironment({
+          NODE_ENV: "test",
+          LOCAL_STORAGE_PATH: config.values.LOCAL_STORAGE_PATH,
+          APP_SECRET_FILE: join(directory, "runtime-secrets.json"),
+          MEDIA_STORAGE_QUOTA_MIB: quotaMib,
+        }),
+        {
+          accessSecret: randomBytes(64).toString("hex"),
+          refreshSecret: randomBytes(64).toString("hex"),
+        },
+      ),
+      jwt,
+      operations,
+      new MediaReferenceService(repo),
+      null,
+    );
+  const MIB = 1024 * 1024;
+  const owner = await identity();
+  const limited = withQuota("1");
+  // Under the quota: accepted.
+  const firstKey = randomUUID();
+  const first = await limited.upload(owner, upload(), firstKey);
+  expect(first.httpStatus).toBe(201);
+  const size = first.response.sizeBytes;
+  // Fill the budget to just under 1 MiB, so one more upload of the same size crosses it.
+  await db.manager.update(
+    "media_assets",
+    { id: first.response.id },
+    { size_bytes: MIB - size + 1 },
+  );
+  const key = randomUUID();
+  const refused: unknown = await limited
+    .upload(owner, upload(), key)
+    .catch((error: unknown) => error);
+  expect(refused).toMatchObject({ errorCode: "CAPACITY_REACHED" });
+  expect((refused as { getStatus: () => number }).getStatus()).toBe(507);
+  // Nothing was created for the refused upload: no row, no receipt, no blob.
+  expect((await rows()).map((row) => row.id)).toEqual([first.response.id]);
+  expect(await db.getRepository<OperationRow>("request_dedup").findOneBy({ key })).toBeNull();
+  // A retry of the finished upload still replays, even with the quota full.
+  expect((await limited.upload(owner, upload(), firstKey)).response.id).toBe(first.response.id);
+  // Unlimited (0) accepts it; the default is the recommended 10 GiB.
+  expect((await withQuota("0").upload(owner, upload(), randomUUID())).httpStatus).toBe(201);
+  expect(config.values.MEDIA_STORAGE_QUOTA_MIB).toBe(10240);
+  // Deleted and failed media free the space.
+  await db.manager.delete("media_assets", { id: first.response.id });
+  await db.manager.update("media_assets", { state: "READY" }, { state: "FAILED" });
+  expect((await limited.upload(owner, upload(), key)).httpStatus).toBe(201);
+  // The setting accepts only whole, non-negative MiB.
+  for (const value of ["-1", "1.5", "lots"])
+    expect(() => parseEnvironment({ NODE_ENV: "test", MEDIA_STORAGE_QUOTA_MIB: value })).toThrow();
+});

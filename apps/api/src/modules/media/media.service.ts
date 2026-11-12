@@ -192,6 +192,20 @@ export class MediaService {
     }
   }
 
+  /**
+   * Total media storage quota (`MEDIA_STORAGE_QUOTA_MIB`, 0 = unlimited; TASK-188). Refuses an
+   * upload that would take the stored bytes past the budget with CAPACITY_REACHED (507), before
+   * any row, receipt or blob exists. The check is not serialized with concurrent uploads, so the
+   * stored total can exceed the budget by at most (parallel uploads × the per-file limit).
+   */
+  private async checkQuota(incomingBytes: number, manager: EntityManager): Promise<void> {
+    const quotaMib = this.config.values.MEDIA_STORAGE_QUOTA_MIB;
+    if (quotaMib === 0) return;
+    const stored = await this.media.totalStoredBytes(manager);
+    if (stored + incomingBytes > quotaMib * 1024 * 1024)
+      throw new ApiError("CAPACITY_REACHED", 507);
+  }
+
   /** POST /media/upload — see the module comment for the full reservation protocol. */
   async upload(
     principal: VerifiedPrincipal,
@@ -238,6 +252,8 @@ export class MediaService {
     const receipt = await this.operations.reserve(
       operation,
       async (manager) => {
+        // Only a new upload is checked: a retry of a finished one replays its receipt.
+        await this.checkQuota(processed.sizeBytes, manager);
         await this.media.reserve(reservation, Date.now(), manager);
         return { pendingResourceId: id };
       },

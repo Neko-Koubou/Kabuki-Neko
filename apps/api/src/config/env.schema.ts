@@ -123,6 +123,11 @@ export const environmentSchema = z
     FINALIZE_CONCURRENCY: integer(1, 8),
     ROOM_MAX_AGE_SEC: integer(3600, 86400),
     MAX_ACTIVE_ROOMS: integer(1, 10000),
+    /**
+     * Total stored media budget in MiB; 0 = unlimited (TASK-188). Docker cannot cap a named
+     * volume portably, so the API enforces the budget of the space that grows: uploads.
+     */
+    MEDIA_STORAGE_QUOTA_MIB: integer(0, 16_777_216),
   })
   .superRefine((env, ctx) => {
     const invalid = (key: keyof typeof env) =>
@@ -246,6 +251,8 @@ export function parseEnvironment(raw: Record<string, string | undefined>): Runti
     FINALIZE_CONCURRENCY: "2",
     ROOM_MAX_AGE_SEC: "28800",
     MAX_ACTIVE_ROOMS: state === "redis" ? "200" : "20",
+    // 10 GiB: the recommended default for a self-hosted instance (docs/self-hosting.md).
+    MEDIA_STORAGE_QUOTA_MIB: "10240",
   };
   for (const [key, value] of Object.entries(raw)) if (value !== undefined) defaults[key] = value;
   if (raw.API_PORT !== undefined && raw.PORT !== undefined && raw.API_PORT !== raw.PORT)
