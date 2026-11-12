@@ -324,6 +324,53 @@ and kept its `SLOWLOG` (commands over 5 ms):
 Fixes are planned in TASK-185H (read reply without re-encoding; lease operations without the
 state decode), with a re-measure in TASK-185I.
 
+## After the Redis script fixes (2026-11-12, TASK-185I)
+
+The commit includes TASK-185H:
+
+- the read script returns the state as a bulk reply;
+- lease operations no longer decode the state.
+
+### Redis mode, two nodes, 200 clients: **FAIL**
+
+Record `test-results/benchmark/redis.json`.
+
+- No disconnects; delivery loss 0/20,400.
+- Transport p95 **278.66 ms**.
+- 3,545 answers not admitted: 2,653 `STATE_UNAVAILABLE`, 892 `DEPENDENCY_UNAVAILABLE`.
+
+| Measure (ms)                 | n       | p50      | p95      | p99      | max      |
+| ---------------------------- | ------- | -------- | -------- | -------- | -------- |
+| Transport (commit → receipt) | 150,023 | 11.66    | 278.66   | 488.33   | 1,263.58 |
+| Admission (answer ACK RTT)   | 1,455   | 3,988.46 | 5,332.13 | 5,536.73 | 5,920.61 |
+| State commit (host ACK RTT)  | 52      | 373.60   | 1,107.02 | 4,005.42 | 4,005.42 |
+
+Redis container CPU, 235 samples: median 5.3%, p90 37.6%, max 99.1% (was 11% / 71% / 100%).
+
+SLOWLOG (commands over 5 ms, last 1,024 kept):
+
+| Script               | Slow calls | Mean (ms) | Max (ms) |
+| -------------------- | ---------- | --------- | -------- |
+| `read` (multi-bulk)  | 933        | 12.2      | 41.0     |
+| `admit-answer.lua`   | 58         | 103.5     | 137.9    |
+| `mutate-room.lua`    | 18         | 109.8     | 190.0    |
+| `close-question.lua` | 10         | 119.9     | 240.7    |
+
+### Remaining bottleneck: one JSON blob per room
+
+The whole room state is one JSON string in Redis: quiz, players, every answer of every question,
+every result. Every gameplay script decodes it with `cjson.decode` and re-encodes it with
+`cjson.encode` for a single change, and every read copies it through Lua. The string grows with
+each played question, so late in a 25-question, 200-player game:
+
+- one `admit-answer` costs about 100 ms of single-threaded Redis time;
+- a burst of 200 answers needs about 20 s of Redis time.
+
+Commands from both nodes then queue past their 2 s timeout. The multi-node target cannot be met
+without storing answers and results outside the per-room blob. That is an architectural change
+of the Redis state layout (TASK-185K), beyond a script fix. A smaller fix, a plain `HMGET` read
+instead of a Lua read, is TASK-185J.
+
 ## Not covered
 
 - More than 200 clients: needs a separate harness and run. The CLI refuses `--clients` above 200.

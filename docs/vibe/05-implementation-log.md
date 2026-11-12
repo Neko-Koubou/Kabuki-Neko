@@ -2615,8 +2615,21 @@
   - `pnpm test:contracts --testPathPatterns='state-parity|redis'` → 4/4 suites (incl. Redis Cluster), 63/63 tests.
   - `pnpm test:integration --testPathPatterns='realtime-races|room-retention'` → 2/2 suites, 28/28 tests.
 
-## TASK-185I: Ukur ulang mode Redis setelah TASK-185H — IN PROGRESS
-- **Started**: 2026-11-12 (Asia/Jakarta)
-- **Plan**: `docs/performance-results.md`, `docs/vibe/07-qa-report.md`
-- **Done so far**: API built at the TASK-185H commit; redis 200-client run with Redis CPU/SLOWLOG sampling started
-- **Verification**: pending
+## TASK-185I: Ukur ulang mode Redis setelah TASK-185H — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `docs/performance-results.md`: section "After the Redis script fixes".
+  - `docs/vibe/07-qa-report.md`: US-20.
+  - `docs/vibe/04-tasks.md`: TASK-185J and TASK-185K.
+- **Run**: **Redis, 200 clients, 100 transitions** → FAIL.
+  - Transport p95 278.66 ms.
+  - 3,545 not admitted (STATE_UNAVAILABLE 2,653, DEPENDENCY_UNAVAILABLE 892).
+  - 0 disconnects, 0 loss.
+  - Redis CPU (235 samples): median 5.3%, p90 37.6%, max 99.1%.
+  - SLOWLOG > 5 ms:
+    - `read` 933 calls, mean 12.2 ms;
+    - `admit-answer` 58, mean 103.5 ms;
+    - `mutate-room` 18, mean 109.8 ms;
+    - `close-question` 10, mean 119.9 ms.
+- **Conclusion**: the remaining cost is the one-JSON-blob-per-room layout, which every script decodes and re-encodes. That is an architectural change: TASK-185K, which needs a design decision. A plain HMGET read (TASK-185J) is the smaller fix.
+- **Verification**: `pnpm exec prettier --check docs/performance-results.md` → pass. Record `test-results/benchmark/redis.json` (copy in the scratchpad), Redis CPU and SLOWLOG samples in the scratchpad.

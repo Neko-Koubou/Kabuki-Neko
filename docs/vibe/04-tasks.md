@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 230 task selesai, 5 task Pending (Phase 7 tindak lanjut QA, 2026-11-12)** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 231 task selesai, 6 task Pending (Phase 7 tindak lanjut QA, 2026-11-12)** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -20,7 +20,7 @@ Status Legend: `- [ ]` Pending | `- [~]` In Progress | `- [x]` Completed | `- [!
 | 4. Frontend Design Tokens, Base UI & State Layer | TASK-087–TASK-131 | 45 | Fondasi M5–M6; source katalog M1 dituntaskan sebelum UI |
 | 5. Feature Screens, API Integration & 5 UI States | TASK-132–TASK-163 | 32 | M5 → M6 |
 | 6. Hardening, Edge Cases & Polish | TASK-164–TASK-182 | 19 | M7 + release evidence + paket self-host Docker |
-| 7. Tindak lanjut QA | TASK-183–TASK-189 (+ TASK-183A, TASK-185A–I) | 17 | Temuan terbuka [07-qa-report.md](07-qa-report.md): benchmark Redis dua node (US-20), fixture uji root/proxy; ruang disk Docker yang dapat diatur (TASK-188–189, permintaan pengguna 2026-11-12) |
+| 7. Tindak lanjut QA | TASK-183–TASK-189 (+ TASK-183A, TASK-185A–K) | 19 | Temuan terbuka [07-qa-report.md](07-qa-report.md): benchmark Redis dua node (US-20), fixture uji root/proxy; ruang disk Docker yang dapat diatur (TASK-188–189, permintaan pengguna 2026-11-12) |
 
 **Urutan:** ambil task Pending bernomor terkecil yang semua Depends On-nya Completed. Dependensi per-task adalah DAG operasional; phase merangkum milestone, bukan izin mengerjakan seluruh phase dalam satu `/vibe-code`. API/DB/adapter selesai sebelum integrasi UI; catalog tools/contracts lebih awal dan enam katalog lengkap tersedia sebelum provider UI. Tidak ada delegasi atau eksekusi agen paralel yang diperlukan oleh plan ini.
 
@@ -3190,7 +3190,7 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
   - `pnpm test:contracts --testPathPatterns='state-parity|redis'` dan integration `realtime-races|room-retention` lulus.
 
-### - [~] TASK-185I: Ukur ulang mode Redis setelah TASK-185H
+### - [x] TASK-185I: Ukur ulang mode Redis setelah TASK-185H
 - **Traceability**: `US-16`, `US-20`, NFR-01, [07-qa-report.md §2 US-20](07-qa-report.md)
 - **Depends On**: `TASK-185H`
 - **Target Files**:
@@ -3204,6 +3204,40 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - Record JSON baru dirujuk dari `docs/performance-results.md`.
   - US-20 di `07-qa-report.md` diperbarui.
   - `pnpm exec prettier --check docs/performance-results.md` lulus.
+
+### - [ ] TASK-185J: Baca state Redis dengan HMGET biasa tanpa skrip Lua
+- **Traceability**: `US-16`, `US-20`, NFR-01, temuan TASK-185I.
+- **Depends On**: `TASK-185I`, `TASK-185H`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/providers/state/redis-state.store.ts`
+  - `MODIFY` `tests/contracts/state-parity.spec.ts`
+- **Implementation Specs**:
+  - Skrip `read` masih rata-rata 12 ms karena string state ber-MB disalin melalui Lua.
+  - Ganti dengan `HMGET meta sessionId state expiresAt` plus `TIME` (dalam satu pipeline). Ini tetap satu slot untuk Redis Cluster, dan `TIME` dikirim ke node yang sama.
+  - Semantik `null` untuk room hilang atau session lain tetap sama. Validasi balasan memakai `readReplySchema`.
+- **Definition of Done (Verification)**:
+  - Contract state-parity (Redis dan Cluster) lulus.
+  - Spec: pembacaan tidak memakai EVALSHA, dibuktikan dengan `SCRIPT FLUSH` sebelum baca.
+  - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
+
+### - [ ] TASK-185K: Rancang ulang tata letak state room di Redis (jawaban dan hasil di luar blob)
+- **Traceability**: `US-10`, `US-16`, `US-20`, NFR-01, ADR-03 (atomisitas Lua same-slot), temuan TASK-185I.
+- **Depends On**: `TASK-185J`
+- **Target Files**:
+  - `MODIFY` `docs/vibe/03-system-analysis.md`
+  - `MODIFY` `docs/vibe/04-tasks.md`
+- **Implementation Specs**:
+  - **Butuh keputusan pengguna sebelum dikerjakan.** Ini perubahan arsitektur, bukan perbaikan skrip.
+  - Masalah: seluruh state room adalah satu string JSON. Setiap jawaban men-decode dan meng-encode ulang seluruh blob di Redis (±100 ms di akhir game 25 soal × 200 pemain), sehingga Redis jenuh dan perintah kedua node timeout.
+  - Rancang ADR baru:
+    - jawaban per soal di hash terpisah (`…:answers:{q}` field playerId), hasil per soal dan blob inti yang kecil, semua tetap dalam satu hash slot `{pin}`;
+    - skrip Lua hanya menyentuh bagian yang berubah;
+    - proyeksi dan laporan membaca bagian yang diperlukan.
+  - Pecah implementasinya menjadi task atomik 1–4 file: skema dan migrasi state, setiap skrip Lua, store, contract parity memory/Redis, dan benchmark ulang.
+- **Definition of Done (Verification)**:
+  - ADR tercatat di SA.
+  - Task implementasi tercantum dengan dependensi yang benar.
+  - Tidak ada kode aplikasi diubah di task ini.
 
 ### - [ ] TASK-186: Buat injeksi gagal-hapus `system.spec` tidak bergantung pada uid
 - **Traceability**: `US-15` (AC-15-01, AC-15-02), [07-qa-report.md §4](07-qa-report.md), `00-project-context.md` §6.3 butir 6.
