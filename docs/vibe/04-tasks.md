@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 221 task selesai, 3 task Pending (Phase 7 tindak lanjut QA, 2026-11-12)** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 221 task selesai, 7 task Pending (Phase 7 tindak lanjut QA, 2026-11-12)** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -20,7 +20,7 @@ Status Legend: `- [ ]` Pending | `- [~]` In Progress | `- [x]` Completed | `- [!
 | 4. Frontend Design Tokens, Base UI & State Layer | TASK-087–TASK-131 | 45 | Fondasi M5–M6; source katalog M1 dituntaskan sebelum UI |
 | 5. Feature Screens, API Integration & 5 UI States | TASK-132–TASK-163 | 32 | M5 → M6 |
 | 6. Hardening, Edge Cases & Polish | TASK-164–TASK-182 | 19 | M7 + release evidence + paket self-host Docker |
-| 7. Tindak lanjut QA | TASK-183–TASK-187 (+ TASK-183A) | 6 | Temuan terbuka [07-qa-report.md](07-qa-report.md): benchmark Redis dua node (US-20), fixture uji root/proxy |
+| 7. Tindak lanjut QA | TASK-183–TASK-187 (+ TASK-183A, TASK-185A–D) | 10 | Temuan terbuka [07-qa-report.md](07-qa-report.md): benchmark Redis dua node (US-20), fixture uji root/proxy |
 
 **Urutan:** ambil task Pending bernomor terkecil yang semua Depends On-nya Completed. Dependensi per-task adalah DAG operasional; phase merangkum milestone, bukan izin mengerjakan seluruh phase dalam satu `/vibe-code`. API/DB/adapter selesai sebelum integrasi UI; catalog tools/contracts lebih awal dan enam katalog lengkap tersedia sebelum provider UI. Tidak ada delegasi atau eksekusi agen paralel yang diperlukan oleh plan ini.
 
@@ -3025,6 +3025,87 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
 - **Definition of Done (Verification)**:
   - Dua record JSON baru di `test-results/benchmark/` dirujuk dari `docs/performance-results.md`, dengan verdict dan akar masalah tertulis.
   - `07-qa-report.md` US-20 berstatus PASS atau tetap FAIL dengan akar masalah dan task lanjutan.
+  - `pnpm exec prettier --check docs/performance-results.md` lulus.
+
+### - [ ] TASK-185A: Sediakan pembacaan private state read-only tanpa salinan di kedua state store
+- **Traceability**: `US-16`, `US-20`, NFR-01, akar masalah TASK-185 (CPU profile di [05-implementation-log.md](05-implementation-log.md)), [SA §5](03-system-analysis.md).
+- **Depends On**: `TASK-185`, `TASK-082A`, `TASK-047`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/providers/state/game-state.interface.ts`
+  - `MODIFY` `apps/api/src/providers/state/memory-state.store.ts`
+  - `MODIFY` `apps/api/src/providers/state/redis-state.store.ts`
+  - `MODIFY` `apps/api/src/providers/state/memory-state.store.spec.ts`
+- **Implementation Specs**:
+  - Masalah (profil TASK-185):
+    - `getPrivateSnapshot` di memory store melakukan `structuredClone` seluruh state di setiap panggilan;
+    - state membesar tiap soal (semua jawaban dan hasil per pemain);
+    - jalur publish dan settle membacanya berulang kali, sehingga event loop terblokir sampai detik.
+  - Tambah `readPrivateSnapshot(identity): Promise<Readonly<ActiveRoomState> | null>` pada `IGameStateStore`. Kontraknya: hasil boleh berupa state hidup milik store, tidak boleh dimutasi, dan tidak boleh dipakai setelah `await` berikutnya dari pemanggil.
+  - Memory store mengembalikan referensi tanpa salinan. Redis store sama dengan `getPrivateSnapshot` (hasil fetch + parse sudah milik pemanggil).
+  - `getPrivateSnapshot` tetap mengembalikan salinan untuk pemanggil yang memutasi atau menyimpan hasilnya. Tidak ada perubahan Lua, skema, atau aturan atomisitas.
+- **Definition of Done (Verification)**:
+  - Spec memory store membuktikan `readPrivateSnapshot`:
+    - tidak menyalin (identitas objek sama antar panggilan tanpa mutasi);
+    - mencerminkan mutasi store berikutnya;
+    - `getPrivateSnapshot` tetap memberi salinan independen.
+  - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
+  - `pnpm test:contracts --testPathPatterns=state-parity` lulus.
+
+### - [ ] TASK-185B: Buat jalur publish gateway O(n) tanpa proyeksi penuh berulang
+- **Traceability**: `US-09`, `US-10`, `US-13`, `US-20`, NFR-01, ADR-04 (allowlist per role), akar masalah TASK-185.
+- **Depends On**: `TASK-185A`, `TASK-183A`, `TASK-076`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/modules/game-engine/room-projector.ts`
+  - `MODIFY` `apps/api/src/modules/game-engine/room-projector.spec.ts`
+  - `MODIFY` `apps/api/src/modules/game-engine/game.gateway.ts`
+  - `MODIFY` `apps/api/src/modules/game-engine/game-gateway-publish.spec.ts`
+- **Implementation Specs**:
+  - Masalah (profil TASK-185):
+    - setiap `diff` membaca salinan state penuh dan menjalankan `projectHost`, termasuk validasi Zod dengan cek grapheme untuk setiap nickname, walau yang berubah hanya jumlah jawaban;
+    - saat ANSWER_REVEAL dan PODIUM, `projectPlayer` dipanggil per pemain, dan masing-masing memvalidasi snapshot berisi semua pemain. Ini O(n²).
+  - `diff` memakai `readPrivateSnapshot` (tanpa `await` setelah pembacaan).
+  - `projectHost` hanya dijalankan bila `phaseVersion` berubah (event fase butuh view host). Status finalisasi untuk `report:status_changed` dibangun lewat proyektor kecil `projectFinalization`, divalidasi `finalizeStatusSchema`.
+  - Proyektor per pemain yang kecil:
+    - `projectPlayerReveal(state, playerId, reveal)` → `playerRevealDataSchema`;
+    - `projectPlayerPodium(state, playerId, podium)` → `playerPodiumDataSchema`.
+    - Allowlist sama dengan `projectPlayer`: reveal publik bersama, hanya `personal` milik pemain itu, tidak ada kunci, dan tidak ada hasil pemain lain.
+  - Isi push identik dengan perilaku sebelumnya untuk setiap pemain.
+- **Definition of Done (Verification)**:
+  - Spec proyektor: payload reveal/podium per pemain sama persis dengan bagian yang sama dari `projectPlayer` untuk 6 tipe soal, dan tidak memuat hasil pemain lain.
+  - Spec gateway:
+    - diff yang hanya mengubah jumlah jawaban tidak memanggil `projectHost`;
+    - reveal 200 pemain tidak memanggil `projectPlayer`.
+  - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
+  - Integration `payload-privacy|game-gateway|realtime-races|recovery` lulus.
+  - E2E `player.spec.ts`, `host.spec.ts` lulus.
+
+### - [ ] TASK-185C: Pakai pembacaan read-only di settle
+- **Traceability**: `US-10`, `US-20`, NFR-01, akar masalah TASK-185.
+- **Depends On**: `TASK-185A`, `TASK-183`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/modules/game-engine/game.service.ts`
+  - `MODIFY` `apps/api/src/modules/game-engine/game.service.spec.ts`
+- **Implementation Specs**:
+  - `settleOnce` memakai `readPrivateSnapshot`. Seluruh pembacaan dan `computeQuestionResult` selesai sebelum `await commitQuestionResult`. Argumen commit (revision, hash, result) dibentuk dari nilai, bukan referensi hidup yang bisa berubah. Pastikan `result` tidak berbagi objek dengan state store.
+  - CAS revision + hash tetap menjamin commit paling banyak sekali.
+- **Definition of Done (Verification)**:
+  - Spec TASK-183 (50 jawaban, 1 commit) tetap lulus, ditambah spec yang memastikan state store tidak berubah oleh `settle` di luar commit.
+  - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
+  - Integration `recovery|realtime-races|finalization-failures` lulus.
+
+### - [ ] TASK-185D: Ukur ulang setelah perbaikan jalur publish
+- **Traceability**: `US-16`, `US-20`, NFR-01, [07-qa-report.md §2 US-20](07-qa-report.md)
+- **Depends On**: `TASK-185B`, `TASK-185C`, `TASK-184`
+- **Target Files**:
+  - `MODIFY` `docs/performance-results.md`
+  - `MODIFY` `docs/vibe/07-qa-report.md`
+- **Implementation Specs**:
+  - Ulangi `pnpm benchmark:game --clients 200 --transitions 100` mode memory dan Redis dengan diagnostik per node.
+  - Catat hasil apa adanya, bandingkan dengan pengukuran TASK-185, dan perbarui US-20 di laporan QA.
+  - Bila masih FAIL, tetapkan bottleneck berikutnya dari tabel per node atau CPU profile, lalu buat task korektif baru.
+- **Definition of Done (Verification)**:
+  - Dua record JSON baru dirujuk dari `docs/performance-results.md` dengan verdict.
+  - `07-qa-report.md` US-20 diperbarui.
   - `pnpm exec prettier --check docs/performance-results.md` lulus.
 
 ### - [ ] TASK-186: Buat injeksi gagal-hapus `system.spec` tidak bergantung pada uid

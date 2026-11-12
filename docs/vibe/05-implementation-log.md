@@ -2427,5 +2427,18 @@
 ## TASK-185: Ukur ulang topologi Redis dua node dan tetapkan akar masalah — IN PROGRESS
 - **Started**: 2026-11-12 (Asia/Jakarta)
 - **Plan**: `docs/performance-results.md`, `docs/vibe/07-qa-report.md`
-- **Done so far**: none yet
-- **Verification**: pending (memory + redis 200-client runs with per-node diagnostics)
+- **Done so far**:
+  - Memory run done: FAIL, 10 answers not admitted; transport p95 14.36 ms; admission p50 2.80 s.
+    - API node: event-loop lag up to 4.9 s, and only 268 of ~459 probe samples (its loop was blocked).
+    - Load generator: lag max 31 ms, CPU 1.5%.
+  - First redis run aborted after ~8 min: a host command got no ACK within 15 s, and `step()` threw, so no record was written.
+  - CPU profile (memory, 200 clients, 8 transitions) found the root cause in the gateway publish path:
+    - `structuredClone` of the full private state in `getPrivateSnapshot` per diff/settle;
+    - `projectHost` Zod parse, with grapheme checks of every nickname, on every diff;
+    - O(n²) `projectPlayer` per player at reveal and podium.
+  - Corrective tasks TASK-185A–D added.
+  - Scope extension (needed by this task's DoD, which requires a redis record): `scripts/benchmark-game.ts` + `tests/performance/game-benchmark.spec.ts`.
+    - Host commands without an ACK are retried and recorded.
+    - A failed step ends the run early with `abortReason` in the record and verdict instead of throwing it away.
+    - test:performance 22/22, eslint, tsc, Prettier pass.
+- **Verification**: redis re-run in progress

@@ -149,6 +149,10 @@ describe("verdict", () => {
     expect(verdict(summary(10), 0, 0, { reportReady: false }).reasons).toEqual([
       "report not durable",
     ]);
+    expect(
+      verdict(summary(10), 0, 0, { abortReason: "host:next_step refused: no ACK" }).reasons,
+    ).toEqual(["run aborted: host:next_step refused: no ACK"]);
+    expect(verdict(summary(10), 0, 0, { abortReason: null }).pass).toBe(true);
   });
 });
 

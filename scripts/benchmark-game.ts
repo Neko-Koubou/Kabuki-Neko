@@ -141,6 +141,8 @@ export interface VerdictExtras {
   rejectedAnswers?: number;
   /** False when the game's report never became durable (`ready`) within the wait. */
   reportReady?: boolean;
+  /** Why the run stopped early (a host command failed after its retries), if it did. */
+  abortReason?: string | null;
 }
 
 /**
@@ -162,6 +164,7 @@ export function verdict(
   if ((extras.rejectedAnswers ?? 0) > 0)
     reasons.push(`${extras.rejectedAnswers} answer(s) not admitted`);
   if (extras.reportReady === false) reasons.push("report not durable");
+  if (extras.abortReason) reasons.push(`run aborted: ${extras.abortReason}`);
   return { pass: reasons.length === 0, reasons };
 }
 
@@ -640,7 +643,15 @@ export async function runBenchmark(options: BenchmarkOptions) {
     /** Sends a host phase command with the latest phase version, retrying on a stale one. */
     const step = async (event: string) => {
       for (let attempt = 0; attempt < 3; attempt++) {
-        const result = await command(host, event, { ...room, expectedPhaseVersion: phaseVersion });
+        let result: Awaited<ReturnType<typeof command>>;
+        try {
+          result = await command(host, event, { ...room, expectedPhaseVersion: phaseVersion });
+        } catch (error) {
+          // No ACK within the timeout (or the connection dropped): an observed failure, retried.
+          refusals.push(`${event}: no ACK (${error instanceof Error ? error.message : "error"})`);
+          await sleep(300);
+          continue;
+        }
         if (result.ack.ok) {
           stateLatency.push(result.rttMs);
           phaseVersion = Number(result.ack.data?.["phaseVersion"] ?? phaseVersion);
@@ -672,56 +683,69 @@ export async function runBenchmark(options: BenchmarkOptions) {
     const benchmarkStart = Date.now();
     const selfProbe = startSelfProbe();
     const startVersion = phaseVersion;
-    await step("host:start_game");
+    /**
+     * Set when a host command still fails after its retries. The run then stops early but still
+     * ends the game and writes its record with the failure, instead of losing every measurement.
+     */
+    let abortReason: string | null = null;
     let transitions = 0;
-    for (
-      let question = 0;
-      transitions < options.transitions && question < questions - 1;
-      question++
-    ) {
-      // Wait for the server's preview → answering transition.
-      const deadline = Date.now() + 20_000;
-      while (clients.some((client) => !client.questions.has(question)) && Date.now() < deadline)
-        await sleep(20);
-      await Promise.all(
-        clients.map(async (client) => {
-          const open = client.questions.get(question);
-          if (!open) return;
-          await sleep(Math.random() * 1500);
-          try {
-            const answered = await command(client.socket, "player:submit_answer", {
-              ...room,
-              questionIndex: question,
-              questionId: open.id,
-              submissionId: randomUUID(),
-              answer: open.options[0]?.index ?? 0,
-            });
-            if (answered.ack.ok) admission.push(answered.rttMs);
-            else rejectedAnswers++;
-          } catch {
-            // No ACK (timeout or dropped connection): an observed failure, kept in the record.
-            rejectedAnswers++;
-          }
-        }),
-      );
-      // The question closes once every answer is admitted. If any answer was not admitted (it
-      // then stays a failure in the admission count), the host skips the remaining time instead.
-      const closing = Date.now() + 30_000;
-      while (!revealed.has(question) && Date.now() < closing) await sleep(20);
-      if (!revealed.has(question)) {
-        unclosed++;
-        await step("host:skip_timer");
+    try {
+      await step("host:start_game");
+      for (
+        let question = 0;
+        transitions < options.transitions && question < questions - 1;
+        question++
+      ) {
+        // Wait for the server's preview → answering transition.
+        const deadline = Date.now() + 20_000;
+        while (clients.some((client) => !client.questions.has(question)) && Date.now() < deadline)
+          await sleep(20);
+        await Promise.all(
+          clients.map(async (client) => {
+            const open = client.questions.get(question);
+            if (!open) return;
+            await sleep(Math.random() * 1500);
+            try {
+              const answered = await command(client.socket, "player:submit_answer", {
+                ...room,
+                questionIndex: question,
+                questionId: open.id,
+                submissionId: randomUUID(),
+                answer: open.options[0]?.index ?? 0,
+              });
+              if (answered.ack.ok) admission.push(answered.rttMs);
+              else rejectedAnswers++;
+            } catch {
+              // No ACK (timeout or dropped connection): an observed failure, kept in the record.
+              rejectedAnswers++;
+            }
+          }),
+        );
+        // The question closes once every answer is admitted. If any answer was not admitted (it
+        // then stays a failure in the admission count), the host skips the remaining time instead.
+        const closing = Date.now() + 30_000;
+        while (!revealed.has(question) && Date.now() < closing) await sleep(20);
+        if (!revealed.has(question)) {
+          unclosed++;
+          await step("host:skip_timer");
+        }
+        await sleep(2_100);
+        await step("host:next_step"); // reveal → leaderboard
+        await sleep(2_100);
+        await step("host:next_step"); // leaderboard → next question (preview)
+        transitions += 4;
       }
-      await sleep(2_100);
-      await step("host:next_step"); // reveal → leaderboard
-      await sleep(2_100);
-      await step("host:next_step"); // leaderboard → next question (preview)
-      transitions += 4;
+    } catch (error) {
+      abortReason = error instanceof Error ? error.message : String(error);
     }
     // Finish: skip through the last question to the podium; the server finishes the game.
     await sleep(2_100);
     const endVersion = phaseVersion;
-    await step("host:end_game");
+    try {
+      await step("host:end_game");
+    } catch (error) {
+      abortReason ??= error instanceof Error ? error.message : String(error);
+    }
     const ended = Date.now();
     for (let version = startVersion + 1; version <= endVersion; version++)
       expectedPhases.push(version);
@@ -762,6 +786,7 @@ export async function runBenchmark(options: BenchmarkOptions) {
     const result = verdict(transport, loss.ratio, disconnects.length, {
       rejectedAnswers,
       reportReady: reportReadyMs !== null,
+      abortReason,
     });
     return {
       mode: options.mode,
@@ -793,6 +818,8 @@ export async function runBenchmark(options: BenchmarkOptions) {
       disconnects,
       disconnectsFirstAtMs: disconnectEvents[0]?.atMs ?? null,
       questionsClosedBySkip: unclosed,
+      abortReason,
+      hostCommandFailures: refusals,
       diagnostics: { nodes, loadGenerator },
       target: { p95Ms: P95_TARGET_MS, ...result },
     };
