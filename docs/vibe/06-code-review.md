@@ -70,7 +70,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Tambahkan migrasi atau purge yang menghapus baris `auth.setup`/`auth.register` lama.
   - Test: `request_hash` ≠ SHA-256 body plaintext, dan password berbeda dengan key sama → 409.
 
-#### CR-02 [CRITICAL] [OPEN] Rute media MinIO di origin aplikasi → stored XSS dan pencurian sesi (overlay TLS + profil scale)
+#### CR-02 [CRITICAL] [RESOLVED] Rute media MinIO di origin aplikasi → stored XSS dan pencurian sesi (overlay TLS + profil scale)
 - **File:Line**:
   - `docker/Caddyfile:60-62` (`handle /kabuki-neko-media/*` → `reverse_proxy minio:9000` tanpa header atau filter);
   - `docker/docker-compose.tls.yml:24` (`S3_PUBLIC_URL` berada di origin aplikasi);
@@ -86,6 +86,10 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - `rewrite * {path}?` agar query `response-*` dibuang;
   - `header_down` untuk CSP `default-src 'none'; frame-ancestors 'none'; sandbox`, `X-Content-Type-Options: nosniff`, `Content-Disposition: attachment`, dan CORP `same-site`.
   - Verifikasi di sandbox MinIO + Caddy (`caddy validate`, override diabaikan, header ada, 405).
+- **Resolusi**: blok `/kabuki-neko-media/*` di `docker/Caddyfile` kini menolak metode selain GET/HEAD (405), membuang query (`rewrite * {path}?`), dan menambahkan CSP sandbox, nosniff, `Content-Disposition: attachment`, serta CORP `same-site`.
+  - **Bukti**: `caddy fmt` tidak mengubah apa pun dan `caddy validate` mengembalikan Valid.
+  - Di sandbox MinIO (commit dipin) + Caddy dengan Caddyfile repo, GET anonim `?response-content-type=text/html&response-content-disposition=inline` → `200 audio/mpeg` dengan CSP sandbox dan `attachment`.
+  - PUT/DELETE/POST → 405, padahal sebelumnya `text/html`/`inline` tanpa CSP dan 403/400 dari MinIO.
 
 ### 3.2. [MAJOR]
 

@@ -16,7 +16,8 @@
 # KN_DOMAIN=localhost uses Caddy's own local CA instead (evaluation only; browsers warn).
 #
 # Headers: the app servers already send their CSP, nosniff, Referrer-Policy and frame headers
-# (docs/security-headers.md); this proxy adds only HSTS and never replaces or loosens them.
+# (docs/security-headers.md); this proxy adds HSTS and never replaces or loosens them. MinIO is not
+# one of those servers, so the media route below sets the /uploads protections itself.
 # Client addresses: Caddy sets X-Forwarded-For; the API trusts it only from this proxy's fixed
 # address (TRUST_PROXY_CIDRS in the TLS override).
 {
@@ -56,9 +57,25 @@
 		reverse_proxy api:3001
 	}
 
-	# Scale profile only: the bucket allows anonymous GetObject and nothing else.
+	# Scale profile only: the bucket allows anonymous GetObject and nothing else. The objects are
+	# raw uploaded bytes served on the app origin, so this route must never let them act as a
+	# page (code review CR-02):
+	# - only GET/HEAD reach MinIO (no PUT/DELETE/POST surface on the public origin);
+	# - the query string is dropped, because MinIO turns response-content-type and the other
+	#   response-* parameters into response headers even for anonymous requests;
+	# - every response gets the same sandbox CSP, nosniff and attachment disposition the API
+	#   puts on /uploads, so an object opened directly runs no script and cannot read cookies.
+	# <img>, <audio> and <video> loads ignore Content-Disposition, so playback is unaffected.
 	handle /kabuki-neko-media/* {
-		reverse_proxy minio:9000
+		@unsafe not method GET HEAD
+		respond @unsafe 405
+		rewrite * {path}?
+		reverse_proxy minio:9000 {
+			header_down Content-Security-Policy "default-src 'none'; frame-ancestors 'none'; sandbox"
+			header_down X-Content-Type-Options "nosniff"
+			header_down Content-Disposition "attachment"
+			header_down Cross-Origin-Resource-Policy "same-site"
+		}
 	}
 
 	handle {
