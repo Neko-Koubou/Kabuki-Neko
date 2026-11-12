@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 223 task selesai, 8 task Pending (Phase 7 tindak lanjut QA, 2026-11-12)** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 224 task selesai, 7 task Pending (Phase 7 tindak lanjut QA, 2026-11-12)** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -3050,7 +3050,7 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
   - `pnpm test:contracts --testPathPatterns='state-parity|redis'` dan integration `realtime-races` lulus.
 
-### - [ ] TASK-185B: Sediakan pembacaan private state read-only tanpa salinan di kedua state store
+### - [x] TASK-185B: Sediakan pembacaan private state read-only tanpa salinan di kedua state store
 - **Traceability**: `US-16`, `US-20`, NFR-01, akar masalah TASK-185 (CPU profile di [05-implementation-log.md](05-implementation-log.md)), [SA §5](03-system-analysis.md).
 - **Depends On**: `TASK-185A`, `TASK-082A`, `TASK-047`
 - **Target Files**:

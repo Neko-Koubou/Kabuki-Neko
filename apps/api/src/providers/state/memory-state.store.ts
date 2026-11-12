@@ -157,6 +157,10 @@ export class MemoryStateStore implements IGameStateStore {
     const entry = this.lookup(identity);
     return entry ? copy(entry.state) : null;
   }
+  /** Live state, no copy: a deep copy of a 200-player room cost seconds per game (TASK-185B). */
+  async readPrivateSnapshot(identity: RoomIdentity): Promise<Readonly<ActiveRoomState> | null> {
+    return this.lookup(identity)?.state ?? null;
+  }
   async getRoleSnapshot(identity: RoomIdentity, principal: Principal) {
     const entry = this.lookup(identity);
     if (!entry || this.expired(entry, this.clock())) return null;

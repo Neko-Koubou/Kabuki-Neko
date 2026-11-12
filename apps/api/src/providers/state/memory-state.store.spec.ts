@@ -460,6 +460,22 @@ describe("memory atomic state", () => {
     expect(await store.releaseLease(identity, first)).toBe(false);
     expect(await store.releaseLease(identity, second)).toBe(true);
   });
+  it("reads private state without a copy that follows later store changes (TASK-185B)", async () => {
+    await seed();
+    expect(await store.readPrivateSnapshot({ ...identity, pin: "999999" })).toBeNull();
+    const first = required(await store.readPrivateSnapshot(identity));
+    // No copy: the same live object until the store replaces it.
+    expect(await store.readPrivateSnapshot(identity)).toBe(first);
+    const revision = first.revision;
+    await store.admitAnswer(answer());
+    const after = required(await store.readPrivateSnapshot(identity));
+    expect(after.revision).toBeGreaterThan(revision);
+    expect(Object.keys(after.answers)).toHaveLength(1);
+    // The copying read stays independent of the store.
+    const detached = required(await store.getPrivateSnapshot(identity));
+    expect(detached).not.toBe(after);
+    expect(detached).toEqual(after);
+  });
   it("returns detached state and freezes immutable result payloads", async () => {
     const s = answering();
     await seed(s);

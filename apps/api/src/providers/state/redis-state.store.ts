@@ -223,6 +223,10 @@ export class RedisStateStore implements IGameStateStore {
   async getPrivateSnapshot(identity: RoomIdentity) {
     return (await this.read(identity))?.state ?? null;
   }
+  /** Same parsed read as `getPrivateSnapshot`: the object already belongs to the caller. */
+  async readPrivateSnapshot(identity: RoomIdentity): Promise<Readonly<ActiveRoomState> | null> {
+    return this.getPrivateSnapshot(identity);
+  }
   async getRoleSnapshot(identity: RoomIdentity, principal: Principal) {
     const entry = await this.read(identity);
     if (!entry || entry.expired) return null;

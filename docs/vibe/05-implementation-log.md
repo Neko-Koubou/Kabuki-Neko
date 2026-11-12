@@ -2474,3 +2474,20 @@
   - `pnpm test:contracts --testPathPatterns='state-parity|redis'` → 4/4 suites, 55/55 tests.
   - `pnpm test:integration --testPathPatterns='realtime-races'` → 10/10.
   - The end-to-end effect on the two-node benchmark is measured in TASK-185E.
+
+## TASK-185B: Sediakan pembacaan private state read-only tanpa salinan di kedua state store — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/providers/state/game-state.interface.ts`: `readPrivateSnapshot(identity): Promise<Readonly<ActiveRoomState> | null>`. Contract: the result may be the store's live state; callers must not mutate it or use it after their next `await`.
+  - `apps/api/src/providers/state/memory-state.store.ts`: returns the live state without `structuredClone`.
+  - `apps/api/src/providers/state/redis-state.store.ts`: the same parsed read as `getPrivateSnapshot`; the object already belongs to the caller.
+  - `apps/api/src/providers/state/memory-state.store.spec.ts`: new case.
+    - Unknown room → null.
+    - Repeated reads return the same object (no copy).
+    - A later admission is visible through the next read.
+    - `getPrivateSnapshot` stays an independent, equal copy.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 39/39 suites, 261/261 tests.
+  - `pnpm test:contracts --testPathPatterns=state-parity` → 26/26.
+  - No caller uses the new read yet; the gateway uses it in TASK-185C and settle in TASK-185D.
