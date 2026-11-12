@@ -2634,8 +2634,16 @@
 - **Conclusion**: the remaining cost is the one-JSON-blob-per-room layout, which every script decodes and re-encodes. That is an architectural change: TASK-185K, which needs a design decision. A plain HMGET read (TASK-185J) is the smaller fix.
 - **Verification**: `pnpm exec prettier --check docs/performance-results.md` → pass. Record `test-results/benchmark/redis.json` (copy in the scratchpad), Redis CPU and SLOWLOG samples in the scratchpad.
 
-## TASK-185J: Baca state Redis dengan HMGET biasa tanpa skrip Lua — IN PROGRESS
-- **Started**: 2026-11-12 (Asia/Jakarta)
-- **Plan**: `apps/api/src/providers/state/redis-state.store.ts`, `tests/contracts/state-parity.spec.ts`
-- **Done so far**: none yet
-- **Verification**: pending
+## TASK-185J: Baca state Redis dengan HMGET biasa tanpa skrip Lua — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/providers/state/redis-state.store.ts`: `readRaw` reads with two single commands, `HMGET meta sessionId state expiresAt` and `TIME`, in parallel. The `read` script and its registration were removed.
+    - Missing room or other session → null. Bad replies or any error → STATE_UNAVAILABLE.
+    - A pipeline was tried first. It failed the Redis Cluster AOF/restart contract: the pipeline kept failing after a master restarted, while single commands follow MOVED and failovers. So single commands are used.
+  - `tests/contracts/state-parity.spec.ts`: new Redis case. Per `INFO commandstats`, three reads (light, validated, unknown session) run no EVALSHA/EVAL and exactly three HMGETs. It FAILS on the Lua read.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 39/39 suites, 277/277 tests.
+  - `pnpm test:contracts --testPathPatterns='state-parity|redis'` → 65/65 twice in a row (incl. Redis Cluster failover and AOF restart).
+  - `pnpm test:integration --testPathPatterns='realtime-races|payload-privacy|room-retention'` → pass.
+  - The Redis benchmark effect is not measured here. The remaining layout bottleneck is TASK-185K, deferred by the user's decision (2026-11-12) until after TASK-186–189.

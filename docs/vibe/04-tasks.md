@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 231 task selesai, 6 task Pending (Phase 7 tindak lanjut QA, 2026-11-12)** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 232 task selesai, 5 task Pending (Phase 7 tindak lanjut QA, 2026-11-12)** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -3205,7 +3205,7 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - US-20 di `07-qa-report.md` diperbarui.
   - `pnpm exec prettier --check docs/performance-results.md` lulus.
 
-### - [~] TASK-185J: Baca state Redis dengan HMGET biasa tanpa skrip Lua
+### - [x] TASK-185J: Baca state Redis dengan HMGET biasa tanpa skrip Lua
 - **Traceability**: `US-16`, `US-20`, NFR-01, temuan TASK-185I.
 - **Depends On**: `TASK-185I`, `TASK-185H`
 - **Target Files**:
@@ -3227,7 +3227,7 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - `MODIFY` `docs/vibe/03-system-analysis.md`
   - `MODIFY` `docs/vibe/04-tasks.md`
 - **Implementation Specs**:
-  - **Butuh keputusan pengguna sebelum dikerjakan.** Ini perubahan arsitektur, bukan perbaikan skrip.
+  - **Butuh keputusan pengguna sebelum dikerjakan.** Ini perubahan arsitektur, bukan perbaikan skrip. Keputusan pengguna 2026-11-12: tunda sampai TASK-186–189 selesai; kerjakan di sesi terpisah setelah desain disetujui.
   - Masalah: seluruh state room adalah satu string JSON. Setiap jawaban men-decode dan meng-encode ulang seluruh blob di Redis (±100 ms di akhir game 25 soal × 200 pemain), sehingga Redis jenuh dan perintah kedua node timeout.
   - Rancang ADR baru:
     - jawaban per soal di hash terpisah (`…:answers:{q}` field playerId), hasil per soal dan blob inti yang kecil, semua tetap dalam satu hash slot `{pin}`;
