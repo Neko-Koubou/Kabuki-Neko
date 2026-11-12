@@ -129,7 +129,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Room/quiz/report menjadi tindak lanjut.
 - **Resolusi**: `UsersController` kini mencatat `user.role.change` / `user.status.change` (SUCCESS; DENIED untuk `LAST_SUPERADMIN`; FAILURE lainnya) dan `invitation.create` (ID undangan saja, tanpa kode). `AuthRepository.rotate` membedakan reuse token yang sudah dikonsumsi (`TOKEN_REUSED`, family tetap dicabut); `RefreshService` melempar `RefreshReuseError` (klien tetap menerima `TOKEN_REVOKED`) dan `AuthController.rotate` mencatat `auth.refresh.reuse` (DENIED). Regresi: `admin-audit.spec.ts` (4 kasus, gagal di kode lama), `refresh.service.spec.ts`, kontrak `accounts.repository.spec.ts`; API jest 246/246, tsc/eslint bersih. Audit room/quiz/report tetap tindak lanjut.
 
-#### MJ-03 [MAJOR] [OPEN] Store Redis tidak menutup soal saat pemain wajib terakhir di-kick
+#### MJ-03 [MAJOR] [RESOLVED] Store Redis tidak menutup soal saat pemain wajib terakhir di-kick
 - **File:Line**: `apps/api/src/providers/state/lua/mutate-room.lua:126-139` vs `memory-state.store.ts:532-538`.
 - **Masalah**:
   - Memory store melakukan freeze `ALL_ANSWERED` setelah kick; Lua tidak.
@@ -137,6 +137,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Melanggar paritas SA §5.5/§6.1.
 - **Perbaikan**: setelah ACK kick, `GameService` menjalankan `closeQuestion(ALL_ANSWERED)` bila semua pemain wajib sudah menjawab, lalu `settle`.
   - Kasus paritas di `state-parity.spec.ts`.
+- **Resolusi**: `GameService.closeIfAllAnswered` menutup soal dengan `ALL_ANSWERED` bila semua pemain wajib yang tersisa sudah menjawab; dipanggil setelah ACK `host:kick_player` (lalu `settle`) dan di `tick` (pemulihan bila proses mati di antara kick dan close). Store memvalidasi ulang secara atomik, jadi paritas memory/Redis terjaga tanpa mengubah Lua. Regresi: kasus baru di `state-parity.spec.ts` untuk kedua driver (Redis gagal di kode lama); parity 24/24, API jest 246/246, tsc/eslint bersih.
 
 #### MJ-04 [MAJOR] [RESOLVED] Pemain tidak bisa recover saat PODIUM/FINISHED
 - **File:Line**: `apps/api/src/modules/game-engine/recovery.service.ts:122-131`.

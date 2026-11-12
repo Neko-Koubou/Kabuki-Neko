@@ -252,6 +252,8 @@ export class GameService {
         });
         if (delayed) await this.completeDelayed(identity, run);
         const result = await run;
+        if (command.event === "host:kick_player")
+          await this.closeIfAllAnswered(identity).catch(() => false);
         await this.settle(identity).catch(() => false);
         await this.finalize(identity).catch(() => null);
         return result.ack;
@@ -267,6 +269,35 @@ export class GameService {
         if (pending) await this.settle(identity).catch(() => false);
         if (!(stale || pending) || attempt >= 2) stateError(error);
       }
+    }
+  }
+
+  /**
+   * Closes the open question with ALL_ANSWERED when every remaining required player has answered
+   * (code review MJ-03). A kick removes an unanswered player from the required set; the memory
+   * store freezes in the same step, the Redis script does not, so the close is driven here for
+   * both (the store re-validates atomically; ALREADY_CLOSED or a lost race is harmless). Also
+   * called from `tick`, so a crash between the kick and the close cannot leave everyone waiting
+   * for the timer. Returns true when this call froze the question.
+   */
+  async closeIfAllAnswered(identity: RoomIdentity): Promise<boolean> {
+    const state = await this.store.getPrivateSnapshot(identity);
+    const index = state?.questionIndex ?? null;
+    if (!state || index === null || state.phase !== "QUESTION_ANSWERING" || !state.accepting)
+      return false;
+    const required = state.requiredPlayerIds;
+    if (required.length === 0 || !required.every((id) => state.answers[`${index}:${id}`]))
+      return false;
+    try {
+      const closed = await this.store.closeQuestion({
+        ...identity,
+        expectedPhaseVersion: state.phaseVersion,
+        reason: "ALL_ANSWERED",
+      });
+      return closed !== "ALREADY_CLOSED";
+    } catch (error) {
+      if (error instanceof StateDomainError) return false;
+      throw error;
     }
   }
 
@@ -415,6 +446,7 @@ export class GameService {
         if (due) await this.transition(identity, state, "QUESTION_ANSWERING", state.questionIndex);
         return;
       case "QUESTION_ANSWERING": {
+        await this.closeIfAllAnswered(identity);
         const closes = state.timing.acceptanceClosesAt;
         if (state.accepting && closes !== null && now > closes) {
           try {

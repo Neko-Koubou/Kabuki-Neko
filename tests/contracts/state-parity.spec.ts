@@ -15,6 +15,7 @@ import type {
   ActiveRoomState,
   RoomProjector,
   ApplyCommandInput,
+  HostCommand,
 } from "../../apps/api/src/providers/state/game-state.interface";
 import Redis from "ioredis";
 import { setTimeout as delay } from "node:timers/promises";
@@ -24,6 +25,8 @@ import { ConfigService } from "../../apps/api/src/config/config.service";
 import { createTestRuntime } from "../helpers/runtime";
 import type { IGameStateStore } from "../../apps/api/src/providers/state/game-state.interface";
 import { MemoryStateStore } from "../../apps/api/src/providers/state/memory-state.store";
+import { GameService } from "../../apps/api/src/modules/game-engine/game.service";
+import type { JwtGuard, VerifiedPrincipal } from "../../apps/api/src/common/guards/jwt.guard";
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 function question() {
   return {
@@ -488,6 +491,30 @@ for (const driver of ["memory", "redis"] as const)
       await expect(store.admitAnswer({ ...answer(), answer: "Other" })).rejects.toMatchObject({
         code: "ALREADY_ANSWERED",
       });
+    });
+    it("closes ALL_ANSWERED and scores when the last unanswered required player is kicked", async () => {
+      // MJ-03: the Redis kick script does not freeze; GameService drives the close for both stores.
+      await seed(answering([uuid(6), uuid(7)]));
+      await store.admitAnswer(answer(6));
+      const jwt = { current: async () => ({ id: uuid(5) }) } as unknown as JwtGuard;
+      const game = new GameService(store, jwt, () => Date.now());
+      const ack = await game.hostCommand(
+        { user: { id: uuid(5) } } as VerifiedPrincipal,
+        {
+          event: "host:kick_player",
+          request: {
+            pinCode: identity.pin,
+            sessionId: identity.sessionId,
+            requestId: uuid(21),
+            playerId: uuid(7),
+          },
+        } as HostCommand,
+      );
+      expect(ack).toMatchObject({ ok: true, data: { kicked: true, playerId: uuid(7) } });
+      const s = required(await store.getPrivateSnapshot(identity));
+      expect(s.closedQuestions[0]?.reason).toBe("ALL_ANSWERED");
+      expect(s.phase).toBe("ANSWER_REVEAL");
+      expect(s.results[0]).toBeDefined();
     });
     it("holds host ACK until result commit and preserves the command receipt", async () => {
       await seed(answering());
