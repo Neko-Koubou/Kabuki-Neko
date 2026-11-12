@@ -1,6 +1,8 @@
 # 06 — Code Review: Kabuki Neko (seluruh Fase 1–6)
 
-> **Verdict**: **CHANGES REQUESTED** — 2 `[CRITICAL]`, 30 `[MAJOR]`, 50 `[MINOR]` terbuka.
+> **Verdict**: **APPROVED WITH MINOR NOTES** — 0 `[CRITICAL]` dan 0 `[MAJOR]` terbuka (2 CRITICAL dan 30 MAJOR sudah `[RESOLVED]` lewat `--fix`, masing-masing satu commit); 48 `[MINOR]` masih terbuka (MN-28 dan MN-36 sudah diselesaikan bersama MJ-26 dan MJ-17).
+>
+> Verdict awal review ini (commit `a8651cc`): CHANGES REQUESTED — 2 CRITICAL, 30 MAJOR, 50 MINOR. Hasil verifikasi akhir ada di §6.
 
 Tanggal review: **2026-11-12 (Asia/Jakarta)**, commit `a8651cc` (branch `main-nv6b09`). Ini review ulang dari awal yang menggantikan review 2026-11-08 (commit `3c960cc`, Fase 1–3). Setiap temuan lama diverifikasi ulang terhadap kode saat ini dan tetap memakai ID lamanya.
 
@@ -438,3 +440,23 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 2. Lanjutkan dengan kebenaran data game/laporan (MJ-07, MJ-04, MJ-03, MJ-06, MJ-12, MJ-14) dan ketersediaan (MJ-15, MJ-08, MJ-11, MJ-13).
 3. Perbaiki dokumen operasional (MJ-17–MJ-19) dan CI/build (MJ-20, MJ-21).
 4. `[MINOR]` dijadwalkan sebagai task hardening yang menyentuh file yang sama.
+
+## 6. Verifikasi akhir setelah `--fix` (2026-11-12)
+
+Dijalankan dari root workspace di commit `863422b` (branch `main-nv6b09`), Node v26.13.0, pnpm 10.34.9, Docker tersedia:
+
+| Perintah | Hasil |
+| --- | --- |
+| `pnpm install --frozen-lockfile` + `git diff --exit-code pnpm-lock.yaml` | PASS (lockfile tidak berubah) |
+| `pnpm locales:validate` | PASS |
+| `pnpm build` (termasuk `build:assets`: audio teroptimasi hanya disalin, tanpa ffmpeg) | PASS |
+| `pnpm lint` | PASS (`--max-warnings 0`) |
+| `pnpm typecheck` | PASS |
+| `pnpm test` | PASS — API 253/253, web 51 file, shared 11 file, database 4/4 |
+| `pnpm test:performance` | PASS |
+| `pnpm test:audio` | PASS (11/11) |
+| `pnpm test:contracts` | PASS — 25 suite. `driver-matrix` dan `storage` butuh `KABUKI_TEST_MINIO_IMAGE=kabuki-neko/minio-test:local-ca` di container ini (proxy CA); tanpa variabel itu keduanya gagal karena build image MinIO, bukan karena kode |
+| `docker compose ... config --quiet` (default dan scale) | PASS |
+| Integration terarah | PASS — `reports.spec`, `finalization-failures.spec` (12/12), `backup-restore` (cek dokumen), `catalog-deployment` (cek image hilang) |
+
+Tidak dijalankan ulang secara penuh pada tahap ini: `pnpm test:integration` lengkap, `pnpm test:e2e`, dan build image Docker produksi (butuh CA proxy sebagai BuildKit secret). Langkah rotasi JWT baru di `deployment.spec.ts` (MJ-19) hanya diperiksa kompilasinya; perilakunya diverifikasi manual dengan project Compose sementara.
