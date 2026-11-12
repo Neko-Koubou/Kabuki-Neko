@@ -3116,7 +3116,7 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
   - Integration `recovery|realtime-races|finalization-failures` lulus.
 
-### - [ ] TASK-185E: Ukur ulang setelah perbaikan jalur publish
+### - [~] TASK-185E: Ukur ulang setelah perbaikan jalur publish
 - **Traceability**: `US-16`, `US-20`, NFR-01, [07-qa-report.md §2 US-20](07-qa-report.md)
 - **Depends On**: `TASK-185A`, `TASK-185C`, `TASK-185D`, `TASK-184`
 - **Target Files**:

@@ -2533,3 +2533,9 @@
   - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
   - `pnpm --filter @kabuki-neko/api test` → 39/39 suites, 277/277 tests.
   - `pnpm test:integration --testPathPatterns='recovery|realtime-races|finalization-failures'` → 3/3 suites, 30/30 tests.
+
+## TASK-185E: Ukur ulang setelah perbaikan jalur publish — IN PROGRESS
+- **Started**: 2026-11-12 (Asia/Jakarta)
+- **Plan**: `docs/performance-results.md`, `docs/vibe/07-qa-report.md`
+- **Done so far**: API rebuilt at the TASK-185D commit; memory + redis 200-client runs started
+- **Verification**: pending
