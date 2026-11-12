@@ -176,7 +176,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 - **Perbaikan**: hitung keduanya hanya bila `type !== "POLL" && pointsMultiplier > 0`, lalu perbarui spec skor, game, dan laporan.
 - **Resolusi**: `computeQuestionResult` (`score-calculator.ts`) menambah `correctCount` hanya bila `type !== "POLL" && pointsMultiplier > 0`; `buildFrozenReport` (`game.service.ts`) menghitung `unansweredCount` hanya untuk soal berpoin. Spec baru di `scoring.spec.ts` (jawaban benar ×0 tidak menambah correctCount) dan `game.service.spec.ts` (laporan beku: correct/unanswered 0 untuk soal ×0); keduanya gagal pada kode lama. API Jest 32/233, tsc, lint PASS.
 
-#### MJ-08 [MAJOR] [OPEN] Baca kuis memakai write transaction + `FOR UPDATE`, dan daftar kuis N+1
+#### MJ-08 [MAJOR] [RESOLVED] Baca kuis memakai write transaction + `FOR UPDATE`, dan daftar kuis N+1
 - **File:Line**:
   - `packages/database/src/repositories/quizzes.repository.ts:62-73,231-238,274-289`;
   - `apps/api/src/modules/quizzes/quizzes.service.ts:290-291,322-339`.
@@ -185,6 +185,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Viewer PUBLIC memblokir PUT milik pemilik.
   - Kuis yang terhapus di tengah proses membuat seluruh daftar menjadi 404.
 - **Perbaikan**: jalur `read` tanpa lock/transaksi tulis, dan summary batch yang melewati baris yang hilang.
+- **Resolusi**: `QuizzesRepository.read` tanpa `manager` kini memakai snapshot tanpa lock (REPEATABLE READ di PostgreSQL/MySQL; antrian tulis di SQLite yang satu koneksi), sedangkan dengan `manager` tetap mengunci baris untuk transaksi pemanggil. `readMany` membaca satu halaman daftar dengan jumlah query tetap (`contents` batch, creator dan media batch) dan melewati kuis yang hilang/tersembunyi; `QuizzesService.list` memakainya lewat `detailOf`. Regresi: kontrak `quizzes.repository.spec.ts` untuk sqlite/postgres/mysql (baca saat pemilik memegang row lock: kode lama "blocked", kini lulus; batch melewati baris hilang/privat); API jest 251/251, tsc/eslint bersih.
 
 #### MJ-10 [MAJOR] [RESOLVED] `/system/health` tidak dapat melaporkan Redis down
 - **File:Line**: `apps/api/src/modules/system/system.controller.ts:53-57,91-97`; `apps/api/src/common/rate-limit.service.ts:77-95`.

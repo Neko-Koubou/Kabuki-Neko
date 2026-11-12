@@ -179,3 +179,83 @@ it.each<DatabaseDriver>(["sqlite", "postgres", "mysql"])(
     }
   },
 );
+
+/**
+ * Code review MJ-08: plain reads take no row lock, so a viewer never waits for (or blocks) the
+ * owner's save, and list pages batch-read their quizzes, skipping rows that are gone or hidden.
+ */
+it.each<DatabaseDriver>(["sqlite", "postgres", "mysql"])(
+  "%s reads quizzes without row locks and batch-reads list pages",
+  async (driver) => {
+    const rt = await createTestRuntime();
+    try {
+      const url =
+        driver === "sqlite"
+          ? undefined
+          : (await (driver === "mysql" ? rt.mysql() : rt.postgres())).getConnectionUri();
+      const db = createDataSource(
+        { driver, sqlitePath: rt.env.SQLITE_PATH ?? ":memory:", ...(url ? { url } : {}) },
+        domainSchemas(driver),
+      );
+      await db.initialize();
+      try {
+        await migrateDatabase(db, true);
+        const repo = new QuizzesRepository(db),
+          owner = randomUUID(),
+          guest = randomUUID();
+        for (const [user, name] of [
+          [owner, "Owner"],
+          [guest, "Guest"],
+        ] as const)
+          await db.manager.insert("users", {
+            id: user,
+            email: user + "@test.com",
+            password_hash: "test",
+            name,
+            created_at: 0,
+            updated_at: 0,
+          });
+        const shared = await repo.create(owner, { title: "Shared", visibility: "PUBLIC" }, 0);
+        const hidden = await repo.create(owner, { title: "Hidden", visibility: "PRIVATE" }, 0);
+        const mine = await repo.create(guest, { title: "Mine", visibility: "PRIVATE" }, 0);
+
+        const page = await repo.readMany(guest, [shared, hidden, randomUUID(), mine, shared]);
+        expect([...page.keys()].sort()).toEqual([shared, mine].sort());
+        expect(page.get(shared)).toMatchObject({
+          creatorName: "Owner",
+          content: { title: "Shared", questions: [expect.anything()] },
+          capabilities: { canEdit: false },
+        });
+        expect(page.get(mine)?.capabilities.canEdit).toBe(true);
+        expect((await repo.readMany(guest, [])).size).toBe(0);
+
+        if (driver !== "sqlite") {
+          // The owner's save holds the row's write lock; a viewer's read must not wait for it.
+          const runner = db.createQueryRunner();
+          await runner.connect();
+          await runner.startTransaction();
+          try {
+            await runner.manager
+              .getRepository("quizzes")
+              .createQueryBuilder("q")
+              .where("q.id=:id", { id: shared })
+              .setLock("pessimistic_write")
+              .getOne();
+            const outcome = await Promise.race([
+              repo.read(guest, shared).then((read) => read.row.title),
+              new Promise((resolve) => setTimeout(() => resolve("blocked"), 3_000)),
+            ]);
+            expect(outcome).toBe("Shared");
+          } finally {
+            await runner.rollbackTransaction();
+            await runner.release();
+          }
+        }
+      } finally {
+        await db.destroy();
+      }
+    } finally {
+      await rt.cleanup();
+    }
+  },
+);
