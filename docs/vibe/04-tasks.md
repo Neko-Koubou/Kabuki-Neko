@@ -19,11 +19,11 @@ Status Legend: `- [ ]` Pending | `- [~]` In Progress | `- [x]` Completed | `- [!
 | 3. Core Domain Services & API Endpoints | TASK-051–TASK-086 | 36 | M3 → M4 |
 | 4. Frontend Design Tokens, Base UI & State Layer | TASK-087–TASK-131 | 45 | Fondasi M5–M6; source katalog M1 dituntaskan sebelum UI |
 | 5. Feature Screens, API Integration & 5 UI States | TASK-132–TASK-163 | 32 | M5 → M6 |
-| 6. Hardening, Edge Cases & Polish | TASK-164–TASK-181 | 18 | M7 + release evidence |
+| 6. Hardening, Edge Cases & Polish | TASK-164–TASK-182 | 19 | M7 + release evidence + paket self-host Docker |
 
 **Urutan:** ambil task Pending bernomor terkecil yang semua Depends On-nya Completed. Dependensi per-task adalah DAG operasional; phase merangkum milestone, bukan izin mengerjakan seluruh phase dalam satu `/vibe-code`. API/DB/adapter selesai sebelum integrasi UI; catalog tools/contracts lebih awal dan enam katalog lengkap tersedia sebelum provider UI. Tidak ada delegasi atau eksekusi agen paralel yang diperlukan oleh plan ini.
 
-Task berakhiran huruf adalah koreksi/perluasan atomik; jumlah pada tabel fase di atas menunjukkan181 task baseline, sedangkan total195 mencakup14 task tambahan. Detail dependensi di setiap task tetap normatif.
+Task berakhiran huruf adalah koreksi/perluasan atomik; jumlah pada tabel fase di atas menunjukkan181 task baseline, sedangkan total196 mencakup14 task tambahan plus TASK-182 (paket self-host Docker, permintaan pengguna 2026-11-10). Detail dependensi di setiap task tetap normatif.
 
 ### Dependency graph
 
@@ -44,6 +44,7 @@ flowchart LR
   QA --> DEPLOY["TASK-176 Compose + restore"]
   DEPLOY --> PERF["TASK-179 measured performance"]
   PERF --> RELEASE["TASK-181 release gate"]
+  RELEASE --> SELFHOST["TASK-182 self-host Docker package"]
 ```
 
 ### Aturan eksekusi dan verification
@@ -1979,7 +1980,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Assertion font decode dan glyph Latin/diacritics; notices cocok semua sumber/checksum aset dan ketentuan redistribusi; CJK fallback tidak tofu. `pnpm exec tsx scripts/package-assets.ts` menghasilkan kedua legal text files dengan isi sumber identik.
 
-### - [ ] TASK-116: Implementasikan matching dan format locale
+### - [x] TASK-116: Implementasikan matching dan format locale
 - **Traceability**: `US-21`, [SA §8.2](03-system-analysis.md#82-install-matching-dan-hydration)
 - **Depends On**: `TASK-112`, `TASK-087`
 - **Target Files**:
@@ -1993,7 +1994,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/lib/i18n/resolve.spec.ts` full SA browser match table, absent zh-Hant no false Simplified match, malformed/removed locale and failed namespace.
 
-### - [ ] TASK-117: Integrasikan locale SSR, hydration dan picker
+### - [x] TASK-117: Integrasikan locale SSR, hydration dan picker
 - **Traceability**: `US-21`, [SA §8.2](03-system-analysis.md#82-install-matching-dan-hydration), [Design §8.1](02-design-spec.md#81-bahasa-awal-dan-pemilih-bahasa)
 - **Depends On**: `TASK-116`, `TASK-115`
 - **Target Files**:
@@ -2007,7 +2008,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/providers/locale-provider.spec.tsx` deferred/failed fetch, reload persistence/RTL/lang and child state not remounted.
 
-### - [ ] TASK-118: Bangun tombol, field dan choice primitives
+### - [x] TASK-118: Bangun tombol, field dan choice primitives
 - **Traceability**: `US-18`, `US-21`, [SA §8.3](03-system-analysis.md#83-budget-qr-font-dan-accessible-media), [Design §5.1](02-design-spec.md#51-reusable-base-components)
 - **Depends On**: `TASK-117`
 - **Target Files**:
@@ -2021,7 +2022,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/ui/form-primitives.spec.tsx` keyboard/disabled/pending/error/empty variants dan labelled controls; lima state desain §6.3.
 
-### - [ ] TASK-119: Bangun modal sheet dan menu keyboard
+### - [x] TASK-119: Bangun modal sheet dan menu keyboard
 - **Traceability**: `US-18`, `US-21`, [SA §8.3](03-system-analysis.md#83-budget-qr-font-dan-accessible-media), [Design §4.9](02-design-spec.md#49-dialog--m01m12)
 - **Depends On**: `TASK-118`
 - **Target Files**:
@@ -2034,7 +2035,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/ui/dialog-primitives.spec.tsx` Tab/ShiftTab/Escape/return focus and close during pending preserves request state; five-state variants.
 
-### - [ ] TASK-120: Bangun status notice, skeleton dan badge
+### - [x] TASK-120: Bangun status notice, skeleton dan badge
 - **Traceability**: `US-18`, `US-21`, [SA §8.3](03-system-analysis.md#83-budget-qr-font-dan-accessible-media), [Design §6.3](02-design-spec.md#63-semua-base-components)
 - **Depends On**: `TASK-119`
 - **Target Files**:
@@ -2048,7 +2049,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/ui/status-primitives.spec.tsx` no false empty on fetch failure, no endless skeleton, repeated event notices dedup.
 
-### - [ ] TASK-121: Bangun content card dan data collection
+### - [x] TASK-121: Bangun content card dan data collection
 - **Traceability**: `US-18`, `US-21`, [SA §8.3](03-system-analysis.md#83-budget-qr-font-dan-accessible-media), [Design §6.3](02-design-spec.md#63-semua-base-components)
 - **Depends On**: `TASK-120`
 - **Target Files**:
@@ -2061,7 +2062,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/ui/collection-primitives.spec.tsx` pagination, keyboard, empty/loading/stale/error and long CJK content.
 
-### - [ ] TASK-122: Bangun media preview dan progressive reveal
+### - [x] TASK-122: Bangun media preview dan progressive reveal
 - **Traceability**: `US-06`, `US-09`, `US-18`, [SA §7.1](03-system-analysis.md#71-storage-pipeline-dan-cleanup), [Design §7.2](02-design-spec.md#72-waktu-media-dan-alternatif-yang-perlu-disediakan)
 - **Depends On**: `TASK-121`, `TASK-017`
 - **Target Files**:
@@ -2074,7 +2075,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/ui/media-preview.spec.tsx` rejected URL, cue/clip boundaries, unavailable asset and reveal progression no frame-count drift.
 
-### - [ ] TASK-123: Bangun DiceBear avatar deterministik
+### - [x] TASK-123: Bangun DiceBear avatar deterministik
 - **Traceability**: `US-08`, `US-18`, [SA §8.3](03-system-analysis.md#83-budget-qr-font-dan-accessible-media), [Design §5.1](02-design-spec.md#51-reusable-base-components)
 - **Depends On**: `TASK-122`, `TASK-113`
 - **Target Files**:
@@ -2087,7 +2088,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/ui/avatar-illustration.spec.tsx` six styles deterministic, invalid seed/style fallback and accessible decorative/informative modes.
 
-### - [ ] TASK-124: Bangun HTTP client dan reconciliation browser
+### - [x] TASK-124: Bangun HTTP client dan reconciliation browser
 - **Traceability**: `US-01`, `US-03`, `US-05`, `US-06`, `US-15`, `US-21`, [SA §6.4](03-system-analysis.md#64-cache-dan-client-state)
 - **Depends On**: `TASK-058`, `TASK-065`, `TASK-069`, `TASK-117`
 - **Target Files**:
@@ -2099,7 +2100,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/lib/api-client.spec.ts` out-of-order list,409/429 retry metadata, uncertain upload/import/create and no secret URL.
 
-### - [ ] TASK-125: Bangun auth provider dan koordinasi refresh tab
+### - [x] TASK-125: Bangun auth provider dan koordinasi refresh tab
 - **Traceability**: `US-01`, `US-02`, [SA §4.2](03-system-analysis.md#42-setup-auth-users-dan-undangan)
 - **Depends On**: `TASK-124`
 - **Target Files**:
@@ -2113,7 +2114,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/providers/auth-provider.spec.tsx` parallel tabs single refresh, consumed replay no loop, inactive401 and unsafe returnTo rejected.
 
-### - [ ] TASK-126: Bangun draft store studio dan unsaved guard
+### - [x] TASK-126: Bangun draft store studio dan unsaved guard
 - **Traceability**: `US-04`, [SA §6.4](03-system-analysis.md#64-cache-dan-client-state)
 - **Depends On**: `TASK-019`, `TASK-125`
 - **Target Files**:
@@ -2126,7 +2127,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/stores/studio.store.spec.ts` last slide delete, reorder stable IDs, save failure/conflict and locale-independent dirty draft.
 
-### - [ ] TASK-127: Bangun game store dengan snapshot dan event fencing
+### - [x] TASK-127: Bangun game store dengan snapshot dan event fencing
 - **Traceability**: `US-09`, `US-10`, `US-12`, `US-13`, [SA §5.1](03-system-analysis.md#51-transport-envelopes-scopes)
 - **Depends On**: `TASK-022`, `TASK-125`
 - **Target Files**:
@@ -2138,7 +2139,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/stores/game.store.spec.ts` reordered pushes, same revision distinct roles/events, new session reused PIN and accepted recovery.
 
-### - [ ] TASK-128: Bangun socket lifecycle dan recovery hooks
+### - [x] TASK-128: Bangun socket lifecycle dan recovery hooks
 - **Traceability**: `US-07`, `US-08`, `US-10`, `US-12`, [SA §6.4](03-system-analysis.md#64-cache-dan-client-state)
 - **Depends On**: `TASK-127`, `TASK-082`, `TASK-086`
 - **Target Files**:
@@ -2152,7 +2153,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/hooks/use-session-recovery.spec.tsx` lost ACK, refresh after accepted, kick no autojoin, replacement and no duplicate listeners on locale switch.
 
-### - [ ] TASK-129: Bangun clock sync dan timer game
+### - [x] TASK-129: Bangun clock sync dan timer game
 - **Traceability**: `US-10`, `US-18`, [SA §6.4](03-system-analysis.md#64-cache-dan-client-state), [Design §7.1](02-design-spec.md#71-keyboard-fokus-dan-semantik-produk)
 - **Depends On**: `TASK-128`
 - **Target Files**:
@@ -2165,7 +2166,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/hooks/use-game-clock.spec.tsx` clock jumps/rebase/zero grace and reconnect latest phase; server acceptance untouched.
 
-### - [ ] TASK-130: Bangun singleton audio manager dan preference store
+### - [x] TASK-130: Bangun singleton audio manager dan preference store
 - **Traceability**: `US-07`, `US-13`, `US-18`, `US-19`, `US-21`, [Audio revision](audio-engine-revision.md); instruksi pengguna 2026-10-31.
 - **Depends On**: `TASK-129`, `TASK-114`, `TASK-074`
 - **Target Files**:
@@ -2179,7 +2180,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Web unit tests fake Howler/clock: volume/mute persistence, autoplay/decode error, burst joins, interrupted fade, no orphan loop, stop/unload, route/StrictMode ownership. Lint/typecheck PASS.
 
-### - [ ] TASK-130A: Orkestrasi seluruh audio Host/Player dari state
+### - [x] TASK-130A: Orkestrasi seluruh audio Host/Player dari state
 - **Traceability**: `US-07`, `US-13`, `US-18`, `US-19`, `US-21`, [Audio revision](audio-engine-revision.md); instruksi pengguna 2026-10-31.
 - **Depends On**: `TASK-130`
 - **Target Files**:
@@ -2191,7 +2192,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Fake timer/Howler tests all phases/10SFX both roles,5s vs10s sprint, puzzle priority, hidden-tab skip, recovery and8000ms FINISHED, rate reset, vibration absent API, autoplay blocked/retry and no duplicate audio.
 
-### - [ ] TASK-130B: Bangun kontrol audio Host dan opt-in Streamer
+### - [x] TASK-130B: Bangun kontrol audio Host dan opt-in Streamer
 - **Traceability**: `US-07`, `US-13`, `US-18`, `US-19`, `US-21`, [Audio revision](audio-engine-revision.md); instruksi pengguna 2026-10-31.
 - **Depends On**: `TASK-130A`, `TASK-119`
 - **Target Files**:
@@ -2204,7 +2205,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Web component tests keyboard/focus/M-in-input, volume clamp, lobby-only shuffle, projector exclusion, opt-in persistence policy dan exit cleanup.
 
-### - [ ] TASK-130C: Sediakan modal kredit audio aman
+### - [x] TASK-130C: Sediakan modal kredit audio aman
 - **Traceability**: `US-07`, `US-13`, `US-18`, `US-19`, `US-21`, [Audio revision](audio-engine-revision.md); instruksi pengguna 2026-10-31.
 - **Depends On**: `TASK-130B`, `TASK-114A`, `TASK-119`
 - **Target Files**:
@@ -2216,7 +2217,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Component tests script/link injection, keyboard/mobile, loading/empty/ideal/partial/error serta credit source links.
 
-### - [ ] TASK-131: Bangun QR generator dan scanner aman
+### - [x] TASK-131: Bangun QR generator dan scanner aman
 - **Traceability**: `US-07`, `US-08`, `US-18`, [SA §8.3](03-system-analysis.md#83-budget-qr-font-dan-accessible-media), [Design §4.9](02-design-spec.md#49-dialog--m01m12)
 - **Depends On**: `TASK-130`, `TASK-119`, `TASK-130C`
 - **Target Files**:
@@ -2232,7 +2233,7 @@ flowchart LR
 
 ## Phase 5: Feature Screens, API Integration & 5 UI States
 
-### - [ ] TASK-132: Bangun public dan dashboard navigation shells
+### - [x] TASK-132: Bangun public dan dashboard navigation shells
 - **Traceability**: `US-01`, `US-03`, `US-15`, `US-18`, `US-21`, [SA §1.2](03-system-analysis.md#12-pemetaan-modul-dan-file), [Design §1.1](02-design-spec.md#11-pola-navigasi-dan-izin)
 - **Depends On**: `TASK-131`, `TASK-126`, `TASK-130C`
 - **Target Files**:
@@ -2247,7 +2248,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/ui/shells.spec.tsx` roles/direct navigation, long labels/mobile, loading/empty/ideal/partial/error shell states.
 
-### - [ ] TASK-133: Bangun landing publik dan fallback aman
+### - [x] TASK-133: Bangun landing publik dan fallback aman
 - **Traceability**: `US-08`, `US-12`, `US-19`, `US-21`, [SA §1.2](03-system-analysis.md#12-pemetaan-modul-dan-file), [Design §4.8](02-design-spec.md#48-fallback--s17)
 - **Depends On**: `TASK-132`
 - **Target Files**:
@@ -2261,7 +2262,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Assertion browser S01/S17 L/E/I/P/X: service offline retry, missing brand fallback,404 and kicked/expired route guidance; keyboard44px and320px wrap.
 
-### - [ ] TASK-134: Bangun form setup, login dan registrasi
+### - [x] TASK-134: Bangun form setup, login dan registrasi
 - **Traceability**: `US-01`, `US-02`, `US-18`, `US-21`, [SA §4.2](03-system-analysis.md#42-setup-auth-users-dan-undangan), [Design §4.1](02-design-spec.md#41-publik-setup-dan-autentikasi--s01s04)
 - **Depends On**: `TASK-133`, `TASK-125`
 - **Target Files**:
@@ -2273,7 +2274,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/auth/public-auth-forms.spec.tsx` five states each mode, policy closed/invite used/setup race and manager/paste.
 
-### - [ ] TASK-135: Integrasikan ketiga rute autentikasi
+### - [x] TASK-135: Integrasikan ketiga rute autentikasi
 - **Traceability**: `US-01`, `US-02`, `US-17`, `US-21`, [SA §4.2](03-system-analysis.md#42-setup-auth-users-dan-undangan), [Design §6.1](02-design-spec.md#61-semua-layar)
 - **Depends On**: `TASK-134`
 - **Target Files**:
@@ -2287,7 +2288,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:e2e -- tests/e2e/auth.spec.ts` first-run→login→logout/register policies; second setup tab loses safely and one SUPERADMIN exists.
 
-### - [ ] TASK-136: Bangun konfirmasi dan unsaved-dialog reusable
+### - [x] TASK-136: Bangun konfirmasi dan unsaved-dialog reusable
 - **Traceability**: `US-03`, `US-04`, `US-06`, `US-07`, `US-15`, `US-18`, [SA §6.4](03-system-analysis.md#64-cache-dan-client-state), [Design §4.9](02-design-spec.md#49-dialog--m01m12)
 - **Depends On**: `TASK-135`, `TASK-126`
 - **Target Files**:
@@ -2300,7 +2301,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/ui/confirm-dialog.spec.tsx` keyboard, pending-close-reopen, cancel/type-change and failed save blocks navigation.
 
-### - [ ] TASK-137: Bangun metadata kuis dan persiapan host
+### - [x] TASK-137: Bangun metadata kuis dan persiapan host
 - **Traceability**: `US-03`, `US-04`, `US-07`, [SA §4.3](03-system-analysis.md#43-kuis-dan-importexport), [Design §4.9](02-design-spec.md#49-dialog--m01m12)
 - **Depends On**: `TASK-136`, `TASK-128`, `TASK-074`, `TASK-130B`
 - **Target Files**:
@@ -2314,7 +2315,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/host/host-config-dialog.spec.tsx` zero questions, dirty, stale revision, double submit and lost ACK one room; five dialog states.
 
-### - [ ] TASK-138: Bangun daftar kuis own/public
+### - [x] TASK-138: Bangun daftar kuis own/public
 - **Traceability**: `US-03`, `US-05`, `US-07`, `US-21`, [SA §4.3](03-system-analysis.md#43-kuis-dan-importexport), [Design §4.2](02-design-spec.md#42-kuis-dan-detail--s05s06)
 - **Depends On**: `TASK-137`, `TASK-121`
 - **Target Files**:
@@ -2327,7 +2328,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/studio/quiz-library-detail.spec.tsx` L/E/I/P/X, own/public permission controls, safe delete revision and stale list responses.
 
-### - [ ] TASK-139: Bangun detail kuis dan export
+### - [x] TASK-139: Bangun detail kuis dan export
 - **Traceability**: `US-03`, `US-05`, `US-07`, `US-21`, [SA §4.3](03-system-analysis.md#43-kuis-dan-importexport), [Design §4.2](02-design-spec.md#42-kuis-dan-detail--s05s06)
 - **Depends On**: `TASK-138`, `TASK-065`
 - **Target Files**:
@@ -2340,7 +2341,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/studio/quiz-detail.spec.tsx` five states, nonowner403/hidden404, missing cover and download failure no empty success.
 
-### - [ ] TASK-140: Bangun dialog import JSON/CSV dan media map
+### - [x] TASK-140: Bangun dialog import JSON/CSV dan media map
 - **Traceability**: `US-05`, `US-06`, `US-21`, [SA §7.2](03-system-analysis.md#72-versioned-importexport), [Design §4.9](02-design-spec.md#49-dialog--m01m12)
 - **Depends On**: `TASK-139`
 - **Target Files**:
@@ -2353,7 +2354,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/studio/import-export.spec.tsx` malformed CSV/location/unsupported version/missing media and lost response reconciliation; full five-state dialog.
 
-### - [ ] TASK-141: Bangun asset library, upload dan metadata editor
+### - [x] TASK-141: Bangun asset library, upload dan metadata editor
 - **Traceability**: `US-06`, `US-18`, `US-21`, [SA §4.4](03-system-analysis.md#44-media-system-et-locales), [Design §4.4](02-design-spec.md#44-media-dan-laporan--s08s10)
 - **Depends On**: `TASK-140`, `TASK-069`, `TASK-122`
 - **Target Files**:
@@ -2366,7 +2367,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/media/asset-library-picker-upload.spec.tsx` five states, wrong MIME/size, metadata conflict, in-use delete and partial failure.
 
-### - [ ] TASK-142: Integrasikan media picker dan YouTube
+### - [x] TASK-142: Integrasikan media picker dan YouTube
 - **Traceability**: `US-04`, `US-06`, `US-18`, [SA §7.1](03-system-analysis.md#71-storage-pipeline-dan-cleanup), [Design §4.9](02-design-spec.md#49-dialog--m01m12)
 - **Depends On**: `TASK-141`
 - **Target Files**:
@@ -2379,7 +2380,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/studio/media-picker.spec.tsx` all five states, malformed external URL, unusable pending asset and question copy independent of library edits.
 
-### - [ ] TASK-143: Bangun navigasi dan reorder slide studio
+### - [x] TASK-143: Bangun navigasi dan reorder slide studio
 - **Traceability**: `US-04`, `US-18`, `US-21`, [SA §3.1](03-system-analysis.md#31-primitif-dan-batas), [Design §4.3](02-design-spec.md#43-quiz-studio--s07)
 - **Depends On**: `TASK-142`, `TASK-126`
 - **Target Files**:
@@ -2391,7 +2392,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/studio/slide-navigator.spec.tsx` keyboard drag alternative/stable IDs/empty/pending/error/long text and per-slide issue focus.
 
-### - [ ] TASK-144: Bangun editor enam tipe pertanyaan
+### - [x] TASK-144: Bangun editor enam tipe pertanyaan
 - **Traceability**: `US-04`, `US-18`, `US-21`, [SA §3.1](03-system-analysis.md#31-primitif-dan-batas), [Design §4.3](02-design-spec.md#43-quiz-studio--s07)
 - **Depends On**: `TASK-143`
 - **Target Files**:
@@ -2403,7 +2404,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/studio/question-fields.spec.tsx` all 6 valid/incomplete/invalid, IME Unicode counters, type change cancel and stable correct option IDs.
 
-### - [ ] TASK-145: Bangun properti soal dan alternatif media
+### - [x] TASK-145: Bangun properti soal dan alternatif media
 - **Traceability**: `US-04`, `US-06`, `US-18`, [SA §3.1](03-system-analysis.md#31-primitif-dan-batas), [Design §7.2](02-design-spec.md#72-waktu-media-dan-alternatif-yang-perlu-disediakan)
 - **Depends On**: `TASK-144`
 - **Target Files**:
@@ -2415,7 +2416,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/studio/question-properties.spec.tsx` range/reveal incompatibility, missing alternatives, valid draft persistence and all five states.
 
-### - [ ] TASK-146: Integrasikan studio responsif dan save revision
+### - [x] TASK-146: Integrasikan studio responsif dan save revision
 - **Traceability**: `US-03`, `US-04`, `US-06`, `US-07`, `US-18`, `US-21`, [SA §6.4](03-system-analysis.md#64-cache-dan-client-state), [Design §6.1](02-design-spec.md#61-semua-layar)
 - **Depends On**: `TASK-145`, `TASK-139`, `TASK-135`
 - **Target Files**:
@@ -2428,7 +2429,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:e2e -- tests/e2e/studio.spec.ts` create6 types/reorder/duplicate/delete/save/refresh, conflict tab, zero-slide draft,320/768/1280 layouts and language switch dirty.
 
-### - [ ] TASK-147: Bangun settings, health dan cleanup UI
+### - [x] TASK-147: Bangun settings, health dan cleanup UI
 - **Traceability**: `US-02`, `US-15`, `US-16`, `US-20`, `US-21`, [SA §4.4](03-system-analysis.md#44-media-system-et-locales), [Design §4.5](02-design-spec.md#45-admin-pengguna-about--s11s13)
 - **Depends On**: `TASK-146`, `TASK-074`
 - **Target Files**:
@@ -2441,7 +2442,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/admin/admin-settings-health.spec.tsx` five states per panel, no default placeholder saved, partial200 vs503, admin guard and stale revision.
 
-### - [ ] TASK-148: Bangun pengguna dan undangan UI
+### - [x] TASK-148: Bangun pengguna dan undangan UI
 - **Traceability**: `US-01`, `US-02`, `US-15`, `US-21`, [SA §4.2](03-system-analysis.md#42-setup-auth-users-dan-undangan), [Design §4.5](02-design-spec.md#45-admin-pengguna-about--s11s13)
 - **Depends On**: `TASK-147`, `TASK-060`
 - **Target Files**:
@@ -2454,7 +2455,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/admin/user-invites.spec.tsx` L/E/I/P/X, last-admin409, invite expired/used/revoked and clipboard unavailable/manual copy.
 
-### - [ ] TASK-149: Bangun About dan panduan bahasa publik
+### - [x] TASK-149: Bangun About dan panduan bahasa publik
 - **Traceability**: `US-19`, `US-21`, [SA §8.2](03-system-analysis.md#82-install-matching-dan-hydration), [Design §4.5](02-design-spec.md#45-admin-pengguna-about--s11s13)
 - **Depends On**: `TASK-148`, `TASK-112`, `TASK-013`, `TASK-115`
 - **Target Files**:
@@ -2469,7 +2470,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Assertion all 3 routes and footer links resolve, template ZIP downloads+validates, official terms visible, keyboard/320px/+40% and L/E/I/P/X including unknown version.
 
-### - [ ] TASK-150: Bangun nickname dan avatar customizer
+### - [x] TASK-150: Bangun nickname dan avatar customizer
 - **Traceability**: `US-08`, `US-09`, `US-12`, `US-18`, `US-21`, [SA §5.2](03-system-analysis.md#52-semua-client-to-server-methods), [Design §4.6](02-design-spec.md#46-join-dan-player--s14s15)
 - **Depends On**: `TASK-149`, `TASK-123`, `TASK-079`
 - **Target Files**:
@@ -2482,7 +2483,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/player/avatar-customizer.spec.tsx` six styles/leading Unicode/friendly tickets, all 5 states and recovery ignores changed nickname.
 
-### - [ ] TASK-151: Bangun PIN join, scan dan deep-link
+### - [x] TASK-151: Bangun PIN join, scan dan deep-link
 - **Traceability**: `US-08`, `US-12`, `US-21`, [SA §5.2](03-system-analysis.md#52-semua-client-to-server-methods), [Design §4.6](02-design-spec.md#46-join-dan-player--s14s15)
 - **Depends On**: `TASK-150`, `TASK-131`
 - **Target Files**:
@@ -2495,7 +2496,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:e2e -- tests/e2e/join.spec.ts` PIN000123/deep-link once, camera denied/foreign QR, friendly mode and duplicate nickname; five states.
 
-### - [ ] TASK-152: Bangun status koneksi dan pemulihan role
+### - [x] TASK-152: Bangun status koneksi dan pemulihan role
 - **Traceability**: `US-07`, `US-12`, `US-21`, [SA §6.4](03-system-analysis.md#64-cache-dan-client-state), [Design §6.4](02-design-spec.md#64-semua-feature-components)
 - **Depends On**: `TASK-151`, `TASK-128`
 - **Target Files**:
@@ -2507,7 +2508,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/player/connection-recovery.spec.tsx` five states, invalid token clears storage, replacement no loop and state-store outage locks controls.
 
-### - [ ] TASK-153: Bangun choice answer pad untuk empat tipe
+### - [x] TASK-153: Bangun choice answer pad untuk empat tipe
 - **Traceability**: `US-09`, `US-10`, `US-18`, `US-21`, [SA §5.3](03-system-analysis.md#53-public-and-private-snapshots), [Design §4.6](02-design-spec.md#46-join-dan-player--s14s15)
 - **Depends On**: `TASK-152`, `TASK-129`
 - **Target Files**:
@@ -2519,7 +2520,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/player/choice-answer-pad.spec.tsx` keyboard focus colors/selection, no double submit, poll neutral, missing selection and deadline/grace states.
 
-### - [ ] TASK-154: Bangun input teks dan puzzle keyboard
+### - [x] TASK-154: Bangun input teks dan puzzle keyboard
 - **Traceability**: `US-09`, `US-10`, `US-18`, `US-21`, [SA §3.1](03-system-analysis.md#31-primitif-dan-batas), [Design §7.1](02-design-spec.md#71-keyboard-fokus-dan-semantik-produk)
 - **Depends On**: `TASK-153`
 - **Target Files**:
@@ -2532,7 +2533,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/player/text-puzzle.spec.tsx` IME/CJK/emoji, stable option identity, keyboard reordering, no post-deadline send and accepted locks.
 
-### - [ ] TASK-155: Bangun reveal dan hasil individual
+### - [x] TASK-155: Bangun reveal dan hasil individual
 - **Traceability**: `US-11`, `US-13`, `US-14`, `US-18`, `US-21`, [SA §5.3](03-system-analysis.md#53-public-and-private-snapshots), [Design §4.7](02-design-spec.md#47-panggung-host--s16)
 - **Depends On**: `TASK-154`, `TASK-122`
 - **Target Files**:
@@ -2547,7 +2548,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/host/result-chart.spec.tsx` partial475 shows375+100, poll no correctness, no answers and text/puzzle distinct; five states.
 
-### - [ ] TASK-156: Bangun leaderboard, climber dan podium
+### - [x] TASK-156: Bangun leaderboard, climber dan podium
 - **Traceability**: `US-13`, `US-18`, `US-21`, [SA §5.5](03-system-analysis.md#55-transisi-timing-scoring-ranking), [Design §7.3](02-design-spec.md#73-motion-dan-feedback)
 - **Depends On**: `TASK-155`
 - **Target Files**:
@@ -2560,7 +2561,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/host/podium.spec.tsx` zero/1/2/3 winners, ties preserve order, reduced motion and unchanged phaseVersion no repeat.
 
-### - [ ] TASK-157: Integrasikan semua fase layar player
+### - [x] TASK-157: Integrasikan semua fase layar player
 - **Traceability**: `US-08`, `US-09`, `US-10`, `US-11`, `US-12`, `US-13`, `US-18`, `US-21`, [SA §5.3](03-system-analysis.md#53-public-and-private-snapshots), [Design §6.1](02-design-spec.md#61-semua-layar)
 - **Depends On**: `TASK-156`, `TASK-127`, `TASK-130B`
 - **Target Files**:
@@ -2574,7 +2575,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:e2e -- tests/e2e/player.spec.ts` all 6 inputs/both modes, timing+grace, accepted refresh and no key in DOM/network/RSC props; L/E/I/P/X.
 
-### - [ ] TASK-158: Bangun lobi host dan moderasi
+### - [x] TASK-158: Bangun lobi host dan moderasi
 - **Traceability**: `US-07`, `US-08`, `US-18`, `US-21`, [SA §5.2](03-system-analysis.md#52-semua-client-to-server-methods), [Design §4.7](02-design-spec.md#47-panggung-host--s16)
 - **Depends On**: `TASK-157`, `TASK-130`, `TASK-131`, `TASK-130B`
 - **Target Files**:
@@ -2587,7 +2588,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/host/host-stage-lobby.spec.tsx` five states,0/200 roster, touch/keyboard kick, copy unavailable and lock failure rollback.
 
-### - [ ] TASK-159: Bangun panggung pertanyaan dan kontrol fase host
+### - [x] TASK-159: Bangun panggung pertanyaan dan kontrol fase host
 - **Traceability**: `US-07`, `US-10`, `US-13`, `US-18`, `US-21`, [SA §5.5](03-system-analysis.md#55-transisi-timing-scoring-ranking), [Design §4.7](02-design-spec.md#47-panggung-host--s16)
 - **Depends On**: `TASK-158`
 - **Target Files**:
@@ -2600,7 +2601,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/host/question-projector.spec.tsx` full prompt500/options250, no key before reveal, media failure remains controllable, double click emits one pending command.
 
-### - [ ] TASK-160: Integrasikan host recovery, podium dan status laporan
+### - [x] TASK-160: Integrasikan host recovery, podium dan status laporan
 - **Traceability**: `US-07`, `US-10`, `US-12`, `US-13`, `US-14`, `US-21`, [SA §6.3](03-system-analysis.md#63-finalization-and-durability), [Design §6.1](02-design-spec.md#61-semua-layar)
 - **Depends On**: `TASK-159`, `TASK-086`, `TASK-130B`
 - **Target Files**:
@@ -2615,7 +2616,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:e2e -- tests/e2e/host.spec.ts` start→skip→next→podium, reconnect, early end empty lobby, finalization DB failure/retry; five states/no skipped question on duplicate next.
 
-### - [ ] TASK-160A: Verifikasi choreography dan fallback audio di browser
+### - [x] TASK-160A: Verifikasi choreography dan fallback audio di browser
 - **Traceability**: `US-07`, `US-13`, `US-18`, `US-19`, `US-21`, [Audio revision](audio-engine-revision.md); instruksi pengguna 2026-10-31.
 - **Depends On**: `TASK-160`, `TASK-130C`
 - **Target Files**:
@@ -2627,7 +2628,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - Playwright targeted audio suite passes, all10SFX role matrix covered, no phantom rank/POLL feedback, no stale timers after disconnect or navigation; record actual supported browser evidence.
 
-### - [ ] TASK-161: Bangun daftar laporan host
+### - [x] TASK-161: Bangun daftar laporan host
 - **Traceability**: `US-14`, `US-21`, [SA §4.5](03-system-analysis.md#45-reports), [Design §4.4](02-design-spec.md#44-media-dan-laporan--s08s10)
 - **Depends On**: `TASK-160`
 - **Target Files**:
@@ -2640,7 +2641,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/reports/report-list.spec.tsx` L/E/I/P/X, pagination, timezone visible and safe404/401 handling.
 
-### - [ ] TASK-162: Bangun detail jawaban peserta
+### - [x] TASK-162: Bangun detail jawaban peserta
 - **Traceability**: `US-14`, `US-18`, `US-21`, [SA §4.5](03-system-analysis.md#45-reports), [Design §4.9](02-design-spec.md#49-dialog--m01m12)
 - **Depends On**: `TASK-161`
 - **Target Files**:
@@ -2652,7 +2653,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm --filter @kabuki-neko/web test -- src/components/reports/answer-detail-dialog.spec.tsx` five states, partial/poll/m0/unplayed and pagination keyboard/focus.
 
-### - [ ] TASK-163: Integrasikan analitik, hardest questions dan CSV
+### - [x] TASK-163: Integrasikan analitik, hardest questions dan CSV
 - **Traceability**: `US-14`, `US-21`, [SA §4.5](03-system-analysis.md#45-reports), [Design §6.1](02-design-spec.md#61-semua-layar)
 - **Depends On**: `TASK-162`
 - **Target Files**:
@@ -2667,7 +2668,7 @@ flowchart LR
 
 ## Phase 6: Hardening, Edge Cases & Polish
 
-### - [ ] TASK-164: Terapkan CSP dan browser security headers
+### - [x] TASK-164: Terapkan CSP dan browser security headers
 - **Traceability**: `US-01`, `US-06`, `US-18`, `US-20`, [SA §10.1](03-system-analysis.md#101-kontrol-owasp-top-10), [Design §7.2](02-design-spec.md#72-waktu-media-dan-alternatif-yang-perlu-disediakan)
 - **Depends On**: `TASK-163`
 - **Target Files**:
@@ -2681,7 +2682,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:e2e -- tests/e2e/security-headers.spec.ts` production hydration/socket/media still work, hostile iframe/URL/script blocked, no secret public build values.
 
-### - [ ] TASK-165: Uji race autentikasi dan admin pada tiga DB
+### - [x] TASK-165: Uji race autentikasi dan admin pada tiga DB
 - **Traceability**: `US-01`, `US-02`, `US-15`, `US-20`, [SA §11.2](03-system-analysis.md#112-implementationqa-coverage-required)
 - **Depends On**: `TASK-164`, `TASK-011`
 - **Target Files**:
@@ -2694,7 +2695,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:integration --runInBand --runTestsByPath tests/integration/auth-races.spec.ts` dan `pnpm test:integration --runInBand --runTestsByPath tests/integration/authorization.spec.ts` pass all 3 drivers; failures stay open, never skip engine silently.
 
-### - [ ] TASK-166: Uji transaksi konten dan lifecycle media
+### - [x] TASK-166: Uji transaksi konten dan lifecycle media
 - **Traceability**: `US-03`, `US-04`, `US-05`, `US-06`, `US-15`, [SA §11.2](03-system-analysis.md#112-implementationqa-coverage-required)
 - **Depends On**: `TASK-165`
 - **Target Files**:
@@ -2706,7 +2707,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:integration --runInBand --runTestsByPath tests/integration/content-races.spec.ts` dan `pnpm test:integration --runInBand --runTestsByPath tests/integration/media-failures.spec.ts` verify no partial quiz, phantom Media201 or deletion of active refs.
 
-### - [ ] TASK-167: Sediakan fixture Redis Cluster dan failover contracts
+### - [x] TASK-167: Sediakan fixture Redis Cluster dan failover contracts
 - **Traceability**: `US-10`, `US-12`, `US-16`, [SA §6.1](03-system-analysis.md#61-adapter-contract-dan-redis-cluster)
 - **Depends On**: `TASK-166`, `TASK-050`
 - **Target Files**:
@@ -2720,7 +2721,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `docker compose -f docker/docker-compose.test-cluster.yml config --quiet` dan `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/redis-cluster.spec.ts` no CROSSSLOT/double answer/old-generation command.
 
-### - [ ] TASK-168: Uji concurrency dan recovery dua instance
+### - [x] TASK-168: Uji concurrency dan recovery dua instance
 - **Traceability**: `US-07`, `US-08`, `US-09`, `US-10`, `US-11`, `US-12`, `US-13`, `US-16`, [SA §11.2](03-system-analysis.md#112-implementationqa-coverage-required)
 - **Depends On**: `TASK-167`, `TASK-075`, `TASK-160`
 - **Target Files**:
@@ -2733,7 +2734,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:integration --runInBand --runTestsByPath tests/integration/realtime-races.spec.ts`, `pnpm test:integration --runInBand --runTestsByPath tests/integration/recovery.spec.ts` dan `pnpm test:integration --runInBand --runTestsByPath tests/integration/payload-privacy.spec.ts` pass without compensating by client timestamps.
 
-### - [ ] TASK-169: Uji durability laporan dan retention
+### - [x] TASK-169: Uji durability laporan dan retention
 - **Traceability**: `US-12`, `US-14`, `US-16`, `US-20`, [SA §6.3](03-system-analysis.md#63-finalization-and-durability)
 - **Depends On**: `TASK-168`
 - **Target Files**:
@@ -2745,7 +2746,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:integration --runInBand --runTestsByPath tests/integration/finalization-failures.spec.ts` dan `pnpm test:integration --runInBand --runTestsByPath tests/integration/room-retention.spec.ts` real DB queue resumes and no partial/duplicate report across3 engines.
 
-### - [ ] TASK-170: Jalankan parity matrix seluruh adapter
+### - [x] TASK-170: Jalankan parity matrix seluruh adapter
 - **Traceability**: `US-06`, `US-16`, `US-17`, [SA §11.2](03-system-analysis.md#112-implementationqa-coverage-required)
 - **Depends On**: `TASK-169`
 - **Target Files**:
@@ -2758,7 +2759,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/driver-matrix.spec.ts` pass all 12 single-node combinations; `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/cloud-storage.spec.ts` actual configured providers, unavailable credentials explicitly unverified in evidence.
 
-### - [ ] TASK-171: Uji perjalanan pengguna lengkap dan lima state
+### - [x] TASK-171: Uji perjalanan pengguna lengkap dan lima state
 - **Traceability**: `US-01`, `US-02`, `US-03`, `US-04`, `US-05`, `US-06`, `US-07`, `US-08`, `US-09`, `US-10`, `US-11`, `US-12`, `US-13`, `US-14`, `US-15`, `US-16`, `US-17`, `US-18`, `US-19`, `US-20`, `US-21`, [SA §11.2](03-system-analysis.md#112-implementationqa-coverage-required)
 - **Depends On**: `TASK-170`
 - **Target Files**:
@@ -2771,7 +2772,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:e2e -- tests/e2e/journeys.spec.ts tests/e2e/ui-states.spec.ts` all inventory states accounted for; true non-applicable static empty cases asserted as design describes.
 
-### - [ ] TASK-172: Uji locale runtime dan ekstensi bahasa end-to-end
+### - [x] TASK-172: Uji locale runtime dan ekstensi bahasa end-to-end
 - **Traceability**: `US-21`, [SA §8.2](03-system-analysis.md#82-install-matching-dan-hydration)
 - **Depends On**: `TASK-171`
 - **Target Files**:
@@ -2784,7 +2785,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:e2e -- tests/e2e/localization.spec.ts` dan `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/localization-roundtrip.spec.ts` satisfy AC-21-01..04; pseudo locales cannot enter production bundle.
 
-### - [ ] TASK-173: Verifikasi aksesibilitas dan responsive layouts
+### - [x] TASK-173: Verifikasi aksesibilitas dan responsive layouts
 - **Traceability**: `US-09`, `US-18`, `US-21`, [SA §8.3](03-system-analysis.md#83-budget-qr-font-dan-accessible-media)
 - **Depends On**: `TASK-172`
 - **Target Files**:
@@ -2797,7 +2798,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:e2e -- tests/e2e/accessibility.spec.ts tests/e2e/responsive.spec.ts` plus dated manual browser/reader evidence. Any unchecked manual item remains not verified, not WCAG certification.
 
-### - [ ] TASK-174: Bangun legal, asset dan catalog packaging checks
+### - [x] TASK-174: Bangun legal, asset dan catalog packaging checks
 - **Traceability**: `US-17`, `US-18`, `US-19`, `US-21`, [SA §10.2](03-system-analysis.md#102-environment-tambahan-dan-compose)
 - **Depends On**: `TASK-173`, `TASK-115`, `TASK-149`
 - **Target Files**:
@@ -2812,7 +2813,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:contracts --runInBand --runTestsByPath tests/contracts/distribution.spec.ts` removes each required file and observes failure; normal `pnpm build` outputs legal files and guide links/template work, no invented license equivalence.
 
-### - [ ] TASK-175: Buat image production API dan web
+### - [x] TASK-175: Buat image production API dan web
 - **Traceability**: `US-16`, `US-17`, `US-19`, [SA §10.2](03-system-analysis.md#102-environment-tambahan-dan-compose)
 - **Depends On**: `TASK-174`
 - **Target Files**:
@@ -2826,7 +2827,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `docker build -f docker/Dockerfile.api -t kabuki-neko-api:test .` dan `docker build -f docker/Dockerfile.web -t kabuki-neko-web:test .`; `ffprobe -version`/native module load in API image, nonroot UID and required assets inside both.
 
-### - [ ] TASK-176: Buat Compose default dan scale serta wrapper
+### - [x] TASK-176: Buat Compose default dan scale serta wrapper
 - **Traceability**: `US-16`, `US-17`, [SA §10.2](03-system-analysis.md#102-environment-tambahan-dan-compose)
 - **Depends On**: `TASK-175`
 - **Target Files**:
@@ -2840,7 +2841,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `docker compose -f docker/docker-compose.yml config --quiet` dan `DEPLOYMENT_PROFILE=scale docker compose -f docker/docker-compose.yml --profile scale config --quiet`; config driver selection matches env semantics without implicit data transfer.
 
-### - [ ] TASK-177: Verifikasi cold start, restart dan migrasi deployment
+### - [x] TASK-177: Verifikasi cold start, restart dan migrasi deployment
 - **Traceability**: `US-01`, `US-06`, `US-12`, `US-16`, `US-17`, `US-21`, [SA §10.2](03-system-analysis.md#102-environment-tambahan-dan-compose)
 - **Depends On**: `TASK-176`
 - **Target Files**:
@@ -2853,7 +2854,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:integration --runInBand --runTestsByPath tests/integration/deployment.spec.ts` dan `pnpm test:integration --runInBand --runTestsByPath tests/integration/catalog-deployment.spec.ts` default/scale real run; source/shared credentials absent from browser bundle.
 
-### - [ ] TASK-178: Dokumentasikan dan uji backup, restore dan operasi
+### - [x] TASK-178: Dokumentasikan dan uji backup, restore dan operasi
 - **Traceability**: `US-15`, `US-16`, `US-17`, `US-20`, [SA §10.3](03-system-analysis.md#103-recoveryretention-and-known-limits)
 - **Depends On**: `TASK-177`
 - **Target Files**:
@@ -2865,7 +2866,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm test:integration --runInBand --runTestsByPath tests/integration/backup-restore.spec.ts` restore fixtures preserve quiz/media refs/history and secrets policy; recorded commands tested per dialect, recovery limits visible.
 
-### - [ ] TASK-179: Ukur broadcast game dan report load
+### - [x] TASK-179: Ukur broadcast game dan report load
 - **Traceability**: `US-16`, `US-20`, [SA §11.2](03-system-analysis.md#112-implementationqa-coverage-required)
 - **Depends On**: `TASK-178`
 - **Target Files**:
@@ -2878,7 +2879,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm benchmark:game --clients 200 --transitions 100` for memory single node and Redis2 nodes; p95<50ms target, observed failures remain failures with environment, no extrapolation. `pnpm test:performance -- tests/performance/game-benchmark.spec.ts` menguji clock/sample/statistics alat ukur.
 
-### - [ ] TASK-180: Ukur player bundle dan cold-load budgets
+### - [x] TASK-180: Ukur player bundle dan cold-load budgets
 - **Traceability**: `US-18`, `US-20`, `US-21`, [SA §8.3](03-system-analysis.md#83-budget-qr-font-dan-accessible-media)
 - **Depends On**: `TASK-179`
 - **Target Files**:
@@ -2891,7 +2892,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm exec tsx scripts/measure-web-budget.ts --runs 5` reports raw+median results and gzip manifest; fail threshold explicitly, no claimed pass from dev build. `pnpm test:performance -- tests/performance/web-budget.spec.ts` menguji chunk accounting dan threshold failure.
 
-### - [ ] TASK-181: Integrasikan CI dan release evidence gate
+### - [x] TASK-181: Integrasikan CI dan release evidence gate
 - **Traceability**: `US-01`, `US-02`, `US-03`, `US-04`, `US-05`, `US-06`, `US-07`, `US-08`, `US-09`, `US-10`, `US-11`, `US-12`, `US-13`, `US-14`, `US-15`, `US-16`, `US-17`, `US-18`, `US-19`, `US-20`, `US-21`, [SA §11.2](03-system-analysis.md#112-implementationqa-coverage-required)
 - **Depends On**: `TASK-180`, `TASK-160A`
 - **Target Files**:
@@ -2903,6 +2904,21 @@ flowchart LR
   - Release checklist map every US/AC/BR/NFR to evidence, manual language/a11y/license/cloud review truthfully pending if absent. Require matching catalog pair and measured budgets; no automatic publish/deploy action.
 - **Definition of Done (Verification)**:
   - `pnpm install --frozen-lockfile`, `pnpm locales:validate`, `pnpm locales:build`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:contracts`, `pnpm test:integration`, `pnpm build`, `pnpm test:e2e`, both Compose configs dan `pnpm exec tsx scripts/verify-release.ts`; gate rejects missing evidence. Jalankan `pnpm test:performance`; review bukti manual/cloud/license yang belum tersedia tetap menjadi release gap.
+
+### - [x] TASK-182: Siapkan paket self-host Docker siap pakai
+- **Traceability**: `US-16`, `US-17`, `US-19`, `US-20`, [SA §10.2](03-system-analysis.md#102-environment-tambahan-dan-compose), [SA §10.3](03-system-analysis.md#103-recoveryretention-dan-known-limits); permintaan pengguna 2026-11-10: "sediakan file untuk deployment menggunakan docker ... agar orang bisa self host dengan docker".
+- **Depends On**: `TASK-181`, `TASK-176`, `TASK-177`, `TASK-178`
+- **Target Files**:
+  - `CREATE` `docs/self-hosting.md`
+  - `CREATE` `docker/docker-compose.tls.yml`
+  - `CREATE` `docker/Caddyfile`
+  - `CREATE` `scripts/selfhost-smoke.sh`
+- **Implementation Specs**:
+  - Panduan self-host untuk operator non-developer (Bahasa Indonesia + English) di atas image/Compose TASK-175–176: prasyarat (Docker Engine + Compose v2, RAM/disk minimum), unduh/clone rilis, salin `.env.example` menjadi `.env` dengan hanya URL publik/nama instansi yang wajib diubah, `docker compose -f docker/docker-compose.yml up -d`, first-run `/setup`, profil default (SQLite/memory/local) vs scale, letak data persisten (`docker/data`, `docker/uploads`, secrets), upgrade (pull/build ulang + migrasi otomatis satu leader), backup/restore (rujuk TASK-178), troubleshooting (port bentrok, URL publik salah, cookie same-site, CORS, healthcheck), dan batasan (memory rooms hilang saat restart, kapasitas bukan sertifikasi).
+  - Override HTTPS opsional `docker/docker-compose.tls.yml` + `docker/Caddyfile`: reverse proxy Caddy (image dipin digest) dengan TLS otomatis untuk satu domain, path `/api` dan WebSocket `/socket.io` ke API (sticky/timeout >=75 s), sisanya ke web, `TRUST_PROXY_CIDRS` jaringan proxy saja, header keamanan konsisten dengan CSP task sebelumnya; tidak membuka port API/web langsung saat TLS dipakai. Tidak ada kredensial contoh yang dipakai di produksi.
+  - `scripts/selfhost-smoke.sh` (bash `set -euo pipefail`, tanpa sudo): jalankan Compose default dengan project name terisolasi, tunggu healthcheck, cek `GET /` 200, `GET /api/v1/auth/setup-status` 200 dan `/join` 200, restart lalu verifikasi data persisten tetap ada, dan teardown `down` **tanpa** menghapus volume/data operator kecuali flag eksplisit untuk project uji itu sendiri. README menautkan panduan.
+- **Definition of Done (Verification)**:
+  - `docker compose -f docker/docker-compose.yml -f docker/docker-compose.tls.yml config --quiet` dan Caddyfile `caddy validate` via container; `bash scripts/selfhost-smoke.sh` lulus dari checkout bersih pada profil default (dan scale bila Docker tersedia); setiap env var yang disebut panduan ada di `.env.example`, tautan dokumen valid, dan tidak ada secret/credential contoh yang di-commit.
 
 ## 3. Blueprint coverage
 

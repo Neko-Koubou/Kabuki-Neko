@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createHmac, hkdfSync, randomUUID } from "node:crypto";
 import { Inject, Injectable } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { z } from "zod";
@@ -62,11 +62,28 @@ export function refreshCookieOptions(
 @Injectable()
 export class RefreshService {
   private readonly jwt = new JwtService();
+  /** Lazily derived HMAC key for credential fingerprints (see `credentialFingerprint`). */
+  private fingerprintKey: Buffer | null = null;
   constructor(
     @Inject(ConfigService) private readonly config: ConfigService,
     @Inject(AuthRepository) private readonly repository: AuthRepository,
     @Inject(UsersRepository) private readonly users: UsersRepository,
   ) {}
+
+  /**
+   * Keyed, non-reversible fingerprint of a credential (password or invite code) for idempotency
+   * request hashes (code review CR-01; SA §2.3 "request_dedup does not store credentials", §4.2).
+   * HMAC-SHA256 under a key derived by HKDF from the refresh secret, which never reaches the
+   * database, so a database copy cannot be used to test password guesses at hash speed. Equal
+   * inputs still give equal fingerprints, so a replayed key with a different password keeps
+   * failing with IDEMPOTENCY_CONFLICT.
+   */
+  credentialFingerprint(value: string): string {
+    this.fingerprintKey ??= Buffer.from(
+      hkdfSync("sha256", this.config.secrets.refreshSecret, "", "kabuki-neko:request-dedup:v1", 32),
+    );
+    return createHmac("sha256", this.fingerprintKey).update(value, "utf8").digest("hex");
+  }
 
   issue(
     user: Pick<UserRow, "id" | "auth_version">,

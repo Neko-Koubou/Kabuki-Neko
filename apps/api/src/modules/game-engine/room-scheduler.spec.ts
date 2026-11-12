@@ -2,9 +2,11 @@
  * TASK-081 coverage with a fake clock shared by the memory store, game service and schedulers:
  * exact countdown/preview/grace/podium boundaries driven only by scans (no host action → no
  * pause), lease ownership between two instances with takeover after expiry, missing state → LOST
- * and later release, lobby idle and hard expiry, and retention of a non-durable frozen report.
+ * and later release, lobby idle and hard expiry, retention of a non-durable frozen report, and the
+ * single 24 h pending-finalization alarm.
  */
 import { randomUUID } from "node:crypto";
+import { Logger } from "@nestjs/common";
 import {
   AuthRepository,
   QuizzesRepository,
@@ -15,6 +17,7 @@ import {
   domainSchemas,
   migrateDatabase,
 } from "@kabuki-neko/database";
+import { ROOM_LIMITS } from "@kabuki-neko/shared/constants/limits";
 import { quizWriteSchema } from "@kabuki-neko/shared/schemas/quiz.schema";
 import { ConfigService } from "../../config/config.service";
 import { parseEnvironment } from "../../config/env.schema";
@@ -255,4 +258,38 @@ it("expires an answering question as EXPIRED at the hard lifetime and keeps a pe
   await worker.scan(now);
   expect(await phase(identity)).toBeNull();
   expect(await status(identity)).toBe("CLOSED");
+});
+
+it("raises one alarm when a frozen report is still not durable 24 h after the game, never evicting it", async () => {
+  const errors = jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+  try {
+    const identity = await room();
+    const worker = scheduler();
+    await command(identity, "host:start_game");
+    now += 3_000;
+    await worker.scan(now);
+    now += 4_000;
+    await worker.scan(now);
+    const state = await store.getPrivateSnapshot(identity);
+    now = (state?.hardExpiresAt ?? now) + 1;
+    await worker.scan(now);
+    const ended = await store.getPrivateSnapshot(identity);
+    const endedAt = ended?.frozenReport?.session.endedAt ?? now;
+    now = endedAt + ROOM_LIMITS.pendingAlarmMs - 1;
+    await worker.scan(now);
+    expect(errors).not.toHaveBeenCalled();
+    now = endedAt + ROOM_LIMITS.pendingAlarmMs;
+    await worker.scan(now);
+    now += 60_000;
+    await worker.scan(now);
+    expect(errors).toHaveBeenCalledTimes(1);
+    expect(String(errors.mock.calls[0]?.[0])).toBe(
+      `finalization pending for more than 24 h for session ${identity.sessionId}`,
+    );
+    // Still retained: no eviction of a non-durable report.
+    expect(await phase(identity)).toBe("PODIUM");
+    expect(await status(identity)).toBe("FINALIZING");
+  } finally {
+    errors.mockRestore();
+  }
 });

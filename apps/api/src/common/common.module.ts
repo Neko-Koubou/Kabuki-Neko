@@ -1,7 +1,13 @@
 import { Inject, Injectable, Module } from "@nestjs/common";
 import { DataSource } from "typeorm";
 import type { Request } from "express";
-import { AuditRepository, UsersRepository, QuizzesRepository } from "@kabuki-neko/database";
+import {
+  AuditRepository,
+  AuthRepository,
+  OperationsRepository,
+  UsersRepository,
+  QuizzesRepository,
+} from "@kabuki-neko/database";
 import { DatabaseModule } from "../providers/database/database.module";
 import { StateModule, StateConnections } from "../providers/state/state.module";
 import { ConfigService } from "../config/config.service";
@@ -15,6 +21,7 @@ import { OperationsAccess, OperationsController } from "./operations.controller"
 import { RateLimitService } from "./rate-limit.service";
 import { MetricsService } from "./metrics.service";
 import { AuditService } from "./audit.service";
+import { RetentionService } from "./retention.service";
 import { ApiError } from "./error.filter";
 
 @Injectable()
@@ -96,6 +103,15 @@ const services = [RefreshService, JwtGuard, RolesGuard, OwnershipGuard, Idempote
         new AuditService(repository, metrics, config.get("AUDIT_RETENTION_DAYS")),
     },
     { provide: OperationsAccess, useClass: SqlOperationsAccess },
+    {
+      provide: RetentionService,
+      inject: [AuditService, OperationsRepository, AuthRepository],
+      useFactory: (
+        audit: AuditService,
+        operations: OperationsRepository,
+        accounts: AuthRepository,
+      ) => new RetentionService(audit, operations, accounts),
+    },
   ],
   exports: [...services, RateLimitService, OriginGuard, AuditService, MetricsService],
 })

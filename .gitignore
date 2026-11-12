@@ -58,6 +58,8 @@ runtime-secrets.json
 /apps/web/public/.audio.staging-*/
 /apps/web/public/.audio.previous-*/
 /apps/web/public/legal/
+# API artifact assets packaged by scripts/package-assets.ts (legal texts, audio manifest)
+/apps/api/assets/
 
 # Temporary files and logs
 /tmp/

@@ -17,10 +17,13 @@
  * Finalization recovery: the leader of a final room whose frozen report is not `ready` asks the
  * game service to re-sync it with the durable queue at most every 5 s (re-enqueue after a database
  * outage, mirror a READY job whose state update was lost), so such rooms are eventually released.
+ * A frozen report still not durable 24 h after the game ended raises one error-level alarm per
+ * session (`finalization pending for more than 24 h`, session id only) and is still never evicted.
  */
 import {
   Inject,
   Injectable,
+  Logger,
   Optional,
   type OnApplicationBootstrap,
   type OnModuleDestroy,
@@ -68,6 +71,9 @@ export class RoomScheduler implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly heartbeats = new Map<string, number>();
   private readonly pins = new Map<string, string>();
   private readonly synced = new Map<string, number>();
+  /** Sessions whose 24 h pending alarm was already raised (once per session and process). */
+  private readonly alarmed = new Set<string>();
+  private readonly logger = new Logger(RoomScheduler.name);
   private interval: ReturnType<typeof setInterval> | undefined;
   private running: Promise<void> | undefined;
 
@@ -154,6 +160,7 @@ export class RoomScheduler implements OnApplicationBootstrap, OnModuleDestroy {
     this.heartbeats.delete(sessionId);
     this.pins.delete(sessionId);
     this.synced.delete(sessionId);
+    this.alarmed.delete(sessionId);
   }
   /** Arms a local timer for the exact next deadline (the 1 s scan repairs misses). */
   private arm(identity: RoomIdentity, state: Readonly<ActiveRoomState>) {
@@ -224,6 +231,17 @@ export class RoomScheduler implements OnApplicationBootstrap, OnModuleDestroy {
     ) {
       this.synced.set(row.id, now);
       await this.game.syncFinalization(identity).catch(() => false);
+    }
+    // A report that is still not durable a day after the game ended needs an operator.
+    if (
+      FINAL.has(after.phase) &&
+      after.frozenReport &&
+      after.finalization?.status !== "ready" &&
+      now - after.frozenReport.session.endedAt >= ROOM_LIMITS.pendingAlarmMs &&
+      !this.alarmed.has(row.id)
+    ) {
+      this.alarmed.add(row.id);
+      this.logger.error(`finalization pending for more than 24 h for session ${row.id}`);
     }
     // FINISHED rooms are kept 1 h for recovery; a hard-expired room cannot transition any more and
     // is released as soon as its report is durable. Non-durable reports are never released.

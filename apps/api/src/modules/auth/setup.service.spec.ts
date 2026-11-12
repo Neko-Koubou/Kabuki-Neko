@@ -4,6 +4,7 @@ import {
   SettingsRepository,
   UsersRepository,
   OperationsRepository,
+  canonicalRequestHash,
   createDataSource,
   domainSchemas,
   migrateDatabase,
@@ -172,4 +173,64 @@ it("rolls back account, token, setup flag and receipt after a failure and permit
   expect(await db.manager.count("refresh_tokens")).toBe(0);
   expect(await db.manager.count("request_dedup")).toBe(0);
   expect((await setup.setup(admin, key)).httpStatus).toBe(201);
+});
+
+it("stores no fast verifier of the password or invite code in request_dedup (CR-01)", async () => {
+  const key = randomUUID();
+  await setup.setup(admin, key);
+  const [row] = await db.manager.find<{ request_hash: string; operation: string }>(
+    "request_dedup",
+    {
+      where: { operation: "auth.setup" },
+    },
+  );
+  // The plaintext body is fully reconstructible from DB rows; its hash must not match.
+  const plain = canonicalRequestHash({
+    method: "POST",
+    path: "/api/v1/auth/setup",
+    query: {},
+    body: admin,
+    fileSha256: null,
+  });
+  expect(row?.request_hash).toMatch(/^[0-9a-f]{64}$/u);
+  expect(row?.request_hash).not.toBe(plain);
+  // A guess using an unkeyed SHA-256 of the password inside the body does not match either.
+  expect(row?.request_hash).not.toBe(
+    canonicalRequestHash({
+      method: "POST",
+      path: "/api/v1/auth/setup",
+      query: {},
+      body: {
+        instanceName: admin.instanceName,
+        name: admin.name,
+        email: admin.email,
+        passwordFingerprint: createHash("sha256").update(admin.password).digest("hex"),
+      },
+      fileSha256: null,
+    }),
+  );
+  // Same key, different password: still an idempotency conflict, not a replay.
+  await expect(
+    setup.setup({ ...admin, password: "Other-password-456!" }, key),
+  ).rejects.toMatchObject({
+    errorCode: "IDEMPOTENCY_CONFLICT",
+    status: 409,
+  });
+  const registrationKey = randomUUID();
+  await setup.register(entrant, registrationKey);
+  const [registration] = await db.manager.find<{ request_hash: string; operation: string }>(
+    "request_dedup",
+    {
+      where: { operation: "auth.register" },
+    },
+  );
+  expect(registration?.request_hash).not.toBe(
+    canonicalRequestHash({
+      method: "POST",
+      path: "/api/v1/auth/register",
+      query: {},
+      body: entrant,
+      fileSha256: null,
+    }),
+  );
 });

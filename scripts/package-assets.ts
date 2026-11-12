@@ -16,16 +16,45 @@
  *      every listed output must exist with a WebM/MP3 signature and `/audio/CREDITS.md` must be
  *      byte-identical to the source. With `--require-audio` a missing generated directory fails.
  *
- * Then LICENSE and THIRD-PARTY-NOTICES.md are copied byte-for-byte to
- * `<public>/legal/LICENSE.txt` and `<public>/legal/THIRD-PARTY-NOTICES.txt` (served at
- * `/legal/*.txt`, the URLs returned by GET /system/about). The copies are staged in a sibling
- * directory, compared with their sources and swapped in, so a failed run keeps the previous copies.
+ *   5. Distribution checks (TASK-174), whenever the generated audio is present:
+ *      - the generated `audio-manifest.json` parses with the shared strict schema, so a legacy or
+ *        stale manifest (such as the old four-URL `phases` wrapper) fails;
+ *      - every descriptor has its WebM first and its MP3 fallback;
+ *      - its URL set equals the provenance outputs exactly (40 variants for the 20 sources);
+ *      - every WebM is an EBML WebM file carrying the Opus codec.
+ *   6. Attribution: the provenance must state that the code license does not apply to the audio
+ *      and must name a different asset license, which the notices also name. No license
+ *      equivalence is invented.
+ *   7. Locale bundle, with `--require-locales` or when either copy exists:
+ *      - the API bundle (`--locales`, default `<root>/locales-built`) and the web copy
+ *        (`<public>/locales`) carry a byte-identical, schema-valid registry (same buildId);
+ *      - every namespace asset is present in both with its registry SHA-256;
+ *      - the translator template ZIP is identical in both.
  *
- * Options: `--root <repo>` (default: this repository), `--public <dir>` (default
- * `<root>/apps/web/public`), `--require-audio`. Exit codes: 0 packaged, 1 verification failed
- * (problems listed on stderr), 2 unexpected error. The build hook and negative release tests are
- * added by the final packaging task (TASK-174).
+ * Then the outputs are published:
+ * - LICENSE and THIRD-PARTY-NOTICES.md are copied byte-for-byte to `<public>/legal/LICENSE.txt` and
+ *   `<public>/legal/THIRD-PARTY-NOTICES.txt` (served at `/legal/*.txt`, the URLs returned by
+ *   GET /system/about);
+ * - the same two files go to `<api>/legal/`, and the generated audio manifest to
+ *   `<api>/audio/audio-manifest.json`, so the API artifact ships the root legal texts and
+ *   metadata matching the web audio (`--api`, default `<root>/apps/api/assets`).
+ * Every directory is staged in a sibling directory, compared with its sources and swapped in, so
+ * a failed run keeps the previous copies.
+ *
+ * Options:
+ * - `--root <repo>` (default: this repository);
+ * - `--public <dir>` (default `<root>/apps/web/public`);
+ * - `--api <dir>`;
+ * - `--locales <dir>`;
+ * - `--require-audio`;
+ * - `--require-locales`;
+ * - `--ensure-audio`: run `pnpm audio:optimize` first when the generated audio is missing.
+ *
+ * The root `pnpm build` runs `pnpm build:assets` (locales:build, then this script with
+ * every requirement), so a release build cannot ship without them. Exit codes: 0 packaged,
+ * 1 verification failed (problems listed on stderr), 2 unexpected error.
  */
+import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdir, open, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -33,6 +62,8 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { brotliDecompressSync } from "node:zlib";
 import { AVATAR_STYLES } from "../packages/shared/src/constants/game";
+import { audioManifestSchema } from "../packages/shared/src/schemas/audio.schema";
+import { localeRegistrySchema } from "../packages/shared/src/schemas/locale.schema";
 
 const ROOT = path.resolve(__dirname, "..");
 const NOTICES_FILE = "THIRD-PARTY-NOTICES.md";
@@ -88,8 +119,15 @@ export interface Problem {
 /** Options shared by verification and packaging. */
 export interface PackageOptions {
   root: string;
+  /** The web app's public directory (deployed static files). */
   publicDir: string;
   requireAudio: boolean;
+  /** The API's packaged asset directory (legal texts, audio metadata); null skips it. */
+  apiDir?: string | null;
+  /** The API's locale bundle directory (`LOCALE_BUNDLE_PATH`); defaults to `<root>/locales-built`. */
+  localesDir?: string;
+  /** Fail when either locale bundle is missing. */
+  requireLocales?: boolean;
 }
 
 /** Hex SHA-256 of a buffer. */
@@ -481,6 +519,162 @@ async function readHead(file: string, bytes: number): Promise<Buffer> {
   }
 }
 
+/** Every `src` URL of a parsed manifest, with the descriptor path it came from. */
+function manifestSources(manifest: unknown): { at: string; src: string[] }[] {
+  const found: { at: string; src: string[] }[] = [];
+  const walk = (value: unknown, at: string) => {
+    if (Array.isArray(value)) value.forEach((item, index) => walk(item, `${at}[${index}]`));
+    else if (value !== null && typeof value === "object") {
+      const record = value as Record<string, unknown>;
+      if (Array.isArray(record["src"])) found.push({ at, src: record["src"] as string[] });
+      else
+        for (const [key, inner] of Object.entries(record)) walk(inner, at ? `${at}.${key}` : key);
+    }
+  };
+  walk(manifest, "");
+  return found;
+}
+
+/**
+ * The generated manifest must be the current one: schema-valid (legacy or stale shapes fail),
+ * WebM first with an MP3 fallback for every cue, exactly the provenance outputs, and every WebM
+ * an EBML file declaring the Opus codec.
+ */
+async function verifyManifest(file: string, entries: ProvenanceEntry[], problems: Problem[]) {
+  let manifest: unknown;
+  try {
+    manifest = JSON.parse((await readRegularFile(file)).toString("utf8"));
+  } catch (error) {
+    problems.push({ file, message: `missing or unreadable: ${describe(error)}` });
+    return;
+  }
+  const parsed = audioManifestSchema.safeParse(manifest);
+  if (!parsed.success)
+    problems.push({
+      file,
+      message: `stale or legacy manifest (schema: ${parsed.error.issues
+        .slice(0, 3)
+        .map((issue) => issue.path.join(".") || issue.message)
+        .join(", ")}); run pnpm audio:optimize`,
+    });
+  const listed = new Set<string>();
+  for (const { at, src } of manifestSources(manifest)) {
+    if (src.length !== 2 || !src[0]?.endsWith(".webm") || !src[1]?.endsWith(".mp3"))
+      problems.push({ file, message: `${at} needs a WebM source and an MP3 fallback` });
+    for (const url of src) listed.add(url);
+  }
+  const expected = new Set(entries.flatMap((entry) => entry.outputs));
+  for (const url of listed)
+    if (!expected.has(url))
+      problems.push({ file, message: `${url} is not an output of docs/audio-provenance.json` });
+  for (const url of expected)
+    if (!listed.has(url)) problems.push({ file, message: `${url} is missing from the manifest` });
+  const root = path.dirname(path.dirname(file));
+  for (const url of expected) {
+    if (!url.endsWith(".webm")) continue;
+    try {
+      const head = await readHead(path.join(root, url), 4096);
+      if (!head.includes(Buffer.from("webm")) || !head.includes(Buffer.from("A_OPUS")))
+        problems.push({ file: url, message: "not a WebM file with the Opus codec" });
+    } catch {
+      // Missing outputs are reported by the output check.
+    }
+  }
+}
+
+/**
+ * Attribution: the code license must not be presented as covering the audio, and the separate
+ * asset license must be named both in the provenance and in the notices.
+ */
+async function verifyAttribution(root: string, notices: string, problems: Problem[]) {
+  try {
+    const provenance = JSON.parse(await readFile(path.join(root, PROVENANCE_FILE), "utf8")) as {
+      codeLicense?: { appliesToAudio?: unknown; name?: unknown };
+      assetLicense?: { name?: unknown };
+    };
+    const asset = provenance.assetLicense?.name;
+    if (provenance.codeLicense?.appliesToAudio !== false)
+      problems.push({
+        file: PROVENANCE_FILE,
+        message:
+          "codeLicense.appliesToAudio must be false: the code license does not cover the audio",
+      });
+    if (typeof asset !== "string" || asset.length === 0 || asset === provenance.codeLicense?.name)
+      problems.push({
+        file: PROVENANCE_FILE,
+        message: "assetLicense must name the audio's own license",
+      });
+    else if (!notices.includes(asset))
+      problems.push({ file: NOTICES_FILE, message: `does not name the audio license “${asset}”` });
+  } catch (error) {
+    problems.push({ file: PROVENANCE_FILE, message: `unreadable: ${describe(error)}` });
+  }
+}
+
+/**
+ * The API bundle and the web copy must be the same build: identical registry (schema-valid),
+ * every namespace asset present in both with its SHA-256, and the same translator template.
+ */
+async function verifyLocales(options: PackageOptions, problems: Problem[]): Promise<string> {
+  const api = options.localesDir ?? path.join(options.root, "locales-built");
+  const web = path.join(options.publicDir, "locales");
+  const present = await Promise.all(
+    [api, web].map((dir) =>
+      lstat(path.join(dir, "registry.json")).then(
+        () => true,
+        () => false,
+      ),
+    ),
+  );
+  if (!options.requireLocales && !present.some(Boolean)) return "locale bundle not present";
+  let registry: { buildId: string; locales: { namespaces: { url: string; sha256: string }[] }[] };
+  try {
+    const [apiText, webText] = await Promise.all(
+      [api, web].map(async (dir) => readRegularFile(path.join(dir, "registry.json"))),
+    );
+    if (!apiText?.equals(webText ?? Buffer.alloc(0)))
+      problems.push({
+        file: path.join(web, "registry.json"),
+        message: "web and API locale registries differ (unmatched buildId); run pnpm locales:build",
+      });
+    registry = localeRegistrySchema.parse(JSON.parse(apiText?.toString("utf8") ?? "null"));
+  } catch (error) {
+    problems.push({ file: api, message: `locale bundle missing or invalid: ${describe(error)}` });
+    return "locale bundle invalid";
+  }
+  let assets = 0;
+  for (const locale of registry.locales)
+    for (const asset of locale.namespaces) {
+      const relative = asset.url.replace(/^\/locales\//u, "");
+      for (const dir of [api, web]) {
+        const file = path.join(dir, relative);
+        try {
+          if (sha256(await readRegularFile(file)) !== asset.sha256)
+            problems.push({ file, message: "SHA-256 differs from the locale registry" });
+        } catch (error) {
+          problems.push({ file, message: `missing or unreadable: ${describe(error)}` });
+        }
+      }
+      assets++;
+    }
+  try {
+    const [apiZip, webZip] = await Promise.all(
+      [api, web].map((dir) => readRegularFile(path.join(dir, "template-v1.zip"))),
+    );
+    if (!apiZip?.equals(webZip ?? Buffer.alloc(0)))
+      problems.push({
+        file: path.join(web, "template-v1.zip"),
+        message: "differs from the API copy",
+      });
+  } catch (error) {
+    problems.push({
+      file: "template-v1.zip",
+      message: `missing or unreadable: ${describe(error)}`,
+    });
+  }
+  return `locale bundle ${registry.buildId.slice(0, 12)}: ${registry.locales.length} locales, ${assets} assets in both API and web`;
+}
+
 /** Verifies audio sources against provenance and, when generated, the published outputs. */
 async function verifyAudio(options: PackageOptions, problems: Problem[]): Promise<string> {
   let entries: ProvenanceEntry[];
@@ -541,6 +735,7 @@ async function verifyAudio(options: PackageOptions, problems: Problem[]): Promis
         problems.push({ file, message: `missing or unreadable: ${describe(error)}` });
       }
     }
+  await verifyManifest(path.join(generated, "audio-manifest.json"), entries, problems);
   for (const [file, check] of [
     [path.join(generated, "audio-manifest.json"), null],
     [path.join(generated, "CREDITS.md"), path.join(sourceRoot, "CREDITS.md")],
@@ -579,26 +774,30 @@ export async function verifyAssets(
   await verifyDiceBear(options.root, notices, problems);
   summary.push(`${AVATAR_STYLES.length} DiceBear styles checked`);
   summary.push(await verifyAudio(options, problems));
+  await verifyAttribution(options.root, notices, problems);
+  summary.push(await verifyLocales(options, problems));
   return { problems, summary };
 }
 
 /**
- * Copies the legal texts into `<public>/legal` through a staging directory, compares each copy
- * with its source, then swaps the directory in. The previous copies survive any failure.
+ * Publishes `files` (name → source) as the directory `target` through a staging directory: each
+ * copy is compared with its source, then the directory is swapped in. The previous directory
+ * survives any failure.
  */
-export async function packageLegal(options: PackageOptions): Promise<string[]> {
-  const target = path.join(options.publicDir, "legal");
-  const staging = path.join(options.publicDir, `.legal.staging-${randomUUID()}`);
-  const previous = path.join(options.publicDir, `.legal.previous-${randomUUID()}`);
+async function publishDirectory(target: string, files: { name: string; source: string }[]) {
+  const parent = path.dirname(target);
+  await mkdir(parent, { recursive: true });
+  const staging = path.join(parent, `.${path.basename(target)}.staging-${randomUUID()}`);
+  const previous = path.join(parent, `.${path.basename(target)}.previous-${randomUUID()}`);
   await mkdir(staging, { recursive: true });
   try {
-    for (const legal of LEGAL_FILES) {
-      const source = await readRegularFile(path.join(options.root, legal.source));
-      if (source.length === 0) throw new Error(`${legal.source} is empty`);
-      const copy = path.join(staging, legal.target);
+    for (const file of files) {
+      const source = await readRegularFile(file.source);
+      if (source.length === 0) throw new Error(`${file.source} is empty`);
+      const copy = path.join(staging, file.name);
       await writeFile(copy, source, { flag: "wx" });
       if (!(await readFile(copy)).equals(source))
-        throw new Error(`${legal.target} copy differs from its source`);
+        throw new Error(`${file.name} copy differs from its source`);
     }
     const hadPrevious = await lstat(target).then(
       () => true,
@@ -612,19 +811,63 @@ export async function packageLegal(options: PackageOptions): Promise<string[]> {
       throw error;
     }
     await rm(previous, { recursive: true, force: true });
-    return LEGAL_FILES.map((legal) => path.join(target, legal.target));
+    return files.map((file) => path.join(target, file.name));
   } finally {
     await rm(staging, { recursive: true, force: true });
   }
 }
 
-/** CLI entry: verify, then package the legal texts; exit 1 with every problem on failure. */
+/** Copies the legal texts into `<public>/legal` (and `<api>/legal` when packaging the API). */
+export async function packageLegal(options: PackageOptions): Promise<string[]> {
+  const legal = LEGAL_FILES.map((item) => ({
+    name: item.target,
+    source: path.join(options.root, item.source),
+  }));
+  const written = await publishDirectory(path.join(options.publicDir, "legal"), legal);
+  if (options.apiDir)
+    written.push(...(await publishDirectory(path.join(options.apiDir, "legal"), legal)));
+  return written;
+}
+
+/** Copies the generated audio manifest into `<api>/audio` so the API metadata matches the web. */
+export async function packageApiAudio(options: PackageOptions): Promise<string[]> {
+  const manifest = path.join(options.publicDir, "audio", "audio-manifest.json");
+  const present = await lstat(manifest).then(
+    () => true,
+    () => false,
+  );
+  if (!options.apiDir || !present) return [];
+  return publishDirectory(path.join(options.apiDir, "audio"), [
+    { name: "audio-manifest.json", source: manifest },
+  ]);
+}
+
+/** Runs `pnpm audio:optimize` (scripts/optimize-audio.mjs) for `root` into `<public>/audio`. */
+function optimizeAudio(options: PackageOptions) {
+  execFileSync(
+    process.execPath,
+    [
+      path.join(ROOT, "scripts/optimize-audio.mjs"),
+      "--source",
+      path.join(options.root, AUDIO_SOURCE_DIR),
+      "--out",
+      path.join(options.publicDir, "audio"),
+    ],
+    { stdio: "inherit" },
+  );
+}
+
+/** CLI entry: verify, then package the legal texts and API metadata; exit 1 on any problem. */
 async function main() {
   const { values } = parseArgs({
     options: {
       root: { type: "string" },
       public: { type: "string" },
+      api: { type: "string" },
+      locales: { type: "string" },
       "require-audio": { type: "boolean", default: false },
+      "require-locales": { type: "boolean", default: false },
+      "ensure-audio": { type: "boolean", default: false },
     },
   });
   const root = path.resolve(values.root ?? ROOT);
@@ -632,20 +875,32 @@ async function main() {
     root,
     publicDir: path.resolve(values.public ?? path.join(root, "apps/web/public")),
     requireAudio: values["require-audio"],
+    apiDir: path.resolve(values.api ?? path.join(root, "apps/api/assets")),
+    localesDir: path.resolve(values.locales ?? path.join(root, "locales-built")),
+    requireLocales: values["require-locales"],
   };
+  if (values["ensure-audio"]) {
+    const generated = await lstat(
+      path.join(options.publicDir, "audio", "audio-manifest.json"),
+    ).then(
+      () => true,
+      () => false,
+    );
+    if (!generated) optimizeAudio(options);
+  }
   const { problems, summary } = await verifyAssets(options);
   if (problems.length > 0) {
     for (const problem of problems) process.stderr.write(`${problem.file}: ${problem.message}\n`);
     process.stderr.write(
-      `package-assets: ${problems.length} problem(s); legal copies were not changed\n`,
+      `package-assets: ${problems.length} problem(s); packaged copies were not changed\n`,
     );
     process.exitCode = 1;
     return;
   }
-  const written = await packageLegal(options);
+  const written = [...(await packageLegal(options)), ...(await packageApiAudio(options))];
   for (const line of summary) process.stdout.write(`${line}\n`);
   process.stdout.write(
-    `Legal texts packaged: ${written.map((file) => path.relative(root, file)).join(", ")}\n`,
+    `Packaged: ${written.map((file) => path.relative(root, file)).join(", ")}\n`,
   );
 }
 

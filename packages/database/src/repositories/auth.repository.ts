@@ -203,13 +203,30 @@ export class AuthRepository {
       await revokeTokens(m, userId, familyId, now);
     });
   }
-  purgeExpired(now: number) {
-    return this.db
-      .createQueryBuilder()
-      .delete()
-      .from("refresh_tokens")
-      .where("expires_at < :cutoff", { cutoff: now - 86_400_000 })
-      .execute();
+  /**
+   * Deletes one batch (at most 1000 rows, oldest first) of refresh tokens that expired more than
+   * 24 h ago, and returns how many were deleted. Callers loop while a full batch comes back
+   * (RetentionService, code review MJ-01; SA §2.3 retention).
+   */
+  purgeExpired(now: number): Promise<number> {
+    if (!Number.isSafeInteger(now) || now < 0) throw new Error("INVALID_FORMAT");
+    return writeTransaction(this.db, async (m) => {
+      const rows = await m
+        .getRepository<{ id: string; expires_at: number }>("refresh_tokens")
+        .createQueryBuilder("t")
+        .select("t.id", "id")
+        .where("t.expires_at < :cutoff", { cutoff: now - 86_400_000 })
+        .orderBy("t.expires_at")
+        .addOrderBy("t.id")
+        .limit(1000)
+        .getRawMany<{ id: string }>();
+      if (rows.length === 0) return 0;
+      await m.delete(
+        "refresh_tokens",
+        rows.map((row) => row.id),
+      );
+      return rows.length;
+    });
   }
   createInvitation(
     id: string,

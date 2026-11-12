@@ -93,6 +93,24 @@ export default defineConfig(
     },
   },
   {
+    // Server-only web modules (`*.server.ts`, imported by server components only) may use Node
+    // builtins, but never the API/database implementations.
+    files: ["apps/web/src/**/*.server.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: serverImports,
+              message: "Web server modules must not depend on API/database implementations.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ["packages/shared/src/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-imports": [
