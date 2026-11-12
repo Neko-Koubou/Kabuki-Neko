@@ -62,6 +62,10 @@ jobs:
         run: pnpm lint
       - name: Typecheck
         run: pnpm typecheck
+      # The API media-processor spec builds its audio/video fixtures with ffmpeg and probes them
+      # with ffprobe, and test:audio encodes with ffmpeg; the runner image has neither.
+      - name: ffmpeg for the media and audio tests
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Unit tests
         run: pnpm test
       - name: Measuring-tool contracts
