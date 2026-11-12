@@ -246,7 +246,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Alarm 24 jam dikirim sebagai event terstruktur.
 - **Resolusi**: `ReportWorker` (opsional `MetricsService`) memanggil `reportJobFailed(code)` setelah setiap `jobs.fail` dan saat antrian tidak terjangkau (sekali per transisi ke failed): counter `report_queue_failures:<code>` + event terstruktur `report_queue_failed` (dibatasi 1/menit). Alarm 24 jam di `RoomScheduler` kini juga memanggil `MetricsService.finalizationPendingAlarm()` (counter `finalization_pending_alarms` + event `finalization_pending_alarm`), baris log lama tetap ada. Didokumentasikan di `docs/operations.md`. Regresi: `report-worker.spec.ts` dan `room-scheduler.spec.ts` (gagal di kode lama); API jest 253/253, tsc/eslint bersih.
 
-#### MJ-17 [MAJOR] [OPEN] Gate startup DB/Redis di entrypoint tidak berjalan ketika profil memilih driver
+#### MJ-17 [MAJOR] [RESOLVED] Gate startup DB/Redis di entrypoint tidak berjalan ketika profil memilih driver
 - **File:Line**: `docker/entrypoint.sh:109-114`; `docs/deployment.md:29-30`.
 - **Masalah**:
   - Gate hanya membaca `DB_DRIVER`/`STATE_DRIVER` mentah, padahal Compose hanya menyetel `DEPLOYMENT_PROFILE`. Akibatnya gate tidak pernah jalan di profil scale.
@@ -255,6 +255,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Turunkan driver efektif: default `postgres`/`redis` bila `DEPLOYMENT_PROFILE=scale` dan variabel kosong.
   - Validasi `KN_STARTUP_WAIT_SEC` (MN-32).
   - Koreksi dokumen.
+- **Resolusi**: Gate startup dipindah ke `docker/startup-gate.cjs` (disalin ke image API): memvalidasi konfigurasi dengan skema terkompilasi lalu menunggu database/Redis dari konfigurasi **efektif** (default `postgres`/`redis` untuk `DEPLOYMENT_PROFILE=scale` walau `DB_DRIVER`/`STATE_DRIVER` kosong, termasuk node Redis Cluster), dibatasi `KN_STARTUP_WAIT_SEC` (integer 1–3600, kosong = 60). `docs/deployment.md` dikoreksi. Regresi: kontrak `startup-gate.spec.ts` (scale tanpa driver → timeout database/Redis, lulus saat keduanya terbuka, default tanpa tunggu, nilai tidak valid ditolak tanpa mencetak nilai) dan smoke `entrypoint.sh api`.
 
 #### MJ-18 [MAJOR] [OPEN] Prosedur restore SQLite di dokumentasi menghasilkan DB yang tidak bisa ditulis API
 - **File:Line**: `docs/operations.md:40-50`.
@@ -401,7 +402,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 | MN-33 | [OPEN] | `locale-provider.tsx:256,281-301` | Ganti bahasa bisa membuang namespace yang dimuat bersamaan. | Gabungkan namespace yang hilang setelah load. |
 | MN-34 | [OPEN] | `host-stage-lobby.tsx:195`; `connection-recovery.tsx:185`; `slide-navigator.tsx:328-406`; `quiz-library-detail.tsx:413` | Copy/aria hardcoded di luar katalog. | Pesan ICU berplaceholder. |
 | MN-35 | [OPEN] | `question-fields.tsx:393-397`; `question-properties.tsx:340-343` | Tombol error-summary < 44 px. | `min-h-11 inline-flex items-center`. |
-| MN-36 | [OPEN] | `docker/entrypoint.sh:76-88` | `KN_STARTUP_WAIT_SEC` tidak valid → tunggu tanpa batas. | Validasi integer 1–3600. |
+| MN-36 | [RESOLVED] | `docker/entrypoint.sh:76-88` | `KN_STARTUP_WAIT_SEC` tidak valid → tunggu tanpa batas. | Validasi integer 1–3600. **Resolusi:** Divalidasi di `docker/startup-gate.cjs` (integer 1–3600; kosong = default 60) bersama MJ-17; diuji di `tests/contracts/startup-gate.spec.ts`. |
 | MN-37 | [OPEN] | `scripts/optimize-audio.mjs:356,409,438-449` | `--concurrency 0` menimpa output dengan direktori kosong. | Validasi 1–16; assert hasil. |
 | MN-38 | [OPEN] | `scripts/measure-web-budget.ts:214-245,531-535`; `tests/helpers/game.ts:195-222` | Proses API dan socket bocor. | Stop di `finally`/`catch`. |
 | MN-39 | [OPEN] | `scripts/locales-template.ts:116` | Instruksi README template merusak `locales:build`. | Salin hanya `manifest.json` + namespace. |

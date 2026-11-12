@@ -76,6 +76,7 @@ COPY --from=assets /repo/locales-built /app/locales-built
 COPY --from=assets /repo/apps/web/public/audio /app/audio
 COPY --from=assets /repo/apps/api/assets/legal /app/legal
 COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/kabuki-entrypoint
+COPY --chmod=0644 docker/startup-gate.cjs /usr/local/lib/kabuki-startup-gate.cjs
 ENV NODE_ENV=production \
   API_PORT=3001 \
   LOCALE_BUNDLE_PATH=/app/locales-built \

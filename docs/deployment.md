@@ -26,8 +26,10 @@ DEPLOYMENT_PROFILE=scale docker compose -f docker/docker-compose.yml --profile s
 
 - `DEPLOYMENT_PROFILE=scale` makes the API choose the postgres/redis/s3 drivers.
 - `--profile scale` starts the services those drivers need.
-- The variable without the flag never falls back to SQLite: the API's startup gate waits for
-  PostgreSQL (`KN_STARTUP_WAIT_SEC`, default 60 s) and then exits with an error.
+- The variable without the flag never falls back to SQLite: the API's startup gate derives the
+  drivers from `DEPLOYMENT_PROFILE` (PostgreSQL and Redis for `scale`, even without
+  `DB_DRIVER`/`STATE_DRIVER`), waits for them (`KN_STARTUP_WAIT_SEC`, integer 1–3600, default
+  60 s) and then exits with an error, so the container restarts instead of hanging.
 - Validate without starting: `pnpm deploy:scale config --quiet`.
 - Stop: `pnpm deploy:scale down`.
 - The default profile through the wrapper: `pnpm exec tsx scripts/start-profile.ts default`.
