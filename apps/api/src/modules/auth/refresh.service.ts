@@ -59,6 +59,17 @@ export function refreshCookieOptions(
     maxAge: Math.max(0, expiresAt - now),
   };
 }
+/**
+ * A consumed refresh token was presented again (possible theft): the token family is already
+ * revoked. Clients see TOKEN_REVOKED; `userId` (the token subject) lets the controller audit
+ * `auth.refresh.reuse`.
+ */
+export class RefreshReuseError extends ApiError {
+  constructor(readonly userId: string) {
+    super("TOKEN_REVOKED", 401);
+  }
+}
+
 @Injectable()
 export class RefreshService {
   private readonly jwt = new JwtService();
@@ -171,6 +182,11 @@ export class RefreshService {
       throw new ApiError("TOKEN_REVOKED", 401);
     return { user, claims };
   }
+  /**
+   * Rotates a refresh token. Presenting an already consumed token revokes its whole family and
+   * fails with RefreshReuseError (still TOKEN_REVOKED to the client) so the caller can audit the
+   * reuse (code review MJ-02).
+   */
   async rotate(token: string): Promise<IssuedSession> {
     const claims = this.refreshClaims(token);
     const next = this.issue(
@@ -187,6 +203,8 @@ export class RefreshService {
         Date.now(),
       );
     } catch (error) {
+      if (error instanceof Error && error.message === "TOKEN_REUSED")
+        throw new RefreshReuseError(claims.sub);
       if (
         error instanceof Error &&
         (error.message === "TOKEN_EXPIRED" || error.message === "TOKEN_REVOKED")

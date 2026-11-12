@@ -116,7 +116,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - `retention.service.spec.ts` membuktikan 2500 audit, 1200 receipt, dan 1500 token terhapus dalam satu run, sementara baris aktif/PENDING tetap ada. Spec yang sama mencakup batas budget, isolasi kegagalan, dan siklus jadwal.
   - Jest API 231/231, tsc, dan lint PASS; contract `operations.repository` (3 DB) PASS.
 
-#### MJ-02 [MAJOR] [OPEN] Perubahan role/status, undangan, dan reuse refresh token tidak diaudit
+#### MJ-02 [MAJOR] [RESOLVED] Perubahan role/status, undangan, dan reuse refresh token tidak diaudit
 - **File:Line**:
   - `apps/api/src/common/audit.service.ts:12-17`;
   - `apps/api/src/modules/users/users.service.ts:27-42`;
@@ -127,6 +127,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Inject `AuditService` ke users/invitations dan catat SUCCESS/DENIED (`LAST_SUPERADMIN`).
   - `rotate` membedakan reuse lalu mencatat `auth.refresh.reuse`.
   - Room/quiz/report menjadi tindak lanjut.
+- **Resolusi**: `UsersController` kini mencatat `user.role.change` / `user.status.change` (SUCCESS; DENIED untuk `LAST_SUPERADMIN`; FAILURE lainnya) dan `invitation.create` (ID undangan saja, tanpa kode). `AuthRepository.rotate` membedakan reuse token yang sudah dikonsumsi (`TOKEN_REUSED`, family tetap dicabut); `RefreshService` melempar `RefreshReuseError` (klien tetap menerima `TOKEN_REVOKED`) dan `AuthController.rotate` mencatat `auth.refresh.reuse` (DENIED). Regresi: `admin-audit.spec.ts` (4 kasus, gagal di kode lama), `refresh.service.spec.ts`, kontrak `accounts.repository.spec.ts`; API jest 246/246, tsc/eslint bersih. Audit room/quiz/report tetap tindak lanjut.
 
 #### MJ-03 [MAJOR] [OPEN] Store Redis tidak menutup soal saat pemain wajib terakhir di-kick
 - **File:Line**: `apps/api/src/providers/state/lua/mutate-room.lua:126-139` vs `memory-state.store.ts:532-538`.

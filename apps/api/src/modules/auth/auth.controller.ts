@@ -13,6 +13,7 @@ import { ZodValidationPipe } from "../../common/zod-validation.pipe";
 import { AuthService } from "./auth.service";
 import { SetupService } from "./setup.service";
 import {
+  RefreshReuseError,
   RefreshService,
   refreshCookieOptions,
   userDto,
@@ -143,7 +144,22 @@ export class AuthController {
     await this.limiter.consume("AUTH", this.ip(response));
     const token = this.cookie(request);
     if (!token) throw new ApiError("AUTH_REQUIRED", 401);
-    return this.issue(response, await this.refresh.rotate(token));
+    try {
+      return this.issue(response, await this.refresh.rotate(token));
+    } catch (error) {
+      // Reuse of a consumed token (family now revoked) is a security event (MJ-02).
+      if (error instanceof RefreshReuseError)
+        await this.audit.record({
+          actorType: "USER",
+          actorId: error.userId,
+          action: "auth.refresh.reuse",
+          resourceId: null,
+          outcome: "DENIED",
+          errorCode: error.errorCode,
+          correlationId: response.locals.correlationId,
+        });
+      throw error;
+    }
   }
   @Post("logout")
   @HttpCode(200)
