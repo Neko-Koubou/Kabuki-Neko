@@ -2491,3 +2491,29 @@
   - `pnpm --filter @kabuki-neko/api test` → 39/39 suites, 261/261 tests.
   - `pnpm test:contracts --testPathPatterns=state-parity` → 26/26.
   - No caller uses the new read yet; the gateway uses it in TASK-185C and settle in TASK-185D.
+
+## TASK-185C: Buat jalur publish gateway O(n) tanpa proyeksi penuh berulang — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/modules/game-engine/room-projector.ts`: new small allowlist projectors.
+    - `projectFinalization`: host-only finalization fields, validated by `finalizeStatusSchema`, shared with `projectHost` through `finalizationOf`.
+    - `projectPlayerReveal(state, playerId, reveal)`: the shared public reveal plus only the player's own personal result, validated by `playerRevealDataSchema`; null without a result.
+    - `projectPlayerPodium(state, playerId, podium)`: the shared podium plus the player's result of the last scored question, validated by `playerPodiumDataSchema`.
+  - `apps/api/src/modules/game-engine/game.gateway.ts`, in `diff`:
+    - reads with `readPrivateSnapshot` (no copy; nothing awaits after the read);
+    - builds `projectHost` lazily, only when a phase event needs it;
+    - `report:status_changed` uses `projectFinalization`;
+    - reveal and podium build per-player pushes with the new projectors, which is O(n) instead of a full validated room snapshot per player.
+    - `projectPlayer` is no longer used here.
+  - `apps/api/src/modules/game-engine/room-projector.spec.ts`: for all six question types (SINGLE_CHOICE, TRUE_FALSE, POLL, MULTIPLE_SELECT, TYPE_ANSWER, ORDER_PUZZLE), each player's reveal and podium push equals `{reveal, result}` / `{podium, result}` from `projectPlayer`. A player without a result gets null, and a push holds no other player's id or submission. The finalization projection equals the host view's.
+  - `apps/api/src/modules/game-engine/game-gateway-publish.spec.ts`: two cases.
+    - 50 answer-count publishes after the phase event run `projectHost` once, and the diff never calls the copying `getPrivateSnapshot`.
+    - A 200-player reveal calls `projectPlayerReveal` 200 times and `projectPlayer` never (201 reveal emits).
+    - The fake stores of the TASK-183A cases now serve `readPrivateSnapshot`.
+- **Verification**:
+  - New gateway cases FAIL on the old gateway (2/2) and PASS on the new one.
+  - Projector spec 30/30.
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 39/39 suites, 276/276 tests.
+  - `pnpm test:integration --testPathPatterns='payload-privacy|game-gateway|realtime-races|recovery'` → 4/4 suites, 22/22 tests. The payload-privacy suite runs across two nodes on PostgreSQL + Redis.
+  - `pnpm test:e2e tests/e2e/player.spec.ts tests/e2e/host.spec.ts` → 9/9.

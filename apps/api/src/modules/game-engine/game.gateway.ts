@@ -29,6 +29,7 @@ import {
   type OnGatewayInit,
 } from "@nestjs/websockets";
 import type { Namespace, Socket } from "socket.io";
+import type { HostRoomSync } from "@kabuki-neko/shared/schemas/game.schema";
 import { ZodError } from "zod";
 import { GAME_TIMING } from "@kabuki-neko/shared/constants/game";
 import { SOCKET_LIMITS } from "@kabuki-neko/shared/constants/limits";
@@ -56,7 +57,12 @@ import {
 import { StateConnections } from "../../providers/state/state.module";
 import { GameService, type PlayerBinding, type RoomEndReason } from "./game.service";
 import { RecoveryService, stateError } from "./recovery.service";
-import { projectHost, projectPlayer } from "./room-projector";
+import {
+  projectFinalization,
+  projectHost,
+  projectPlayerPodium,
+  projectPlayerReveal,
+} from "./room-projector";
 import { RoomRegistryService } from "./room-registry.service";
 
 /** Per-socket server-side binding (never trusted from client payloads). */
@@ -544,7 +550,8 @@ export class GameGateway
   /** Emits the role-safe events implied by the change since the last published summary. */
   private async diff(identity: RoomIdentity): Promise<void> {
     const before = this.summaries.get(identity.sessionId);
-    const state = await this.store.getPrivateSnapshot(identity);
+    // Copy-free read (TASK-185B): nothing below awaits, so the live state stays consistent.
+    const state = await this.store.readPrivateSnapshot(identity);
     const all = [`host:${identity.sessionId}`, `players:${identity.sessionId}`];
     if (!state) {
       if (before)
@@ -556,7 +563,10 @@ export class GameGateway
     }
     if (before && before.revision === state.revision) return;
     const now = Date.now();
-    const hostView = projectHost(state, state.hostId, now);
+    // The full host projection (validated snapshot of every player) is built only when a phase
+    // event needs it, not for every answer count or presence change (TASK-185C).
+    let projected: HostRoomSync | undefined;
+    const hostView = () => (projected ??= projectHost(state, state.hostId, now));
     const index = state.questionIndex;
     const answered =
       index === null
@@ -630,8 +640,10 @@ export class GameGateway
                 (id) => !state.requiredPlayerIds.includes(id) && state.answers[`${index}:${id}`],
               ).length,
       });
-    if (hostView.finalization && before?.finalization !== summary.finalization)
-      emit(`host:${identity.sessionId}`, "report:status_changed", hostView.finalization);
+    if (state.finalization && before?.finalization !== summary.finalization) {
+      const finalization = projectFinalization(state);
+      if (finalization) emit(`host:${identity.sessionId}`, "report:status_changed", finalization);
+    }
     if (before && before.phaseVersion === state.phaseVersion) return;
     const t = state.timing;
     switch (state.phase) {
@@ -646,7 +658,7 @@ export class GameGateway
         break;
       case "QUESTION_PREVIEW":
         emit(all, "game:question_preview", {
-          question: hostView.question,
+          question: hostView().question,
           previewDurationMs: GAME_TIMING.previewMs,
           phaseStartedAt: t.phaseStartedAt,
           phaseEndsAt: t.phaseEndsAt,
@@ -654,48 +666,47 @@ export class GameGateway
         break;
       case "QUESTION_ANSWERING":
         emit(all, "game:question_answering", {
-          question: hostView.question,
+          question: hostView().question,
           serverStartTime: t.questionStartedAt,
           inputClosesAt: t.inputClosesAt,
           acceptanceClosesAt: t.acceptanceClosesAt,
         });
         break;
-      case "ANSWER_REVEAL":
-        emit(`host:${identity.sessionId}`, "game:answer_reveal", { reveal: hostView.reveal });
-        for (const player of active) {
-          const view = projectPlayer(state, player.id, player.connectionGeneration, now);
-          if (view.reveal && view.self.result)
-            emit(`player:${player.id}`, "game:answer_reveal", {
-              reveal: view.reveal,
-              result: view.self.result,
-            });
-        }
+      case "ANSWER_REVEAL": {
+        const { reveal } = hostView();
+        emit(`host:${identity.sessionId}`, "game:answer_reveal", { reveal });
+        // One shared reveal plus each player's own result: O(n), not a room snapshot per player.
+        if (reveal)
+          for (const player of active) {
+            const data = projectPlayerReveal(state, player.id, reveal);
+            if (data) emit(`player:${player.id}`, "game:answer_reveal", data);
+          }
         break;
-      case "LEADERBOARD":
-        if (hostView.leaderboard) {
-          emit(`host:${identity.sessionId}`, "game:leaderboard", hostView.leaderboard);
+      }
+      case "LEADERBOARD": {
+        const { leaderboard } = hostView();
+        if (leaderboard) {
+          emit(`host:${identity.sessionId}`, "game:leaderboard", leaderboard);
           for (const player of active)
             emit(`player:${player.id}`, "game:leaderboard", {
-              ...hostView.leaderboard,
+              ...leaderboard,
               selfRank: player.rank,
             });
         }
         break;
-      case "PODIUM":
-        if (hostView.finalization)
+      }
+      case "PODIUM": {
+        const { podium, finalization } = hostView();
+        if (finalization)
           emit(`host:${identity.sessionId}`, "game:podium", {
-            podium: hostView.podium,
-            finalization: hostView.finalization,
-            reportId: hostView.finalization.reportId,
+            podium,
+            finalization,
+            reportId: finalization.reportId,
           });
-        for (const player of active) {
-          const view = projectPlayer(state, player.id, player.connectionGeneration, now);
-          emit(`player:${player.id}`, "game:podium", {
-            podium: view.podium,
-            result: view.self.result,
-          });
-        }
+        for (const player of active)
+          emit(`player:${player.id}`, "game:podium", projectPlayerPodium(state, player.id, podium));
         break;
+      }
       case "FINISHED":
         emit(all, "game:finished", { endReason: state.endReason ?? "COMPLETED" });
         break;
