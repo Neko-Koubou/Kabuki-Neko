@@ -2661,8 +2661,24 @@
   - `pnpm test:integration --testPathPatterns=system` as root (uid 0) → 3/3. Before this change it failed in this container with deleted 2 / failed 0.
   - The same suite as a temporary non-root user (uid 30033, `node node_modules/jest/bin/jest.js --config tests/jest.integration.config.cjs --testPathPatterns=system`) → 3/3. The user was removed afterwards.
 
-## TASK-187: Bangun image MinIO uji di belakang proxy TLS dengan CA build opsional — IN PROGRESS
-- **Started**: 2026-11-12 (Asia/Jakarta)
-- **Plan**: `tests/helpers/runtime.ts`, `docker/docker-compose.yml`, `docs/driver-verification.md`
-- **Done so far**: KABUKI_TEST_BUILD_CA in the MinIO fixture (temporary bundle via SSL_CERT_FILE/GIT_SSL_CAINFO, CA digest in the tag); Compose optional BuildKit secret build_ca (KN_BUILD_CA_FILE, default /dev/null); docs. eslint/Prettier pass; compose config default/scale/scale+TLS pass.
-- **Verification**: driver-matrix|storage contracts with KABUKI_TEST_BUILD_CA and no prebuilt image — running
+## TASK-187: Bangun image MinIO uji di belakang proxy TLS dengan CA build opsional — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `tests/helpers/runtime.ts`: the MinIO fixture accepts `KABUKI_TEST_BUILD_CA=<PEM>`.
+    - The build stage joins the CA with the distro bundle into `/tmp/ca-bundle.pem`, used through `SSL_CERT_FILE`/`GIT_SSL_CAINFO` for `git fetch` + `go build` in one step, and deletes it in that step.
+    - The runtime stage copies the untouched distro bundle.
+    - The tag gets `-ca<sha256 prefix>`.
+    - `KABUKI_TEST_MINIO_IMAGE` still wins.
+    - Without the variable the Dockerfile is byte-identical to the previous one (checked by script).
+  - `docker/docker-compose.yml`: the inline MinIO build (scale profile) has an optional BuildKit secret `build_ca` (`RUN --mount=type=secret,id=build_ca,required=false`, the same temporary-bundle approach). The top-level `secrets.build_ca.file` defaults to `${KN_BUILD_CA_FILE:-/dev/null}`.
+  - `docs/driver-verification.md`: both ways (build CA, prebuilt image), which one wins, and the Compose secret.
+- **Verification**:
+  - Without any prebuilt image, `KABUKI_TEST_BUILD_CA=/root/.ccr/ca-bundle.crt pnpm test:contracts --testPathPatterns='storage.spec'` built `kabuki-neko/minio-test:9e49d5e7a648-go1.27.3-caacf32680` from source → 2/2 suites (3 passed, 3 cloud smoke skipped).
+  - `driver-matrix` with the same setting → 18/18.
+  - The first attempt ran out of session disk during the Go build. 5.5 GB of stopped test containers and old `:test` images were pruned, then it was re-run.
+  - CA not in the image:
+    - its `/etc/ssl/certs/ca-certificates.crt` equals the golang:1.27.3-bookworm distro bundle;
+    - 0 of the 15 proxy-only certificates are in it;
+    - `docker history` shows only the final COPY layers.
+  - `docker compose -f docker/docker-compose.yml config --quiet` → pass, also with `--profile scale`, with `-f docker/docker-compose.tls.yml` (KN_DOMAIN=localhost), and with `KN_BUILD_CA_FILE` set (secret rendered).
+  - `pnpm exec eslint tests/helpers/runtime.ts` → pass; Prettier for the three files → pass.
