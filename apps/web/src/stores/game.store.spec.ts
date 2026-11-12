@@ -529,6 +529,20 @@ describe("transport and lifecycle", () => {
       ),
     );
     expect(caps()).toMatchObject({ canSkip: true, canNext: false, canStart: false });
+    // The host-only count push at answering start carries the eligible total ("0 of 1 answered").
+    host
+      .getState()
+      .applyEvent(
+        "game:answer_count_updated",
+        push({ answeredCount: 0, totalPlayers: 1, optionalAnswerCount: 0 }, 10, 3),
+      );
+    const counts = () => {
+      const snapshot = host.getState().snapshot;
+      return snapshot?.role === "host"
+        ? { answered: snapshot.answeredCount, eligible: snapshot.eligibleCount }
+        : null;
+    };
+    expect(counts()).toEqual({ answered: 0, eligible: 1 });
     host.getState().applyEvent("game:answer_reveal", push({ reveal }, 11, 4));
     expect(caps()).toMatchObject({ canSkip: false, canNext: true, canEnd: true });
     host

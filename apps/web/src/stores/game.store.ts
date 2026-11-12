@@ -268,7 +268,7 @@ function reduce(
         },
         ...(snapshot.role === "player"
           ? { self: { ...snapshot.self, acceptedAnswer: null, result: null } }
-          : { answeredCount: 0 }),
+          : { answeredCount: 0, eligibleCount: 0 }),
       });
     case "game:question_answering":
       return patch(snapshot, {
@@ -286,7 +286,13 @@ function reduce(
       });
     case "game:answer_count_updated":
       return snapshot.role === "host"
-        ? patch(snapshot, { ...base, answeredCount: data.answeredCount })
+        ? // totalPlayers is the server's eligibleCount (required, not kicked); like the
+          // capabilities it is otherwise only refreshed by a full room:sync (QA regression of MJ-25).
+          patch(snapshot, {
+            ...base,
+            answeredCount: data.answeredCount,
+            eligibleCount: data.totalPlayers,
+          })
         : patch(snapshot, base);
     case "game:answer_reveal": {
       const result = data.result as PersonalResult | undefined;
