@@ -214,5 +214,7 @@ describe("SlideNavigator", () => {
     expect(order().slice(72, 76)).toEqual([73, 75, 74, 76]);
     expect(screen.getByRole("button", { name: "Move up: Slide 74 of 150" })).toHaveFocus();
     expect(screen.getByRole("button", { name: "Add slide" })).toBeDisabled();
-  });
+    // Rendering 150 rows takes ~2.6 s alone and ~6 s when every package's tests run in parallel
+    // (turbo on 4 cores), so this case gets its own limit instead of the 5 s default.
+  }, 20_000);
 });

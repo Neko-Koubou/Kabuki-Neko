@@ -1,0 +1,247 @@
+# Continuous integration and release evidence gate (TASK-181; SA §11.2; US-01–US-21).
+#
+# Order of the gates:
+#   1. verify  — frozen lockfile install, locale catalogs (validate + build), lint, typecheck,
+#                unit tests, measuring-tool contracts (tests/performance), native module check.
+#   2. supply-chain — dependency audit, license inventory and a dependency SBOM (artifacts kept).
+#   3. drivers — real-engine driver contracts and integration suites (Docker testcontainers).
+#   4. e2e     — production build (ffmpeg for the audio set) and Playwright E2E (reports kept).
+#   5. docker  — both Compose profiles validated, API/web images built, distribution checks.
+#   6. release-evidence — scripts/verify-release.ts: report-only on branches and pull requests,
+#                strict (fails on any PENDING/GAP row) on version tags.
+#
+# Nothing here publishes or deploys: no registry push, no release creation, no deployment step,
+# and the token is read-only. Third-party actions are pinned to full commit SHAs.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Same patch as .node-version / package.json packageManager.
+  PNPM_VERSION: 10.34.9
+  NEXT_TELEMETRY_DISABLED: "1"
+  TURBO_TELEMETRY_DISABLED: "1"
+
+jobs:
+  verify:
+    name: Lockfile, locales, lint, typecheck, unit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare "pnpm@${PNPM_VERSION}" --activate
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+      - name: Lockfile unchanged by install
+        run: git diff --exit-code pnpm-lock.yaml
+      - name: Native modules load (better-sqlite3, sharp)
+        run: |
+          pnpm --filter @kabuki-neko/database exec node -e "new (require('better-sqlite3'))(':memory:').prepare('select 1').get()"
+          pnpm --filter @kabuki-neko/api exec node -e "require('sharp')({create:{width:1,height:1,channels:3,background:'#000'}}).png().toBuffer().then(()=>{})"
+      - name: Validate locale catalogs
+        run: pnpm locales:validate
+      - name: Build locale catalogs
+        run: pnpm --filter @kabuki-neko/shared build && pnpm locales:build
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Unit tests
+        run: pnpm test
+      - name: Measuring-tool contracts
+        run: pnpm test:performance
+      - name: Audio pipeline tests
+        run: pnpm test:audio
+
+  supply-chain:
+    name: Dependency audit, licenses, SBOM
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare "pnpm@${PNPM_VERSION}" --activate
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+      - name: Inventory (licenses and dependency tree)
+        run: |
+          mkdir -p test-results/supply-chain
+          pnpm licenses list --prod --json > test-results/supply-chain/licenses.json
+          pnpm list --recursive --prod --depth Infinity --json > test-results/supply-chain/sbom-dependencies.json
+      - name: Dependency audit (high and critical fail)
+        run: pnpm audit --prod --audit-level high --json > test-results/supply-chain/audit.json || (cat test-results/supply-chain/audit.json; exit 1)
+      - name: Keep supply-chain records
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: supply-chain
+          path: test-results/supply-chain
+          retention-days: 30
+
+  drivers:
+    name: Driver contracts and integration (real engines)
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare "pnpm@${PNPM_VERSION}" --activate
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+      - name: Build packages and assets
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+          pnpm build
+      - name: Driver contracts
+        run: pnpm test:contracts
+      - name: Integration
+        run: pnpm test:integration
+      - name: Keep driver records
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: driver-results
+          path: test-results
+          if-no-files-found: ignore
+          retention-days: 14
+
+  e2e:
+    name: Production build and Playwright E2E
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare "pnpm@${PNPM_VERSION}" --activate
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+      - name: ffmpeg for the audio set
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Production build
+        run: pnpm build
+      - name: Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+      - name: E2E
+        run: pnpm test:e2e --trace retain-on-failure
+      - name: Keep E2E records
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-results
+          path: |
+            test-results
+            playwright-report
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Keep the catalog pair for the release gate
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: catalog-pair
+          path: |
+            locales-built/registry.json
+            apps/web/public/locales/registry.json
+          retention-days: 14
+
+  docker:
+    name: Compose profiles, images, distribution
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare "pnpm@${PNPM_VERSION}" --activate
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+      - name: Compose config (default profile)
+        run: docker compose -f docker/docker-compose.yml config --quiet
+      - name: Compose config (scale profile)
+        run: DEPLOYMENT_PROFILE=scale ALLOW_INSECURE_LOCAL_HTTP=true docker compose -f docker/docker-compose.yml --profile scale config --quiet
+      - name: Distribution checks (legal, attribution, audio, locales)
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+          pnpm build:assets
+          pnpm exec jest --config tests/jest.contracts.config.cjs tests/contracts/distribution.spec.ts
+      - name: Build API image
+        run: docker build -f docker/Dockerfile.api -t kabuki-neko-api:ci .
+      - name: Build web image
+        run: docker build -f docker/Dockerfile.web -t kabuki-neko-web:ci .
+      - name: Image inventory
+        run: |
+          mkdir -p test-results/images
+          for image in kabuki-neko-api:ci kabuki-neko-web:ci; do
+            docker image inspect "$image" --format '{{.Id}} {{.Size}} {{json .Config.User}}' >> test-results/images/inventory.txt
+            docker run --rm --entrypoint sh "$image" -c 'id -u; node --version; command -v ffprobe || true' >> test-results/images/inventory.txt
+          done
+      - name: Keep image records
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image-inventory
+          path: test-results/images
+          if-no-files-found: ignore
+          retention-days: 14
+
+  release-evidence:
+    name: Release evidence gate
+    needs: [verify, supply-chain, drivers, e2e, docker]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare "pnpm@${PNPM_VERSION}" --activate
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+      - name: Catalog pair from the E2E build
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: catalog-pair
+      # Branches and pull requests list the gaps without failing; a version tag is a release
+      # candidate and fails on any PENDING or GAP row (manual reviews, audio rights, budgets).
+      - name: Verify release evidence (report)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: pnpm exec tsx scripts/verify-release.ts --report
+      - name: Verify release evidence (strict)
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: pnpm exec tsx scripts/verify-release.ts
+      - name: Keep the release record
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-evidence
+          path: test-results/release
+          retention-days: 90

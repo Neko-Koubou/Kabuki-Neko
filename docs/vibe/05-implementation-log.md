@@ -2262,3 +2262,40 @@
   - `pnpm test:performance -- tests/performance/web-budget.spec.ts` → pass
   - `pnpm exec tsx scripts/measure-web-budget.ts --runs 5` → **FAIL recorded**: initial JS 353.8 KiB gzip > 300 KiB; identity step median LCP 4280 ms > 4000 ms. Passing: locale payloads 10.3–23.2 KiB, /join LCP 620–648 ms in all locales, CLS ≤ 0.095, lazy loading of dnd-kit/ZXing/confetti/avatar styles
   - Findings name chunks 43pd1f38gdu5b.js (zod + intl-messageformat), 02p86dr4wnlm7.js (socket.io + audio manager), 34fq-xudn5cji.js (framer-motion + DiceBear core + QR generator) and the M01 render path for follow-up atomic fixes
+
+## TASK-181 — 2026-11-12T07:18:04+07:00
+
+- **Files**:
+  - `.github/workflows/ci.yml` (read-only token, actions pinned to commit SHAs, no publish/deploy step. Jobs:
+    - verify: frozen lockfile + unchanged lockfile, native better-sqlite3/sharp load, locales validate/build, lint, typecheck, unit, `test:performance`, `test:audio`;
+    - supply-chain: `pnpm audit --prod --audit-level high`, license inventory and dependency SBOM kept as artifacts;
+    - drivers: real-engine `test:contracts` + `test:integration`;
+    - e2e: ffmpeg + production build + Playwright, reports and the catalog pair kept;
+    - docker: both Compose profiles `config --quiet`, distribution contract, API/web image builds and image inventory;
+    - release-evidence: `verify-release.ts --report` on branches/PRs, strict on `v*` tags.)
+  - `scripts/verify-release.ts` (release evidence gate:
+    - every PRD US/AC/BR/NFR has exactly one row, no unknown IDs;
+    - evidence paths exist, VERIFIED rows cite a spec or measuring script, non-VERIFIED rows need a note;
+    - identical API/web locale registries;
+    - performance doc records the broadcast and bundle results; a failed measurement record or recorded FAIL forbids VERIFIED NFR-01/02;
+    - `release-unverified` audio forbids VERIFIED US-19/AC-19-02;
+    - strict mode fails on PENDING/GAP, `--report` lists them; JSON record in `test-results/release/`.)
+  - `docs/release-checklist.md` (93 rows mapping US-01–21, 44 AC, BR-01–20, NFR-01–08 to evidence: 81 VERIFIED, 8 PENDING for manual a11y/language/cloud/audio reviews, 4 GAP for measured budget misses)
+  - Out of target, recorded: `apps/web/src/components/studio/slide-navigator.spec.tsx` gives its 150-slide case a 20 s limit (2.6 s alone, ~6 s with turbo running every package in parallel on 4 cores, which broke the 5 s default in `pnpm test`).
+- **Verification**:
+  - `pnpm install --frozen-lockfile` (lockfile unchanged), `locales:validate`, `locales:build`, `lint`, `typecheck` → pass
+  - `pnpm test` → pass (web 436/436 after the timeout fix)
+  - `pnpm test:performance` → pass
+  - `pnpm build` → pass
+  - both Compose configs → pass
+  - `pnpm test:e2e` → 54/54 pass
+  - `pnpm test:contracts` → pass. First full run: 22/24 suites, MinIO image could not be built behind the sandbox proxy; storage + driver-matrix reran with `KABUKI_TEST_MINIO_IMAGE` 20/20.
+  - `pnpm test:integration` → first full run 15/20 suites (MinIO builds). The 5 suites reran with the local MinIO image: 43/44. Remaining: `system.spec` cleanup partial failure, the known root-container limitation (`chmod 0555` is ineffective as uid 0), already noted for earlier tasks.
+  - `pnpm exec tsx scripts/verify-release.ts` → exit 1, BLOCKED with 0 errors and 12 release gaps (PENDING/GAP listed); `--report` → exit 0
+  - Negative check on a temporary copy: a missing row, a missing evidence file, VERIFIED NFR-01 with failed measurements, VERIFIED US-19 with unverified audio and a missing registry are each rejected
+  - Remaining release gaps (truthfully not verified):
+    - manual assistive-technology review;
+    - native-speaker language review;
+    - AWS S3/R2/Spaces (no credentials);
+    - audio distribution rights (OpenTracks permission, TASK-114A);
+    - NFR-01 two-node broadcast and NFR-02 bundle/LCP budgets

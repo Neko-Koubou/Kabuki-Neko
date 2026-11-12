@@ -2892,7 +2892,7 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `pnpm exec tsx scripts/measure-web-budget.ts --runs 5` reports raw+median results and gzip manifest; fail threshold explicitly, no claimed pass from dev build. `pnpm test:performance -- tests/performance/web-budget.spec.ts` menguji chunk accounting dan threshold failure.
 
-### - [ ] TASK-181: Integrasikan CI dan release evidence gate
+### - [x] TASK-181: Integrasikan CI dan release evidence gate
 - **Traceability**: `US-01`, `US-02`, `US-03`, `US-04`, `US-05`, `US-06`, `US-07`, `US-08`, `US-09`, `US-10`, `US-11`, `US-12`, `US-13`, `US-14`, `US-15`, `US-16`, `US-17`, `US-18`, `US-19`, `US-20`, `US-21`, [SA §11.2](03-system-analysis.md#112-implementationqa-coverage-required)
 - **Depends On**: `TASK-180`, `TASK-160A`
 - **Target Files**:
