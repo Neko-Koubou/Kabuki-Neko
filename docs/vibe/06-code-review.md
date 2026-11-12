@@ -192,10 +192,11 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 - **Masalah**: hingga 1 juta baris (termasuk payload) dihidrasi per request hanya untuk 20 pemain. Melanggar SA §4.5 dan §10.3.
 - **Perbaikan**: tally lewat `GROUP BY` di SQL. Payload hanya dibaca untuk hitungan opsi soal pilihan.
 
-#### MJ-12 [MAJOR] [OPEN] Query string laporan yang tidak valid menghasilkan 500
+#### MJ-12 [MAJOR] [RESOLVED] Query string laporan yang tidak valid menghasilkan 500
 - **File:Line**: `packages/database/src/repositories/reports.repository.ts:237,263,296`; `reports.service.ts:362`; `error.filter.ts:55-83`.
 - **Masalah**: `ZodError` dari `.parse()` menjadi `INTERNAL_ERROR` 500. Melanggar SA §4.1.
 - **Perbaikan**: validasi query di service dengan `ZodValidationPipe` (422).
+- **Resolusi**: `ReportsService.list`, `players`, dan `answers` memvalidasi query dengan `ZodValidationPipe` (`reportsQuerySchema`, `reportPlayersQuerySchema`, `reportAnswersQuerySchema`) sebelum gate, sehingga `?limit=abc`, `?sort=x`, search > 150 karakter, atau key asing menghasilkan 422 `VALIDATION_FAILED`, bukan 500. Spec baru di `reports.service.spec.ts` (pada kode lama: rejection ZodError tak tertangani). API Jest 235/235, tsc, lint, integration `reports.spec.ts` PASS.
 
 #### MJ-13 [MAJOR] [OPEN] Sync finalisasi memvalidasi dan meng-hash ulang seluruh FrozenReport setiap 5 detik
 - **File:Line**: `room-scheduler.ts:226-234` → `report-worker.ts:239-279` → `jobs.repository.ts:20-58`.

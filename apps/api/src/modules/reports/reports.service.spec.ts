@@ -529,6 +529,21 @@ it("exports the stable 18-column CSV with formula and control injection guards",
   );
 });
 
+it("answers invalid report queries with 422 VALIDATION_FAILED, never 500 (MJ-12)", async () => {
+  const session = randomUUID();
+  const invalid = { errorCode: "VALIDATION_FAILED", status: 422 };
+  expect(() => service.list(host.user.id, { limit: "abc" })).toThrow(
+    expect.objectContaining(invalid),
+  );
+  expect(() => service.list(host.user.id, { sort: "x" })).toThrow(expect.objectContaining(invalid));
+  expect(() => service.players(host.user.id, session, { search: "x".repeat(151) })).toThrow(
+    expect.objectContaining(invalid),
+  );
+  expect(() => service.answers(host.user.id, session, randomUUID(), { foo: "1" })).toThrow(
+    expect.objectContaining(invalid),
+  );
+});
+
 it("hides inaccessible reports and gates pending and failed ones", async () => {
   const { identity, ann } = await play(false);
   const id = identity.sessionId;

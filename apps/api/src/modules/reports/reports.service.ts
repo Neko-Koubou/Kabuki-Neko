@@ -36,7 +36,9 @@ import {
   answerReportsPageSchema,
   fullReportSchema,
   playerReportsPageSchema,
+  reportAnswersQuerySchema,
   reportPlayersQuerySchema,
+  reportsQuerySchema,
   sessionsPageSchema,
   type AnswerReport,
   type Metric,
@@ -46,6 +48,7 @@ import {
   type SessionSummary,
 } from "@kabuki-neko/shared/schemas/report.schema";
 import { ApiError } from "../../common/error.filter";
+import { ZodValidationPipe } from "../../common/zod-validation.pipe";
 import {
   GAME_STATE_STORE,
   type IGameStateStore,
@@ -311,10 +314,11 @@ export class ReportsService {
     }
   }
 
-  /** Ready reports of the current host (`GET /reports`). */
+  /** Ready reports of the current host (`GET /reports`). Invalid query → 422 (MJ-12). */
   list(hostId: string, query: unknown) {
+    const parsed = new ZodValidationPipe(reportsQuerySchema).transform(query);
     return this.gate(async () => {
-      const page = await this.reports.list(hostId, query);
+      const page = await this.reports.list(hostId, parsed);
       return sessionsPageSchema.parse({ items: page.items.map(sessionSummary), meta: page.meta });
     });
   }
@@ -358,8 +362,9 @@ export class ReportsService {
 
   /** Player page (rank order, optional nickname search) with per-player accuracy. */
   players(hostId: string, sessionId: string, query: unknown) {
+    // Validated before the gate: a ZodError inside it surfaced as 500 INTERNAL_ERROR (MJ-12).
+    const parsed = new ZodValidationPipe(reportPlayersQuerySchema).transform(query);
     return this.gate(async () => {
-      const parsed = reportPlayersQuerySchema.parse(query);
       const [page, questions, answers] = await Promise.all([
         this.reports.players(hostId, sessionId, parsed),
         this.reports.questions(hostId, sessionId),
@@ -375,8 +380,9 @@ export class ReportsService {
 
   /** One player's answers, one row per question in question order (404 for a foreign player). */
   answers(hostId: string, sessionId: string, playerId: string, query: unknown) {
+    const parsed = new ZodValidationPipe(reportAnswersQuerySchema).transform(query);
     return this.gate(async () => {
-      const page = await this.reports.answerPage(hostId, sessionId, playerId, query);
+      const page = await this.reports.answerPage(hostId, sessionId, playerId, parsed);
       return answerReportsPageSchema.parse({
         items: page.items.map((item) => answerReport(item.question, item.answer)),
         meta: page.meta,
