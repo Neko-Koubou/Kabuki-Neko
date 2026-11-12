@@ -3155,7 +3155,7 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
   - `pnpm test:contracts --testPathPatterns='state-parity|redis'` dan integration `payload-privacy|realtime-races` lulus.
 
-### - [ ] TASK-185G: Ukur ulang mode Redis setelah TASK-185F
+### - [~] TASK-185G: Ukur ulang mode Redis setelah TASK-185F
 - **Traceability**: `US-16`, `US-20`, NFR-01, [07-qa-report.md §2 US-20](07-qa-report.md)
 - **Depends On**: `TASK-185F`
 - **Target Files**:
