@@ -22,7 +22,7 @@
  * identity), partial (locked / full / in progress / wait) and error (offline or failed → retry).
  */
 import { QrCode } from "lucide-react";
-import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import type { DisplayMode } from "@kabuki-neko/shared/constants/game";
 import {
   AvatarCustomizer,
@@ -40,7 +40,7 @@ import {
 } from "@/hooks/use-session-recovery";
 import type { AvatarStyleLoader } from "@/lib/avatar";
 import { configuredAppOrigin } from "@/lib/qr";
-import { createGameSocket } from "@/lib/socket-client";
+import { createGameSocket, type GameSocket } from "@/lib/socket-client";
 import { useLocale } from "@/providers/locale-provider";
 
 /** Six ASCII digits taken from typed or pasted text (other characters dropped). */
@@ -64,7 +64,52 @@ const DEAD_SESSION = new Set([
 ]);
 
 /** Socket used by the join page (injectable in tests). */
-export type JoinSocket = PlayerEmitter & { connect?: () => void; disconnect?: () => void };
+export type JoinSocket = PlayerEmitter & {
+  connect?: () => void;
+  disconnect?: () => void;
+  /** False once the transport dropped (the real client); absent on test doubles. */
+  readonly connected?: boolean;
+  onLifecycle?: GameSocket["onLifecycle"];
+};
+
+/** How long a command waits for a dropped join socket to reconnect before sending anyway. */
+export const JOIN_RECONNECT_TIMEOUT_MS = 5_000;
+
+/**
+ * Emitter that reconnects the page's anonymous socket before each command (code review MJ-23).
+ * The server drops anonymous sockets after 120 s, and the client is created with
+ * `reconnection: false`, so a student who waits on /join for the host's PIN (or spends long on
+ * the identity step) would otherwise send into a dead socket and time out forever. When the
+ * socket reports `connected === false`, it connects again and waits for `connect` (or
+ * `connect_error`, or the timeout) before emitting; a live socket is used directly.
+ */
+export function reconnectingEmitter(
+  socket: JoinSocket,
+  timeoutMs = JOIN_RECONNECT_TIMEOUT_MS,
+): PlayerEmitter {
+  /** Resolves once the socket is connected again (or the attempt failed or timed out). */
+  const ready = async () => {
+    const { connect, onLifecycle } = socket;
+    if (socket.connected !== false || !connect || !onLifecycle) return;
+    await new Promise<void>((resolve) => {
+      const unsubscribers: (() => void)[] = [];
+      const done = () => {
+        clearTimeout(timer);
+        for (const unsubscribe of unsubscribers) unsubscribe();
+        resolve();
+      };
+      const timer = setTimeout(done, timeoutMs);
+      unsubscribers.push(onLifecycle("connect", done), onLifecycle("connect_error", done));
+      connect();
+    });
+  };
+  return {
+    emit: (async (event, payload) => {
+      await ready();
+      return socket.emit(event, payload);
+    }) as PlayerEmitter["emit"],
+  };
+}
 
 /** Join step. */
 type Step =
@@ -123,6 +168,7 @@ export function PinJoinScanner({
         role: "player",
       }),
   );
+  const emitter = useMemo(() => reconnectingEmitter(socket), [socket]);
   const [pin, setPin] = useState(() => normalizePin(initialPin ?? ""));
   const [step, setStep] = useState<Step>({ kind: "pin" });
   const [checking, setChecking] = useState(false);
@@ -161,7 +207,7 @@ export function PinJoinScanner({
       }
       setChecking(true);
       setProblem(null);
-      const result = await socket.emit("player:check_pin", { pinCode: value });
+      const result = await emitter.emit("player:check_pin", { pinCode: value });
       setChecking(false);
       const stored = findPlayerSessionByPin(value, store);
       if (result.status === "ok") {
@@ -211,7 +257,7 @@ export function PinJoinScanner({
         retry: !keys[code],
       });
     },
-    [socket, store],
+    [emitter, store],
   );
 
   // A deep link checks its PIN exactly once.
@@ -227,7 +273,7 @@ export function PinJoinScanner({
   const recover = async (target: Extract<Step, { kind: "recover" }>) => {
     setChecking(true);
     setProblem(null);
-    const result = await socket.emit("player:join_room", {
+    const result = await emitter.emit("player:join_room", {
       requestId: crypto.randomUUID(),
       sessionId: target.record.sessionId,
       pinCode: target.pin,
@@ -272,7 +318,7 @@ export function PinJoinScanner({
         mode="join"
         pinCode={step.pin}
         friendlyNicknames={step.room.friendlyNicknames}
-        socket={socket}
+        socket={emitter}
         onJoined={() => {
           setStep({ kind: "done" });
           navigate(`/play/${step.pin}`);

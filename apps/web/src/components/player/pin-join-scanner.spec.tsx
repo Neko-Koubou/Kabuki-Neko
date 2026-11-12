@@ -14,7 +14,12 @@ import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { renderWithLocale } from "@/test/locale";
-import { PinJoinScanner, normalizePin, type JoinSocket } from "./pin-join-scanner";
+import {
+  PinJoinScanner,
+  normalizePin,
+  reconnectingEmitter,
+  type JoinSocket,
+} from "./pin-join-scanner";
 
 const NAMESPACES = ["common", "accessibility", "player", "validation"] as const;
 const SESSION = "3f2a9c1e-7b6d-4e5f-8a9b-0c1d2e3f4a5b";
@@ -237,5 +242,58 @@ describe("PinJoinScanner", () => {
     await user.click(within(dialog).getByRole("button", { name: "Enter the PIN instead" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     await waitFor(() => expect(screen.getByLabelText("Game PIN")).toHaveFocus());
+  });
+});
+
+describe("reconnecting join socket (MJ-23)", () => {
+  /** Socket double that the server dropped (connected=false) and that reconnects on demand. */
+  function droppedSocket() {
+    const listeners = new Map<string, Set<() => void>>();
+    const order: string[] = [];
+    const socket = {
+      connected: false,
+      emit: vi.fn(async (event: string) => {
+        order.push(`emit ${event}${socket.connected ? "" : " (dead)"}`);
+        return { status: "ok", requestId: "r", serverTime: 1, data: {} };
+      }),
+      connect: vi.fn(() => {
+        order.push("connect");
+        queueMicrotask(() => {
+          socket.connected = true;
+          for (const listener of listeners.get("connect") ?? []) listener();
+        });
+      }),
+      onLifecycle: vi.fn((event: string, handler: () => void) => {
+        if (!listeners.has(event)) listeners.set(event, new Set());
+        listeners.get(event)?.add(handler);
+        return () => listeners.get(event)?.delete(handler);
+      }),
+    };
+    return { socket: socket as unknown as JoinSocket, order, raw: socket };
+  }
+
+  it("reconnects a dropped socket before sending and uses a live one directly", async () => {
+    const { socket, order, raw } = droppedSocket();
+    const emitter = reconnectingEmitter(socket);
+    await emitter.emit("player:check_pin", { pinCode: "123456" });
+    expect(order).toEqual(["connect", "emit player:check_pin"]);
+    await emitter.emit("player:check_pin", { pinCode: "123456" });
+    expect(raw.connect).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends after the timeout when the reconnect never completes", async () => {
+    vi.useFakeTimers();
+    try {
+      const { socket, order, raw } = droppedSocket();
+      raw.connect.mockImplementation(() => order.push("connect"));
+      const pending = reconnectingEmitter(socket, 5_000).emit("player:check_pin", {
+        pinCode: "123456",
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
+      await pending;
+      expect(order).toEqual(["connect", "emit player:check_pin (dead)"]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

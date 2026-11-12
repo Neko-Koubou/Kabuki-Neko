@@ -287,10 +287,11 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Spec baru `host-stage.spec.ts` (3 test) dan `use-socket.spec.tsx` (2 test).
   - Web Vitest 51 file / 444 test, tsc, dan lint PASS.
 
-#### MJ-23 [MAJOR] [OPEN] Socket anonim halaman join diputus server setelah 120 s dan tidak pernah tersambung lagi
+#### MJ-23 [MAJOR] [RESOLVED] Socket anonim halaman join diputus server setelah 120 s dan tidak pernah tersambung lagi
 - **File:Line**: `apps/web/src/components/player/pin-join-scanner.tsx:118-125,141-145`; `apps/web/src/lib/socket-client.ts:106`.
 - **Masalah**: `reconnection: false` ditambah batas umur anonim 120 s menyebabkan cek PIN atau join gagal ("unknown") sampai halaman dimuat ulang. Ini skenario umum di kelas.
 - **Perbaikan**: sambungkan ulang bila `!socket.connected` sebelum `emit`.
+- **Resolusi**: `reconnectingEmitter` di `pin-join-scanner.tsx` menyambungkan ulang socket anonim yang terputus (`connected === false`) sebelum setiap `check_pin`, `join_room` (recover), dan seluruh perintah langkah identitas; tunggu `connect`/`connect_error` maksimal 5 s. `JoinSocket` kini mengekspos `connected` dan `onLifecycle`. Spec baru (reconnect lalu emit; socket hidup dipakai langsung; timeout tetap mengirim). Web Vitest player 40/40, tsc, lint PASS.
 
 #### MJ-24 [MAJOR] [RESOLVED] Media unggahan tidak pernah tampil: MediaPreview menolak URL absolut dari API
 - **File:Line**: `apps/web/src/components/ui/media-preview.tsx:58-71,120` (dipakai di player, projector, picker, library, dan detail jawaban).
