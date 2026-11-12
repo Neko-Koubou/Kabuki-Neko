@@ -2337,3 +2337,29 @@
     - Images were built with `docker build` plus the sandbox proxy CA secret, then run with `--no-build`; Compose `--build` cannot pass that CA in this sandbox.
   - Every environment variable named in the guide/README is present in `.env.example`; all relative links and anchors resolve; secret scan of the new files finds no credential (only the runtime-generated throwaway smoke password)
   - Prettier check of the markdown/YAML → pass; `verify-release --report` → 0 errors, 12 known gaps
+
+## TASK-183: Hentikan full-state settle di setiap admission jawaban — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/modules/game-engine/game.service.ts`: `settle` is per-room single-flight and coalesced. A caller that arrives while a round runs shares one queued round that starts after it. The slot map is emptied as soon as no round is pending (no per-room leak, cf. MJ-05). The scoring body moved unchanged to `settleOnce`.
+  - `apps/api/src/modules/game-engine/game.service.spec.ts`: new case. 50 concurrent answers make ≤ 3 full-state reads (2 settle rounds + the `finalize` read after the commit) and exactly one COMMITTED. The closing answer is scored before the ACKs resolve, and a later `settle` starts a fresh round.
+- **Deviation from the task text**: the ACK still awaits its coalesced round instead of running settle in the background. The gateway publishes right after the ACK (`game.gateway.ts`, `player:submit_answer`), so a background settle would delay the closing answer's reveal to the next scheduler tick and break the task's own invariant.
+- **Verification**:
+  - New spec PASS; the same spec on the old `game.service.ts` FAIL (51 full-state reads).
+  - Docker daemon had stopped (container restart) and was started again before the API tests.
+  - `pnpm --filter @kabuki-neko/api lint` → pass.
+  - `pnpm --filter @kabuki-neko/api typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 37/37 suites, 254/254 tests.
+  - `pnpm test:integration --testPathPatterns='recovery|realtime-races|game-gateway|finalization-failures'` → 4/4 suites, 33/33 tests.
+  - `pnpm benchmark:game --clients 200 --transitions 100 --mode memory`:
+
+    | | Transport p95 | Admission p50 | Admission p95 | Rejected answers |
+    | --- | --- | --- | --- | --- |
+    | Before (2026-11-12 QA run) | 20.59 ms | 2,014.84 ms | 8,427.85 ms | 1 |
+    | After | 15.88 ms (PASS) | 2,127.99 ms | 9,437.25 ms | 13 of 5,000 (TIME_EXPIRED near the deadline) |
+
+- **Finding**:
+  - Admission latency did **not** improve, so full-state settle reads were not its bottleneck. `performance-results.md` Findings item 2 is disproven as the main cause.
+  - The ACK awaits `GameGateway.publish`, which runs one full `diff` per answer: a private-state read, the host projection, and the summary of every player.
+  - The diffs are serialized per room by `enqueue`, so the N-th answer of a burst waits for N diffs.
+  - This is in `game.gateway.ts`, outside this task's target files. Corrective task TASK-183A was added.

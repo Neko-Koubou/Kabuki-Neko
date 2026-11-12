@@ -380,3 +380,42 @@ it("recovers after a crash during result commit and during report freeze", async
   expect(frozen).toHaveLength(1);
   expect(revealed.players[a.playerId]?.streak).toBe(1);
 });
+
+it("coalesces settles of a burst of answers and still scores the closing answer before its ACK (TASK-183)", async () => {
+  const players = 50;
+  const { identity, bindings } = await room(["SINGLE_CHOICE"], players);
+  await toAnswering(identity);
+  const s = await state(identity);
+  const questionId = s.quiz.questions[0]?.id ?? "";
+  const correct = await publicIndex(identity, 0);
+  const snapshots = jest.spyOn(store, "getPrivateSnapshot");
+  const commits = jest.spyOn(store, "commitQuestionResult");
+
+  const acks = await Promise.all(
+    bindings.map((binding) =>
+      game.submitAnswer(binding, {
+        questionIndex: 0,
+        questionId,
+        submissionId: randomUUID(),
+        answer: correct,
+      }),
+    ),
+  );
+  expect(acks.every((ack) => ack.accepted)).toBe(true);
+  // One round in flight plus one coalesced round, plus the one read `finalize` makes after the
+  // commit, instead of one full-state read per answer.
+  expect(snapshots.mock.calls.length).toBeLessThanOrEqual(3);
+  // The last answer closed the question; it was scored before the ACKs resolved, exactly once.
+  expect(commits).toHaveBeenCalledTimes(1);
+  await expect(commits.mock.results[0]?.value).resolves.toBe("COMMITTED");
+  const revealed = await state(identity);
+  expect(revealed.phase).toBe("ANSWER_REVEAL");
+  expect(revealed.closedQuestions["0"]?.reason).toBe("ALL_ANSWERED");
+  expect(Object.keys(revealed.results["0"]?.personal ?? {})).toHaveLength(players);
+
+  // Later calls start fresh rounds (no stale shared result) and commit nothing twice.
+  snapshots.mockClear();
+  expect(await game.settle(identity)).toBe(false);
+  expect(snapshots).toHaveBeenCalledTimes(1);
+  expect(commits).toHaveBeenCalledTimes(1);
+});

@@ -58,6 +58,11 @@ export interface SubmitRequest {
 }
 
 type Timing = ActiveRoomState["timing"];
+/** Settle rounds of one room: the round in flight and the one round queued behind it. */
+interface SettleSlot {
+  running: Promise<boolean> | null;
+  queued: Promise<boolean> | null;
+}
 type FrozenAnswer = FrozenReport["answers"][number];
 /** Phases that freeze a report on entry. */
 const FINAL = new Set<ActiveRoomState["phase"]>(["PODIUM", "FINISHED"]);
@@ -194,6 +199,8 @@ export class GameService {
   private hook: ReportHook | null = null;
   private sync: FinalizationSync | null = null;
   private readonly clock: () => number;
+  /** Per-room settle rounds (keyed by sessionId); see `settle`. Empty while no room settles. */
+  private readonly settling = new Map<string, SettleSlot>();
 
   constructor(
     @Inject(GAME_STATE_STORE) private readonly store: IGameStateStore,
@@ -326,7 +333,10 @@ export class GameService {
     }
   }
 
-  /** `player:submit_answer` — atomic admission, then scoring if this answer closed the question. */
+  /**
+   * `player:submit_answer` — atomic admission, then scoring if this answer closed the question.
+   * The settle is coalesced with the room's other admissions (see `settle`).
+   */
   async submitAnswer(binding: PlayerBinding, request: SubmitRequest) {
     try {
       const stored = await this.store.admitAnswer({
@@ -352,10 +362,49 @@ export class GameService {
   }
 
   /**
-   * Scores and commits a frozen-but-unscored question. Returns true when this call committed.
-   * Safe to call from any worker at any time; CAS makes concurrent calls commit at most once.
+   * Scores and commits a frozen-but-unscored question. Returns true when the round this caller
+   * waited for committed. Safe to call from any worker at any time; CAS makes concurrent calls
+   * commit at most once.
+   *
+   * Calls for one room are single-flight and coalesced: while a round runs, every new caller
+   * shares one queued round that starts after it. A burst of N admitted answers therefore reads
+   * the full private state at most twice per wave instead of N times (each read is a deep copy in
+   * memory mode, a fetch and parse in Redis mode), and each caller still waits for a round that
+   * started after its own admission, so the answer that closes the question is scored before its
+   * ACK and the gateway publishes the reveal at once (QA follow-up TASK-183).
    */
-  async settle(identity: RoomIdentity): Promise<boolean> {
+  settle(identity: RoomIdentity): Promise<boolean> {
+    const key = identity.sessionId;
+    let slot = this.settling.get(key);
+    if (!slot) {
+      slot = { running: null, queued: null };
+      this.settling.set(key, slot);
+    }
+    if (slot.queued) return slot.queued;
+    if (!slot.running) return this.settleRound(key, slot, identity);
+    const current = slot;
+    const queued = slot.running
+      .catch(() => false)
+      .then(() => {
+        current.queued = null;
+        return this.settleRound(key, current, identity);
+      });
+    current.queued = queued;
+    return queued;
+  }
+
+  /** Runs one settle round for a room and forgets the room's slot once nothing is pending. */
+  private settleRound(key: string, slot: SettleSlot, identity: RoomIdentity): Promise<boolean> {
+    const running = this.settleOnce(identity).finally(() => {
+      slot.running = null;
+      if (!slot.queued && this.settling.get(key) === slot) this.settling.delete(key);
+    });
+    slot.running = running;
+    return running;
+  }
+
+  /** One settle round: scores and commits the frozen question if it is still unscored. */
+  private async settleOnce(identity: RoomIdentity): Promise<boolean> {
     const state = await this.store.getPrivateSnapshot(identity);
     const index = state?.questionIndex ?? null;
     if (!state || index === null || state.phase !== "QUESTION_ANSWERING" || state.accepting)

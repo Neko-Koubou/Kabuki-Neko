@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 218 task selesai, 5 task Pending (Phase 7 tindak lanjut QA, 2026-11-12)** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 219 task selesai, 5 task Pending (Phase 7 tindak lanjut QA, 2026-11-12)** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -20,7 +20,7 @@ Status Legend: `- [ ]` Pending | `- [~]` In Progress | `- [x]` Completed | `- [!
 | 4. Frontend Design Tokens, Base UI & State Layer | TASK-087–TASK-131 | 45 | Fondasi M5–M6; source katalog M1 dituntaskan sebelum UI |
 | 5. Feature Screens, API Integration & 5 UI States | TASK-132–TASK-163 | 32 | M5 → M6 |
 | 6. Hardening, Edge Cases & Polish | TASK-164–TASK-182 | 19 | M7 + release evidence + paket self-host Docker |
-| 7. Tindak lanjut QA | TASK-183–TASK-187 | 5 | Temuan terbuka [07-qa-report.md](07-qa-report.md): benchmark Redis dua node (US-20), fixture uji root/proxy |
+| 7. Tindak lanjut QA | TASK-183–TASK-187 (+ TASK-183A) | 6 | Temuan terbuka [07-qa-report.md](07-qa-report.md): benchmark Redis dua node (US-20), fixture uji root/proxy |
 
 **Urutan:** ambil task Pending bernomor terkecil yang semua Depends On-nya Completed. Dependensi per-task adalah DAG operasional; phase merangkum milestone, bukan izin mengerjakan seluruh phase dalam satu `/vibe-code`. API/DB/adapter selesai sebelum integrasi UI; catalog tools/contracts lebih awal dan enam katalog lengkap tersedia sebelum provider UI. Tidak ada delegasi atau eksekusi agen paralel yang diperlukan oleh plan ini.
 
@@ -2925,7 +2925,7 @@ flowchart LR
 
 Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 (US-20) dan §4, atas permintaan pengguna 2026-11-12. Pemeriksaan manual (screen reader, kamera, perangkat iOS/Android, jaringan nyata, deploy non-root) sengaja **tidak** dijadikan task karena diperiksa langsung di perangkat. Smoke test cloud `tests/contracts/cloud-storage.spec.ts` juga tidak dijadikan task: kodenya sudah ada dan hanya menunggu kredensial `KABUKI_CLOUD_*` dari operator.
 
-### - [ ] TASK-183: Hentikan full-state settle di setiap admission jawaban
+### - [x] TASK-183: Hentikan full-state settle di setiap admission jawaban
 - **Traceability**: `US-10`, `US-20`, NFR-01, [SA §5](03-system-analysis.md), [07-qa-report.md §2 US-20](07-qa-report.md), `docs/performance-results.md` Findings butir 2.
 - **Depends On**: `TASK-084`, `TASK-179`
 - **Target Files**:
@@ -2953,6 +2953,31 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
   - Regresi: `pnpm test:integration --testPathPatterns='recovery|realtime-races|game-gateway|finalization-failures'` lulus.
   - `pnpm benchmark:game --clients 200 --transitions 100 --mode memory` dijalankan ulang. Admission p50/p95 sebelum dan sesudah dicatat di log, tanpa mengklaim target Redis.
+
+### - [ ] TASK-183A: Gabungkan publish gateway per room dan lepaskan ACK jawaban dari antrean publish
+- **Traceability**: `US-10`, `US-20`, NFR-01, [07-qa-report.md §2 US-20](07-qa-report.md), temuan benchmark TASK-183 di [05-implementation-log.md](05-implementation-log.md).
+- **Depends On**: `TASK-183`, `TASK-082`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/modules/game-engine/game.gateway.ts`
+  - `CREATE` `apps/api/src/modules/game-engine/game-gateway-publish.spec.ts`
+- **Implementation Specs**:
+  - Masalah (diukur di TASK-183):
+    - ACK `player:submit_answer` menunggu `publish(binding)`;
+    - `publish` mengantrekan satu `diff` penuh per pemanggilan (baca private state, proyeksi host, ringkasan semua pemain), di-serialisasi per room oleh `enqueue`;
+    - jawaban ke-N dalam satu burst menunggu N diff, sehingga admission p50 ±2 s dan p95 ±9 s pada 200 pemain.
+  - `publish` per room dibuat **coalesced**: selama satu `diff` berjalan, panggilan berikutnya berbagi satu `diff` antrean yang mulai sesudahnya. Ini aman karena `diff` membandingkan state terhadap ringkasan terakhir, bukan memutar ulang event. Urutan `forget` (`room:expired`) setelah publish yang sudah antre tetap terjaga, dan peta antrean tetap kosong saat tidak ada kerja (MJ-05).
+  - Status ACK tetap berasal dari hasil admission. Untuk menghapus keterlambatan admission, ACK jawaban tidak lagi menunggu antrean publish (publish tetap dipicu, kegagalan di-`catch`). Ini aman karena klien menerima reveal/count lewat push, dan perubahan publish yang terlewat tertangkap oleh heartbeat `room:version`.
+  - Perilaku event lain (perintah host, join, avatar) tetap seperti sekarang kecuali ikut coalescing.
+- **Definition of Done (Verification)**:
+  - Spec baru:
+    - burst 50 panggilan `publish` di satu room menjalankan ≤ 2 `diff`;
+    - `forget` tetap berjalan setelah publish yang antre;
+    - ACK jawaban kembali tanpa menunggu `diff` yang lambat (diff dibuat lambat dengan store palsu).
+  - Spec tersebut gagal pada kode lama.
+  - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
+  - `pnpm test:integration --testPathPatterns='game-gateway|realtime-races|recovery|payload-privacy|room-retention'` lulus.
+  - E2E `tests/e2e/player.spec.ts` dan `host.spec.ts` lulus.
+  - `pnpm benchmark:game --clients 200 --transitions 100 --mode memory`: admission p50/p95 sebelum dan sesudah dicatat.
 
 ### - [ ] TASK-184: Tambah diagnostik per node dan verdict jujur pada benchmark
 - **Traceability**: `US-16`, `US-20`, NFR-01, [07-qa-report.md §2 US-20](07-qa-report.md), `docs/performance-results.md` Findings butir 3, review MN-43.
@@ -2983,7 +3008,7 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
 
 ### - [ ] TASK-185: Ukur ulang topologi Redis dua node dan tetapkan akar masalah
 - **Traceability**: `US-16`, `US-20`, NFR-01, [07-qa-report.md §2 US-20](07-qa-report.md)
-- **Depends On**: `TASK-183`, `TASK-184`
+- **Depends On**: `TASK-183`, `TASK-183A`, `TASK-184`
 - **Target Files**:
   - `MODIFY` `docs/performance-results.md`
   - `MODIFY` `docs/vibe/07-qa-report.md`
