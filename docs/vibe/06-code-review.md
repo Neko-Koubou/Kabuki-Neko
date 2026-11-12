@@ -257,7 +257,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Koreksi dokumen.
 - **Resolusi**: Gate startup dipindah ke `docker/startup-gate.cjs` (disalin ke image API): memvalidasi konfigurasi dengan skema terkompilasi lalu menunggu database/Redis dari konfigurasi **efektif** (default `postgres`/`redis` untuk `DEPLOYMENT_PROFILE=scale` walau `DB_DRIVER`/`STATE_DRIVER` kosong, termasuk node Redis Cluster), dibatasi `KN_STARTUP_WAIT_SEC` (integer 1–3600, kosong = 60). `docs/deployment.md` dikoreksi. Regresi: kontrak `startup-gate.spec.ts` (scale tanpa driver → timeout database/Redis, lulus saat keduanya terbuka, default tanpa tunggu, nilai tidak valid ditolak tanpa mencetak nilai) dan smoke `entrypoint.sh api`.
 
-#### MJ-18 [MAJOR] [OPEN] Prosedur restore SQLite di dokumentasi menghasilkan DB yang tidak bisa ditulis API
+#### MJ-18 [MAJOR] [RESOLVED] Prosedur restore SQLite di dokumentasi menghasilkan DB yang tidak bisa ditulis API
 - **File:Line**: `docs/operations.md:40-50`.
 - **Masalah**:
   - `docker compose cp` tanpa `-a` meninggalkan pemilik root/0644, sehingga API (uid 10001) gagal menulis.
@@ -265,6 +265,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 - **Perbaikan**:
   - Restore lewat `compose run` sebagai user image (`cp` dari mount `/backup:ro`, hapus WAL/SHM).
   - Backup ditulis ke `/tmp` lalu dihapus.
+- **Resolusi**: `docs/operations.md`: backup SQLite ditulis ke `/tmp/kabuki-backup.sqlite` di container, disalin keluar lalu dihapus (tidak tertinggal di volume data); restore berjalan lewat `$C run --rm --no-deps -v "$PWD/backup:/backup:ro" --entrypoint sh api` sebagai user image (uid 10001), menghapus DB lama + WAL/SHM lalu `cp` dari mount read-only. Diverifikasi dengan image API: prosedur lama → `attempt to write a readonly database`, prosedur baru → file milik 10001 dan bisa ditulis, data sama dengan backup. Regresi: pemeriksaan dokumen di `backup-restore.spec.ts` (gagal pada dokumen lama).
 
 #### MJ-19 [MAJOR] [OPEN] Rotasi secret di dokumentasi tidak berlaku untuk profil scale
 - **File:Line**: `docs/operations.md:116-117`; `docs/deployment.md:81-84`; `docker/docker-compose.yml:36-58`.

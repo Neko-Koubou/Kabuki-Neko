@@ -36,17 +36,23 @@ modified; extra blobs uploaded afterwards are harmless orphans that the next cle
 Never copy a live SQLite file and its `-wal` side file by hand. Use SQLite's online backup API,
 which produces a consistent copy while the API keeps running:
 
+The copy is written to the container's `/tmp`, copied out and deleted, so no backup file stays in
+the data volume:
+
 ```bash
-$C exec -T api node -e 'const {createRequire}=require("node:module");const Database=createRequire(require.resolve("@kabuki-neko/database"))("better-sqlite3");new Database(process.env.SQLITE_PATH,{readonly:true}).backup(process.argv[1]).then(()=>console.log("sqlite backup complete"))' /app/data/backup.sqlite
-$C cp api:/app/data/backup.sqlite ./backup/kabuki-neko.sqlite
+$C exec -T api node -e 'const {createRequire}=require("node:module");const Database=createRequire(require.resolve("@kabuki-neko/database"))("better-sqlite3");new Database(process.env.SQLITE_PATH,{readonly:true}).backup(process.argv[1]).then(()=>console.log("sqlite backup complete"))' /tmp/kabuki-backup.sqlite
+$C cp api:/tmp/kabuki-backup.sqlite ./backup/kabuki-neko.sqlite
+$C exec -T api rm -f /tmp/kabuki-backup.sqlite
 ```
 
-Restore with the API stopped: replace the database and delete the old WAL side files.
+Restore with the API stopped. The restore runs **inside the API image as its own user (uid 10001)** and reads the backup through a read-only mount. Then the restored database belongs to the
+API user and is writable. A `docker compose cp` into the volume would leave a root-owned file that
+the API can only open read-only. The old database and its WAL side files are removed first. The
+backup file must be readable by uid 10001, for example `chmod 0644 ./backup/kabuki-neko.sqlite`.
 
 ```bash
 $C stop api
-$C cp ./backup/kabuki-neko.sqlite api:/app/data/kabuki-neko.sqlite
-$C run --rm --no-deps --entrypoint sh api -c 'rm -f /app/data/kabuki-neko.sqlite-wal /app/data/kabuki-neko.sqlite-shm'
+$C run --rm --no-deps -v "$PWD/backup:/backup:ro" --entrypoint sh api -c 'rm -f /app/data/kabuki-neko.sqlite /app/data/kabuki-neko.sqlite-wal /app/data/kabuki-neko.sqlite-shm && cp /backup/kabuki-neko.sqlite /app/data/kabuki-neko.sqlite'
 $C start api
 ```
 
