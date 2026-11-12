@@ -475,6 +475,24 @@ for (const driver of ["memory", "redis"] as const)
         code: "STATE_UNAVAILABLE",
       });
     });
+    it("reads room state with HMGET, never through a Lua script (TASK-185J)", async () => {
+      if (driver !== "redis") return;
+      await seed(answering());
+      /** Calls of each command so far (`INFO commandstats`). */
+      const calls = async () => {
+        const info = await redis.info("commandstats");
+        const count = (name: string) =>
+          Number(new RegExp(`cmdstat_${name}:calls=(\\d+)`, "u").exec(info)?.[1] ?? "0");
+        return { scripts: count("evalsha") + count("eval"), hmget: count("hmget") };
+      };
+      const before = await calls();
+      expect(await store.readPrivateSnapshot(identity)).not.toBeNull();
+      expect(await store.getPrivateSnapshot(identity)).not.toBeNull();
+      expect(await store.readPrivateSnapshot({ ...identity, sessionId: uuid(90) })).toBeNull();
+      const after = await calls();
+      expect(after.scripts).toBe(before.scripts);
+      expect(after.hmget - before.hmget).toBe(3);
+    });
     it("retries joins without a second slot, recovers and rejects old generations", async () => {
       await seed();
       const first = await join();

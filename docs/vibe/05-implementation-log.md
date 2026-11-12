@@ -2633,3 +2633,9 @@
     - `close-question` 10, mean 119.9 ms.
 - **Conclusion**: the remaining cost is the one-JSON-blob-per-room layout, which every script decodes and re-encodes. That is an architectural change: TASK-185K, which needs a design decision. A plain HMGET read (TASK-185J) is the smaller fix.
 - **Verification**: `pnpm exec prettier --check docs/performance-results.md` → pass. Record `test-results/benchmark/redis.json` (copy in the scratchpad), Redis CPU and SLOWLOG samples in the scratchpad.
+
+## TASK-185J: Baca state Redis dengan HMGET biasa tanpa skrip Lua — IN PROGRESS
+- **Started**: 2026-11-12 (Asia/Jakarta)
+- **Plan**: `apps/api/src/providers/state/redis-state.store.ts`, `tests/contracts/state-parity.spec.ts`
+- **Done so far**: none yet
+- **Verification**: pending

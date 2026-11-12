@@ -3205,7 +3205,7 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - US-20 di `07-qa-report.md` diperbarui.
   - `pnpm exec prettier --check docs/performance-results.md` lulus.
 
-### - [ ] TASK-185J: Baca state Redis dengan HMGET biasa tanpa skrip Lua
+### - [~] TASK-185J: Baca state Redis dengan HMGET biasa tanpa skrip Lua
 - **Traceability**: `US-16`, `US-20`, NFR-01, temuan TASK-185I.
 - **Depends On**: `TASK-185I`, `TASK-185H`
 - **Target Files**:

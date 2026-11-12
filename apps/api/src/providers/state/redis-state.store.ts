@@ -55,19 +55,17 @@ const commandResultSchema = z.object({
   ack: commandAckSchema,
 });
 /**
- * Returns `{state, expiresAt, now}` as a multi-bulk reply (empty when the room is missing). The
- * state goes back as the stored bulk string: wrapping it in `cjson.encode` re-escaped the whole
- * multi-megabyte JSON inside Redis on every read (QA follow-up TASK-185H).
+ * Reads are plain commands, `HMGET meta sessionId state expiresAt` and `TIME`, without a script:
+ * copying the multi-megabyte state through Lua cost ~12 ms of Redis time per read, before
+ * (`cjson.encode`, TASK-185H) and after (multi-bulk reply, TASK-185J). A read changes nothing, so
+ * it needs no script atomicity; the meta hash's fields are read in one command.
  */
-const readScript = `
-local raw=redis.call('HGET',KEYS[1],'state')
-if not raw or redis.call('HGET',KEYS[1],'sessionId') ~= ARGV[1] then return {} end
-local t=redis.call('TIME')
-return {raw,redis.call('HGET',KEYS[1],'expiresAt') or '0',tostring(tonumber(t[1])*1000+math.floor(tonumber(t[2])/1000))}`;
-const readReplySchema = z.union([
-  z.tuple([]),
-  z.tuple([z.string(), z.coerce.number().finite(), z.coerce.number().finite()]),
+const readFieldsSchema = z.tuple([
+  z.string().nullable(),
+  z.string().nullable(),
+  z.string().nullable(),
 ]);
+const redisTimeSchema = z.tuple([z.coerce.number().int(), z.coerce.number().int()]);
 
 /** Restore only schema-declared arrays encoded as {} by Redis cjson. Records,
  * including empty player/result maps, retain their object representation. */
@@ -211,10 +209,6 @@ export class RedisStateStore implements IGameStateStore {
       const source = readFileSync(path.join(__dirname, "lua", `${name}.lua`), "utf8");
       this.scripts.set(name, { source, sha: createHash("sha1").update(source).digest("hex") });
     }
-    this.scripts.set("read", {
-      source: readScript,
-      sha: createHash("sha1").update(readScript).digest("hex"),
-    });
   }
   onModuleDestroy(): void {
     this.destroyed = true;
@@ -258,11 +252,32 @@ export class RedisStateStore implements IGameStateStore {
   private async readRaw(
     identity: RoomIdentity,
   ): Promise<{ state: string; expiresAt: number; now: number } | null> {
-    const reply = readReplySchema.safeParse(await this.evaluate("read", identity, {}));
-    if (!reply.success) return fail("STATE_UNAVAILABLE");
-    if (reply.data.length === 0) return null;
-    const [state, expiresAt, now] = reply.data;
-    return { state, expiresAt, now };
+    const [meta] = this.keys(identity);
+    if (!meta || this.destroyed) return fail("STATE_UNAVAILABLE");
+    let fieldsReply: unknown;
+    let timeReply: unknown;
+    try {
+      // Two single commands, not a pipeline: in Redis Cluster a single command follows MOVED and
+      // failovers, while a pipeline kept failing after a master restarted. TIME has no key and
+      // may answer from any node; the masters' clocks are the same host clock in practice.
+      [fieldsReply, timeReply] = await Promise.all([
+        this.redis.hmget(meta, "sessionId", "state", "expiresAt"),
+        this.redis.time(),
+      ]);
+    } catch {
+      return fail("STATE_UNAVAILABLE");
+    }
+    const fields = readFieldsSchema.safeParse(fieldsReply);
+    const time = redisTimeSchema.safeParse(timeReply);
+    if (!fields.success || !time.success) return fail("STATE_UNAVAILABLE");
+    const [sessionId, state, expiresAt] = fields.data;
+    if (state === null || sessionId !== identity.sessionId) return null;
+    const [seconds, micros] = time.data;
+    return {
+      state,
+      expiresAt: Number(expiresAt ?? "0"),
+      now: seconds * 1000 + Math.floor(micros / 1000),
+    };
   }
   private async run(
     name: string,
