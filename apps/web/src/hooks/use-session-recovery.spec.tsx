@@ -2,7 +2,8 @@
  * TASK-128 coverage for the socket lifecycle and session recovery against a fake `/game` server:
  * a lost submit ACK is resolved by sync (accepted → locked, no re-send) or by re-sending the
  * identical submission while acceptance is open; a page refresh after an accepted answer recovers
- * it without resubmitting; a kick or replacement clears the stored player token and never rejoins
+ * it without resubmitting; a kick or a dead token clears the stored player token (a replacement keeps
+ * it for the replacing tab) and never rejoins
  * automatically; an invalid recovery token ends the session; reconnects follow the backoff and
  * retry-after; a host recovers after refreshing its access token with `auth:update`; and locale
  * switches or re-renders never add duplicate socket listeners.
@@ -20,6 +21,7 @@ import { testInitialLocale } from "@/test/locale";
 import type { StoreApi } from "zustand";
 import { useGameSocket } from "./use-socket";
 import {
+  loadPlayerSession,
   PLAYER_KEY_PREFIX,
   PLAYER_PIN_PREFIX,
   savePlayerSession,
@@ -468,7 +470,8 @@ describe("session recovery", () => {
     await settle(60_000);
     expect(store.getState().terminal).toBe("SESSION_REPLACED");
     expect(socket.connects).toBe(1);
-    expect(storage.data.size).toBe(0);
+    // The replacing tab shares this storage key and keeps using the credentials (MJ-28).
+    expect(loadPlayerSession(SESSION, storage)?.sessionToken).toBe(TOKEN);
 
     const storage2 = memoryStorage();
     savePlayerSession(

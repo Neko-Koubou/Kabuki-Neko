@@ -114,9 +114,11 @@ export function ConnectionRecovery({
     void ensureNamespaces(["player", "validation", "auth"]);
   }, [ensureNamespaces]);
 
-  // A terminal outcome ends the stored player session exactly once (no rejoin loop).
+  // A terminal outcome ends the stored player session exactly once (no rejoin loop). A replaced
+  // session keeps the record: the replacing tab uses the same credentials (MJ-28).
   useEffect(() => {
     if (view.kind !== "terminal" || role !== "player" || !sessionId || cleared.current) return;
+    if (view.reason === "SESSION_REPLACED") return;
     cleared.current = true;
     clearPlayerSession(sessionId, storage === undefined ? undefined : storage);
   }, [view.kind, role, sessionId, storage]);

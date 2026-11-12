@@ -201,7 +201,7 @@ describe("ConnectionRecovery", () => {
     expect(screen.getByRole("button", { name: "Answer A" }).closest("[inert]")).not.toBeNull();
   });
 
-  it("clears credentials once on terminal outcomes (kicked, invalid/replaced token, lost) and never retries", () => {
+  it("clears credentials once on terminal outcomes (kicked, lost) but keeps them when replaced, and never retries", () => {
     for (const [reason, text] of [
       ["KICKED", "The host removed you from this game."],
       [
@@ -214,8 +214,10 @@ describe("ConnectionRecovery", () => {
       const view = renderRecovery({ storage }, { ...live, terminal: reason });
       expect(screen.getByText(text)).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Answer A" })).not.toBeInTheDocument();
-      expect(storage.map.has(`kabuki:player:${SESSION}`)).toBe(false);
-      expect(storage.map.has("kabuki:player-pin:000123")).toBe(false);
+      // A replaced session keeps the record for the replacing tab (MJ-28); others clear it.
+      const kept = reason === "SESSION_REPLACED";
+      expect(storage.map.has(`kabuki:player:${SESSION}`)).toBe(kept);
+      expect(storage.map.has("kabuki:player-pin:000123")).toBe(kept);
       const removals = storage.removeItem.mock.calls.length;
       // Re-rendering the terminal screen does not clear (or reconnect) again.
       act(() => view.store.setState({ transport: { status: "disconnected", lastHeartbeatAt: 1 } }));

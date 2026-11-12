@@ -322,10 +322,11 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 - **Masalah**: socket yang belum terikat mendapat AUTH_REQUIRED lalu `recover()` kedua, sehingga token CHECK_JOIN terpakai dua kali per reconnect.
 - **Perbaikan**: `recover` single-flight; `sync` pemain ditunda sampai rebind.
 
-#### MJ-28 [MAJOR] [OPEN] `player:session_replaced` menghapus kredensial yang dipakai tab pengganti
+#### MJ-28 [MAJOR] [RESOLVED] `player:session_replaced` menghapus kredensial yang dipakai tab pengganti
 - **File:Line**: `apps/web/src/hooks/use-session-recovery.ts:306-316`; `connection-recovery.tsx:117-122`.
 - **Masalah**: kedua tab berbagi key localStorage yang sama. Tab lama menghapus record, sehingga tab baru tidak bisa recover.
 - **Perbaikan**: jangan hapus storage untuk `session_replaced`. Tetap hapus untuk `INVALID_SESSION_TOKEN`.
+- **Resolusi**: push `player:session_replaced` dan error recovery `SESSION_REPLACED` tidak lagi menghapus record `kabuki:player:<sessionId>` (dipakai tab pengganti) di `use-session-recovery.ts` maupun `connection-recovery.tsx`; `INVALID_SESSION_TOKEN`, kick, dan room lost tetap menghapusnya. Spec diperbarui (record tetap ada setelah replaced; token tidak valid tetap menghapus). Web Vitest hooks/player 64/64, tsc, lint PASS.
 
 #### MJ-29 [MAJOR] [RESOLVED] `room:expired` selalu dibuang oleh fence revisi
 - **File:Line**: `apps/web/src/stores/game.store.ts:369-391`.

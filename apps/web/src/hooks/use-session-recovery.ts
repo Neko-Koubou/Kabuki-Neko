@@ -264,8 +264,11 @@ export function useSessionRecovery(options: SessionRecoveryOptions) {
         setTimeout(() => void recover(result.requestId, attempt + 1), backoffDelay(attempt));
         return;
       }
-      const terminal = TERMINAL_CODES[result.error.errorCode];
-      if (terminal) terminate(terminal, record.sessionId);
+      const code = result.error.errorCode;
+      const terminal = TERMINAL_CODES[code];
+      // A replaced session's credentials now belong to the replacing tab, which shares this
+      // storage key: keep them (MJ-28). A dead token (INVALID_SESSION_TOKEN) is cleared.
+      if (terminal) terminate(terminal, code === "SESSION_REPLACED" ? null : record.sessionId);
     },
     [socket, store, remember, retryPending, terminate],
   );
@@ -295,7 +298,11 @@ export function useSessionRecovery(options: SessionRecoveryOptions) {
       return;
     }
     const terminal = TERMINAL_CODES[code];
-    if (terminal) terminate(terminal, latest.current.role === "player" ? snapshot.sessionId : null);
+    if (terminal)
+      terminate(
+        terminal,
+        latest.current.role === "player" && code !== "SESSION_REPLACED" ? snapshot.sessionId : null,
+      );
   }, [socket, store, recover, retryPending, terminate]);
 
   // Wire connect → recover, sync requests → room:sync, terminal → clear credentials (once).
@@ -303,8 +310,11 @@ export function useSessionRecovery(options: SessionRecoveryOptions) {
     const offConnect = socket.onLifecycle("connect", () => void recover());
     const offStore = store.subscribe((state, previous) => {
       if (state.syncRequested && !previous.syncRequested) void sync();
+      // A pushed `player:session_replaced` means another tab took over this player with the same
+      // stored credentials (same localStorage key): clearing them would strand that tab (MJ-28).
       if (
         state.terminal !== null &&
+        state.terminal !== "SESSION_REPLACED" &&
         previous.terminal === null &&
         latest.current.role === "player"
       ) {
