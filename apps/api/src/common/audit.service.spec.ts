@@ -123,23 +123,3 @@ it("keeps bounded metrics and emits a throttled failed-job alarm without job pay
   snapshot.counters["answers_rejected:TIME_EXPIRED"] = 99;
   expect(metrics.snapshot().counters["answers_rejected:TIME_EXPIRED"]).toBe(1);
 });
-it("runs daily retention and cancels its scheduler on shutdown", async () => {
-  jest.useFakeTimers();
-  const repository = new AuditRepository(db);
-  const purge = jest.spyOn(repository, "purge").mockResolvedValue(0);
-  const service = new AuditService(repository, new MetricsService(), 7, () => undefined);
-  try {
-    service.onModuleInit();
-    await jest.advanceTimersByTimeAsync(0);
-    expect(purge).toHaveBeenCalledTimes(1);
-    await jest.advanceTimersByTimeAsync(86400000);
-    expect(purge).toHaveBeenCalledTimes(2);
-    await service.onModuleDestroy();
-    await jest.advanceTimersByTimeAsync(86400000);
-    expect(purge).toHaveBeenCalledTimes(2);
-  } finally {
-    await service.onModuleDestroy();
-    jest.useRealTimers();
-    purge.mockRestore();
-  }
-});

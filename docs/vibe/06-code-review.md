@@ -98,7 +98,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 
 ### 3.2. [MAJOR]
 
-#### MJ-01 [MAJOR] [OPEN] Retensi refresh token dan dedup tidak pernah dijalankan; purge audit tidak mampu mengejar
+#### MJ-01 [MAJOR] [RESOLVED] Retensi refresh token dan dedup tidak pernah dijalankan; purge audit tidak mampu mengejar
 - **File:Line**:
   - `packages/database/src/repositories/auth.repository.ts:206-213`;
   - `operations.repository.ts:187-201`;
@@ -109,6 +109,12 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Audit dipurge 1000 baris per 24 jam, padahal kegagalan login anonim bisa jauh lebih banyak.
   - Melanggar SA §2.3, §4.1, §10.1.
 - **Perbaikan**: `RetentionService` terjadwal (timer `unref`) yang menjalankan ketiga purge dalam batch 1000 sampai batch terakhir pendek, dengan time budget.
+- **Resolusi**:
+  - `apps/api/src/common/retention.service.ts` (didaftarkan di `CommonModule`) berjalan saat boot lalu tiap jam. Ia mengulang `AuditService.purge`, `OperationsRepository.purge`, dan `AuthRepository.purgeExpired` (kini dibatasi 1000 baris per transaksi) selama batch penuh, dengan budget 30 s.
+  - Kegagalan purge ditulis sebagai satu baris JSON stderr tanpa detail internal, dan purge lain tetap berjalan.
+  - Jadwal harian lama di `AuditService` dihapus.
+  - `retention.service.spec.ts` membuktikan 2500 audit, 1200 receipt, dan 1500 token terhapus dalam satu run, sementara baris aktif/PENDING tetap ada. Spec yang sama mencakup batas budget, isolasi kegagalan, dan siklus jadwal.
+  - Jest API 231/231, tsc, dan lint PASS; contract `operations.repository` (3 DB) PASS.
 
 #### MJ-02 [MAJOR] [OPEN] Perubahan role/status, undangan, dan reuse refresh token tidak diaudit
 - **File:Line**:

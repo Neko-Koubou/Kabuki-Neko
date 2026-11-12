@@ -1,4 +1,3 @@
-import type { OnModuleInit, OnModuleDestroy } from "@nestjs/common";
 import { z } from "zod";
 import type { AuditRepository } from "@kabuki-neko/database";
 import { errorCodeSchema } from "@kabuki-neko/shared/errors";
@@ -44,9 +43,7 @@ const eventSchema = z.object({
   correlationId: uuid,
   errorCode: errorCodeSchema.nullish(),
 });
-export class AuditService implements OnModuleInit, OnModuleDestroy {
-  private timer: ReturnType<typeof setInterval> | undefined;
-  private pending: Promise<void> | undefined;
+export class AuditService {
   constructor(
     private readonly repository: AuditRepository,
     private readonly metrics: MetricsService,
@@ -74,6 +71,7 @@ export class AuditService implements OnModuleInit, OnModuleDestroy {
       throw new ApiError("DEPENDENCY_UNAVAILABLE", 503);
     }
   }
+  /** Deletes one batch (at most 1000) of audit events past retention; scheduled by RetentionService (MJ-01). */
   async purge(): Promise<number> {
     try {
       return await this.repository.purge(this.clock(), this.retentionDays);
@@ -81,33 +79,5 @@ export class AuditService implements OnModuleInit, OnModuleDestroy {
       this.metrics.increment("audit_failures", "DEPENDENCY_UNAVAILABLE");
       throw new ApiError("DEPENDENCY_UNAVAILABLE", 503);
     }
-  }
-  onModuleInit(): void {
-    const run = () => {
-      if (this.pending) return;
-      this.pending = this.purge()
-        .then(
-          () => undefined,
-          () => {
-            this.output(
-              JSON.stringify({
-                level: "error",
-                event: "audit_purge_failed",
-                errorCode: "DEPENDENCY_UNAVAILABLE",
-              }),
-            );
-          },
-        )
-        .finally(() => {
-          this.pending = undefined;
-        });
-    };
-    run();
-    this.timer = setInterval(run, 86400000);
-    this.timer.unref();
-  }
-  async onModuleDestroy(): Promise<void> {
-    if (this.timer) clearInterval(this.timer);
-    await this.pending;
   }
 }
