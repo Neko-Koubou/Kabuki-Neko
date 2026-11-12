@@ -110,10 +110,14 @@ services:
   # Scale profile: generates the credentials once (existing files are kept) with per-service
   # ownership: API files for uid 10001, MinIO files for uid 65532, the PostgreSQL password for
   # root (its entrypoint reads it before dropping privileges).
+  # KN_ROTATE_JWT_SECRETS=true replaces the JWT pair through an atomic rename, e.g. when a backup
+  # or its secrets may have leaked (code review MJ-19; docs/operations.md). Everyone signs in again.
   secrets-init:
     profiles: ["scale"]
     image: kabuki-neko-api:${KN_IMAGE_TAG:-local}
     user: "0:0"
+    environment:
+      KN_ROTATE_JWT_SECRETS: ${KN_ROTATE_JWT_SECRETS:-false}
     entrypoint: ["node", "-e"]
     command:
       - |
@@ -121,11 +125,14 @@ services:
         const fs = require("node:fs");
         const dir = "/run/kabuki-secrets";
         const random = (bytes) => randomBytes(bytes).toString("hex");
-        const write = (name, value, uid) => {
+        const rotate = process.env.KN_ROTATE_JWT_SECRETS === "true";
+        const write = (name, value, uid, replace = false) => {
           const file = `$${dir}/$${name}`;
-          if (fs.existsSync(file)) return fs.readFileSync(file, "utf8");
-          fs.writeFileSync(file, value, { mode: 0o400 });
-          fs.chownSync(file, uid, uid);
+          if (fs.existsSync(file) && !replace) return fs.readFileSync(file, "utf8");
+          const staged = `$${file}.new`;
+          fs.writeFileSync(staged, value, { mode: 0o400 });
+          fs.chownSync(staged, uid, uid);
+          fs.renameSync(staged, file);
           return value;
         };
         const password = write("postgres_password", random(24), 0);
@@ -134,9 +141,9 @@ services:
         const secret = write("s3_secret_key", random(32), 10001);
         write("minio_root_user", access, 65532);
         write("minio_root_password", secret, 65532);
-        write("jwt_access_secret", random(64), 10001);
-        write("jwt_refresh_secret", random(64), 10001);
-        process.stdout.write("secrets ready\n");
+        write("jwt_access_secret", random(64), 10001, rotate);
+        write("jwt_refresh_secret", random(64), 10001, rotate);
+        process.stdout.write(rotate ? "secrets ready (JWT pair rotated)\n" : "secrets ready\n");
     volumes:
       - kabuki-secrets:/run/kabuki-secrets
 

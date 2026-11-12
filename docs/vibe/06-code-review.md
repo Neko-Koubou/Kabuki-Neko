@@ -267,12 +267,13 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Backup ditulis ke `/tmp` lalu dihapus.
 - **Resolusi**: `docs/operations.md`: backup SQLite ditulis ke `/tmp/kabuki-backup.sqlite` di container, disalin keluar lalu dihapus (tidak tertinggal di volume data); restore berjalan lewat `$C run --rm --no-deps -v "$PWD/backup:/backup:ro" --entrypoint sh api` sebagai user image (uid 10001), menghapus DB lama + WAL/SHM lalu `cp` dari mount read-only. Diverifikasi dengan image API: prosedur lama → `attempt to write a readonly database`, prosedur baru → file milik 10001 dan bisa ditulis, data sama dengan backup. Regresi: pemeriksaan dokumen di `backup-restore.spec.ts` (gagal pada dokumen lama).
 
-#### MJ-19 [MAJOR] [OPEN] Rotasi secret di dokumentasi tidak berlaku untuk profil scale
+#### MJ-19 [MAJOR] [RESOLVED] Rotasi secret di dokumentasi tidak berlaku untuk profil scale
 - **File:Line**: `docs/operations.md:116-117`; `docs/deployment.md:81-84`; `docker/docker-compose.yml:36-58`.
 - **Masalah**:
   - Compose tidak meneruskan `JWT_*`/`*_FILE` ke API, dan entrypoint tetap memuat file di volume `kabuki-secrets`.
   - Karena itu, "rotasi" setelah backup bocor tidak mengganti secret.
 - **Perbaikan**: dokumentasikan rotasi dengan menghapus `jwt_*_secret` dari volume secrets lalu `up -d` (secrets-init membuat ulang). Untuk profil default, hapus `runtime-secrets.json`.
+- **Resolusi**: `secrets-init` mendukung `KN_ROTATE_JWT_SECRETS=true` yang mengganti pasangan JWT secara atomik (stage + rename, tetap 0400/uid 10001) dan mempertahankan kredensial lain. `docs/operations.md` kini menjelaskan rotasi yang benar per profil (default: hapus `runtime-secrets.json` lalu start; scale: `KN_ROTATE_JWT_SECRETS=true … run --rm --no-deps secrets-init` lalu `restart api`; secret eksplisit lewat override) dan bahwa Compose tidak meneruskan `JWT_*` dari shell; `docs/deployment.md` dikoreksi. Diverifikasi dengan compose project sementara: run biasa idempoten, rotasi hanya mengubah JWT. Langkah rotasi ditambahkan ke integrasi `deployment.spec.ts` (token lama → 401 setelah restart).
 
 #### MJ-20 [MAJOR] [OPEN] Job CI `drivers` gagal di runner bersih: `catalog-deployment.spec` butuh image yang tidak pernah dibangun
 - **File:Line**: `.github/workflows/ci.yml:114-121`; `tests/integration/catalog-deployment.spec.ts:86-105`.

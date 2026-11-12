@@ -361,6 +361,20 @@ describe("scale profile", () => {
     expect((await api(p)("/auth/me", { token })).status).toBe(200);
     expect((await fetch(image.publicUrl)).status).toBe(200);
 
+    // Rotating the JWT pair (code review MJ-19; docs/operations.md): secrets-init replaces only
+    // that pair, and after an API restart tokens signed with the old pair are rejected.
+    const rotation = { ...p, env: { ...p.env, KN_ROTATE_JWT_SECRETS: "true" } };
+    expect(await compose(rotation, ["run", "--rm", "--no-deps", "secrets-init"])).toContain(
+      "JWT pair rotated",
+    );
+    await compose(p, ["restart", "api"]);
+    expect(await until(() => health(p, "api"), "healthy", 240_000)).toBe("healthy");
+    expect((await exec(p, "api", "cat /run/kabuki-secrets/jwt_access_secret")).trim()).not.toBe(
+      jwtAccess,
+    );
+    expect((await exec(p, "api", "cat /run/kabuki-secrets/database_url")).trim()).toBe(databaseUrl);
+    expect((await api(p)("/auth/me", { token })).status).toBe(401);
+
     const password = /^postgresql:\/\/kabuki:([^@]+)@/u.exec(databaseUrl)?.[1] ?? "";
     await expectCleanBundle(p, [password, s3Secret, jwtAccess]);
   });

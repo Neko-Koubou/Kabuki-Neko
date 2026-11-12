@@ -83,7 +83,13 @@ games are not copied to PostgreSQL, S3 or Redis, nor back. Migrate deliberately 
 - No credential is in the Compose file, an image or `.env.example`, and nothing uses the
   `minioadmin` sample. To supply your own secrets, set `<NAME>_FILE` (Docker secrets) or the
   variable itself for `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `DATABASE_URL`, `REDIS_URL`,
-  `S3_ACCESS_KEY` and `S3_SECRET_KEY`.
+  `S3_ACCESS_KEY` and `S3_SECRET_KEY` **in the API's own environment**. The bundled Compose file
+  does not forward these from your shell; add them under `services.api.environment` (and mount
+  the files) in a Compose override file.
+- Rotating the JWT pair (for example after a leaked backup) is described in
+  [operations.md](operations.md#restore-checklist-and-session-policy): delete
+  `runtime-secrets.json` in the default profile, or run `secrets-init` with
+  `KN_ROTATE_JWT_SECRETS=true` in the scale profile, then restart the API.
 - Several API nodes (`DEPLOYMENT_TOPOLOGY=multi`) need the same JWT pair. The entrypoint refuses
   to start a multi-node API without it.
 
