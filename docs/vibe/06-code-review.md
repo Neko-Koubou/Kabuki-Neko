@@ -182,10 +182,11 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Kuis yang terhapus di tengah proses membuat seluruh daftar menjadi 404.
 - **Perbaikan**: jalur `read` tanpa lock/transaksi tulis, dan summary batch yang melewati baris yang hilang.
 
-#### MJ-10 [MAJOR] [OPEN] `/system/health` tidak dapat melaporkan Redis down
+#### MJ-10 [MAJOR] [RESOLVED] `/system/health` tidak dapat melaporkan Redis down
 - **File:Line**: `apps/api/src/modules/system/system.controller.ts:53-57,91-97`; `apps/api/src/common/rate-limit.service.ts:77-95`.
 - **Masalah**: limiter gagal lebih dulu (`DEPENDENCY_UNAVAILABLE`) sehingga body Health 503 tidak pernah dikirim. Melanggar SA §4.4 dan AC-16-02.
 - **Perbaikan**: di `getHealth`, abaikan `DEPENDENCY_UNAVAILABLE` dari limiter. 429 tetap diteruskan.
+- **Resolusi**: `getHealth` (`system.controller.ts`) tetap membebankan tier PUBLIC (429 diteruskan, query tetap 422), tetapi `DEPENDENCY_UNAVAILABLE` dari limiter (Redis mati) tidak lagi menghentikan request: pengecekan berjalan dan mengembalikan body Health 503 dengan `state` down. Spec baru `system.controller.spec.ts` (gagal pada kode lama). API Jest 34/239, tsc, lint PASS.
 
 #### MJ-11 [MAJOR] [OPEN] Endpoint laporan berhalaman memuat seluruh jawaban sesi
 - **File:Line**: `apps/api/src/modules/reports/reports.service.ts:322-330,359-367,389-395`; `reports.repository.ts:323-333`.
