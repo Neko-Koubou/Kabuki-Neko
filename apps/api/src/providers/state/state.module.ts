@@ -1,4 +1,4 @@
-import { Injectable, Module } from "@nestjs/common";
+import { Injectable, Logger, Module } from "@nestjs/common";
 import Redis, { Cluster } from "ioredis";
 import { createAdapter } from "@socket.io/redis-adapter";
 import type { Server } from "socket.io";
@@ -23,13 +23,52 @@ export class StateProjection {
   };
 }
 
+/** Something that publishes like an ioredis client (`publish` returns a promise). */
+export interface Publisher {
+  publish: (...args: never[]) => Promise<unknown>;
+}
+
+/**
+ * Makes `client.publish` never reject (QA follow-up TASK-185A).
+ *
+ * `@socket.io/redis-adapter` 8.3.0 calls `pubClient.publish(...)` without awaiting or catching it.
+ * The pub client has a command timeout, so a publish that times out (stalled event loop) or fails
+ * (Redis outage) was an unhandled rejection, and Node exits on one: the whole API node and every
+ * socket on it went down. A failed fan-out message is now counted and logged (`onFailure`, no
+ * payload or secret) and resolves to 0 receivers, like a message lost in transit; clients recover
+ * through the `room:version` heartbeat and `room:sync`. Commands on the other clients still reject
+ * to their callers.
+ */
+export function guardPublish(client: Publisher, onFailure: (error: unknown) => void): void {
+  const publish = client.publish.bind(client) as (...args: unknown[]) => Promise<unknown>;
+  client.publish = ((...args: unknown[]) =>
+    publish(...args).catch((error: unknown) => {
+      onFailure(error);
+      return 0;
+    })) as Publisher["publish"];
+}
+
 /** Owns independent command/publish/subscribe connections. The future game
  * gateway installs this adapter on its Socket.io server before accepting traffic. */
 export class StateConnections {
   private clients: (Redis | Cluster)[] = [];
   command: Redis | Cluster | null = null;
   private adapter: ReturnType<typeof createAdapter> | null = null;
+  /** Fan-out publishes that failed or timed out (see `guardPublish`). */
+  publishFailures = 0;
+  private readonly logger = new Logger("StateConnections");
   private constructor(private readonly config: ConfigService) {}
+
+  /** Counts a failed adapter publish; logs the first and then every 100th (no payload). */
+  private publishFailed(error: unknown): void {
+    this.publishFailures += 1;
+    if (this.publishFailures === 1 || this.publishFailures % 100 === 0)
+      this.logger.warn(
+        `Socket.io Redis adapter publish failed (${this.publishFailures} so far): ${
+          error instanceof Error ? error.message : "unknown error"
+        }`,
+      );
+  }
   static async open(config: ConfigService): Promise<StateConnections> {
     const connections = new StateConnections(config);
     if (config.get("STATE_DRIVER") === "memory") return connections;
@@ -65,6 +104,7 @@ export class StateConnections {
       if (!command || !pub || !sub) throw new Error("Missing state connections");
       await Promise.all(connections.clients.map((client) => client.ping()));
       connections.command = command;
+      guardPublish(pub as unknown as Publisher, (error) => connections.publishFailed(error));
       connections.adapter = createAdapter(pub, sub, {
         key: `kabukineko:${config.get("STATE_NAMESPACE")}:socket.io`,
         requestsTimeout: 2000,

@@ -2455,3 +2455,22 @@
   - `pnpm exec eslint scripts tests/performance` → pass; tsc (strict, commonjs) for the script → pass.
   - `pnpm exec prettier --check docs/performance-results.md` → pass.
   - Records `test-results/benchmark/memory.json` and `redis.json` are referenced from the doc (copies in the session scratchpad).
+
+## TASK-185A: Cegah crash node API saat publish adapter Redis gagal — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/providers/state/state.module.ts`:
+    - `guardPublish(client, onFailure)` wraps the adapter's pub client `publish`. A rejection (command timeout, closed connection) resolves to 0 receivers and is counted.
+    - `StateConnections.publishFailures` holds the count. The first failure and every 100th are logged with the error message only (no payload or secret).
+    - Commands on the command client are unchanged and still reject to their callers. There is no global `unhandledRejection` handler.
+  - `apps/api/src/providers/state/state.module.spec.ts` (new):
+    - a real, never-connected ioredis client with the guard: publish resolves 0, one failure counted, no unhandled rejection, and `get` still rejects;
+    - successful publishes pass their arguments and result through;
+    - timeouts and closed connections are both absorbed.
+- **Verification**:
+  - New spec 3/3 PASS. With `guardPublish` replaced by a no-op (old behavior), 2/3 FAIL: Jest fails on the unhandled rejection "Stream isn't writeable…".
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 39/39 suites, 260/260 tests.
+  - `pnpm test:contracts --testPathPatterns='state-parity|redis'` → 4/4 suites, 55/55 tests.
+  - `pnpm test:integration --testPathPatterns='realtime-races'` → 10/10.
+  - The end-to-end effect on the two-node benchmark is measured in TASK-185E.
