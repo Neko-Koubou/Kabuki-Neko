@@ -78,7 +78,7 @@ async function bundle(
   await writeFile(path.join(dir, "registry.json"), JSON.stringify(registry));
   return { dir, buildId };
 }
-/** Source cue files grouped by phase folder, read from the real audio input directory. */
+/** Cue names grouped by phase folder, read from the committed audio set (its MP3 fallbacks). */
 async function sourceCues() {
   const cues: Record<string, string[]> = {};
   for (const folder of ["01-lobby", "02-thinking", "03-leaderboard", "04-podium", "05-sfx"])
@@ -236,10 +236,28 @@ describe("AudioCatalogService", () => {
     expect(service.current().sfx.nekoPop.throttleMs).toBe(150);
   });
 
-  it("rejects the legacy source manifest and missing, colliding or injected descriptors", async () => {
-    await expect(
-      loadAudioManifest(path.join(SOURCE_AUDIO, "audio-manifest.json")),
-    ).rejects.toBeInstanceOf(AudioCatalogError);
+  it("accepts the committed audio set and rejects legacy, missing, colliding or injected descriptors", async () => {
+    // The committed set is already optimized: its manifest loads and every file it names exists.
+    const committed = await loadAudioManifest(path.join(SOURCE_AUDIO, "audio-manifest.json"));
+    expect(committed.lobby.map((track) => track.id)).toEqual([
+      "kabuki",
+      "matcha",
+      "neko8bit",
+      "showtime",
+    ]);
+    // The old single-format manifest (`phases` wrapper, one MP3 per cue) is refused.
+    const legacy = path.join(directory, "legacy-audio-manifest.json");
+    await writeFile(
+      legacy,
+      JSON.stringify({
+        phases: {
+          lobby: {
+            kabuki: { src: "/audio/01-lobby/bgm-lobby-kabuki.mp3", loop: true, volume: 0.7 },
+          },
+        },
+      }),
+    );
+    await expect(loadAudioManifest(legacy)).rejects.toBeInstanceOf(AudioCatalogError);
     const variants: [string, (manifest: Record<string, unknown>) => void][] = [
       ["missing-cue", (m) => delete (m.sfx as Record<string, unknown>).nekoPop],
       ["collision", (m) => (m.lobby as unknown[]).push((m.lobby as unknown[])[0])],

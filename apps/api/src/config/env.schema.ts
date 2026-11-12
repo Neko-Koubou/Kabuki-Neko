@@ -237,9 +237,11 @@ export function parseEnvironment(raw: Record<string, string | undefined>): Runti
     ALLOW_INSECURE_LOCAL_HTTP: production ? "false" : "true",
     TRUST_PROXY_CIDRS: "[]",
     LOCALE_BUNDLE_PATH: production ? "/app/locales-built" : path.join(root, "locales-built"),
+    // Outside production the committed, already optimized audio set is read in place, so the API
+    // serves its catalogue without a prior `pnpm build:assets`.
     AUDIO_MANIFEST_PATH: production
       ? "/app/audio/audio-manifest.json"
-      : path.join(root, "apps/web/public/audio/audio-manifest.json"),
+      : path.join(root, "audio-assets/kabuki-neko-audio/audio-manifest.json"),
     AUDIT_RETENTION_DAYS: "30",
     FINALIZE_CONCURRENCY: "2",
     ROOM_MAX_AGE_SEC: "28800",

@@ -11,21 +11,22 @@
  *   2. The OFL text reproduced in the notices still hashes to the recorded package LICENSE.
  *   3. Every avatar style the app offers (`AVATAR_STYLES`) is installed at the version and with the
  *      LICENSE SHA-256 recorded in the notices' DiceBear section.
- *   4. Every audio source listed in docs/audio-provenance.json exists with its recorded SHA-256 and
- *      no unlisted source exists. When the generated audio directory exists (`pnpm audio:optimize`)
- *      every listed output must exist with a WebM/MP3 signature and `/audio/CREDITS.md` must be
- *      byte-identical to the source. With `--require-audio` a missing generated directory fails.
- *
- *   5. Distribution checks (TASK-174), whenever the generated audio is present:
- *      - the generated `audio-manifest.json` parses with the shared strict schema, so a legacy or
- *        stale manifest (such as the old four-URL `phases` wrapper) fails;
- *      - every descriptor has its WebM first and its MP3 fallback;
- *      - its URL set equals the provenance outputs exactly (40 variants for the 20 sources);
- *      - every WebM is an EBML WebM file carrying the Opus codec.
- *   6. Attribution: the provenance must state that the code license does not apply to the audio
+ *   4. Audio (the committed set in `audio-assets/kabuki-neko-audio` is already optimized; nothing
+ *      is encoded at build time):
+ *      - every optimized file recorded in docs/audio-provenance.json (`outputFiles`) exists as a
+ *        regular file with its recorded SHA-256 and the WebM/MP3 signature of its extension, and
+ *        no unrecorded file exists in the set;
+ *      - the committed `audio-manifest.json` parses with the shared strict schema (a legacy or
+ *        stale manifest such as the old four-URL `phases` wrapper fails), lists every cue WebM
+ *        first with its MP3 fallback, and its URL set equals the provenance outputs exactly (40
+ *        files for 20 cues); every WebM is an EBML WebM file carrying the Opus codec;
+ *      - `CREDITS.md` is present;
+ *      - when the published copy `<public>/audio` exists it holds exactly the committed files,
+ *        byte-for-byte. With `--require-audio` a missing published copy fails.
+ *   5. Attribution: the provenance must state that the code license does not apply to the audio
  *      and must name a different asset license, which the notices also name. No license
  *      equivalence is invented.
- *   7. Locale bundle, with `--require-locales` or when either copy exists:
+ *   6. Locale bundle, with `--require-locales` or when either copy exists:
  *      - the API bundle (`--locales`, default `<root>/locales-built`) and the web copy
  *        (`<public>/locales`) carry a byte-identical, schema-valid registry (same buildId);
  *      - every namespace asset is present in both with its registry SHA-256;
@@ -35,7 +36,9 @@
  * - LICENSE and THIRD-PARTY-NOTICES.md are copied byte-for-byte to `<public>/legal/LICENSE.txt` and
  *   `<public>/legal/THIRD-PARTY-NOTICES.txt` (served at `/legal/*.txt`, the URLs returned by
  *   GET /system/about);
- * - the same two files go to `<api>/legal/`, and the generated audio manifest to
+ * - with `--publish-audio`, the committed audio set is first verified and copied byte-for-byte to
+ *   `<public>/audio` (served at `/audio/*`);
+ * - the same two files go to `<api>/legal/`, and the published audio manifest to
  *   `<api>/audio/audio-manifest.json`, so the API artifact ships the root legal texts and
  *   metadata matching the web audio (`--api`, default `<root>/apps/api/assets`).
  * Every directory is staged in a sibling directory, compared with its sources and swapped in, so
@@ -48,13 +51,12 @@
  * - `--locales <dir>`;
  * - `--require-audio`;
  * - `--require-locales`;
- * - `--ensure-audio`: run `pnpm audio:optimize` first when the generated audio is missing.
+ * - `--publish-audio`: copy the committed audio set to `<public>/audio` (no ffmpeg needed).
  *
  * The root `pnpm build` runs `pnpm build:assets` (locales:build, then this script with
  * every requirement), so a release build cannot ship without them. Exit codes: 0 packaged,
  * 1 verification failed (problems listed on stderr), 2 unexpected error.
  */
-import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdir, open, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -67,7 +69,8 @@ import { localeRegistrySchema } from "../packages/shared/src/schemas/locale.sche
 
 const ROOT = path.resolve(__dirname, "..");
 const NOTICES_FILE = "THIRD-PARTY-NOTICES.md";
-const AUDIO_SOURCE_DIR = "audio-assets/kabuki-neko-audio";
+/** The committed, already optimized audio set (WebM + MP3 per cue, manifest, credits). */
+const AUDIO_DIR = "audio-assets/kabuki-neko-audio";
 const PROVENANCE_FILE = "docs/audio-provenance.json";
 
 /** Legal texts copied verbatim into `<public>/legal`. */
@@ -470,29 +473,66 @@ async function verifyDiceBear(root: string, notices: string, problems: Problem[]
   }
 }
 
-/** Minimal shape of docs/audio-provenance.json used here. */
-interface ProvenanceEntry {
-  path: string;
+/** One optimized file recorded in docs/audio-provenance.json (`outputFiles`). */
+interface ProvenanceOutput {
+  url: string;
   sha256: string;
-  outputs: string[];
 }
 
-/** Validates the provenance JSON shape; returns its entries or throws. */
+/** Minimal shape of a docs/audio-provenance.json entry used here. */
+interface ProvenanceEntry {
+  /** The supplied original's path (history only; the original is not in the repository). */
+  path: string;
+  /** The two published URLs of the cue: WebM first, MP3 fallback. */
+  outputs: string[];
+  /** SHA-256 of each committed optimized file, keyed by URL. */
+  outputFiles: ProvenanceOutput[];
+}
+
+/** A published audio URL (`/audio/<phase folder>/<name>.webm|mp3`). */
+const AUDIO_URL = /^\/audio\/0[1-5]-[a-z]+\/[a-z0-9-]+\.(webm|mp3)$/u;
+/** Files of the committed audio set besides the optimized cues. */
+const AUDIO_EXTRA_FILES = ["CREDITS.md", "audio-manifest.json"] as const;
+
+/** Path of a published audio URL relative to an audio directory (`/audio/` prefix dropped). */
+function audioRelative(url: string): string {
+  return url.slice("/audio/".length);
+}
+
+/**
+ * Validates the provenance JSON shape; returns its entries or throws. Every output URL must have
+ * exactly one recorded SHA-256 in `outputFiles`.
+ */
 function provenanceEntries(json: unknown): ProvenanceEntry[] {
   const files = (json as { files?: unknown }).files;
   if (!Array.isArray(files)) throw new Error("provenance has no files array");
   return files.map((entry: unknown, index) => {
-    const { path: file, sha256: hash, outputs } = entry as Record<string, unknown>;
+    const { path: file, outputs, outputFiles } = entry as Record<string, unknown>;
     const validPath = typeof file === "string" && /^0[1-5]-[a-z]+\/[a-z0-9-]+\.mp3$/u.test(file);
-    const validOutputs =
-      Array.isArray(outputs) &&
-      outputs.length > 0 &&
-      outputs.every(
-        (o) => typeof o === "string" && /^\/audio\/0[1-5]-[a-z]+\/[a-z0-9-]+\.(webm|mp3)$/u.test(o),
-      );
-    if (!validPath || typeof hash !== "string" || !/^[0-9a-f]{64}$/u.test(hash) || !validOutputs)
-      throw new Error(`provenance entry ${index} is malformed`);
-    return { path: file, sha256: hash, outputs: outputs as string[] };
+    const urls =
+      Array.isArray(outputs) && outputs.every((o) => typeof o === "string" && AUDIO_URL.test(o))
+        ? (outputs as string[])
+        : [];
+    const hashes = (Array.isArray(outputFiles) ? outputFiles : []).filter(
+      (item: unknown): item is ProvenanceOutput => {
+        const record = (item ?? {}) as Record<string, unknown>;
+        return (
+          typeof record["url"] === "string" &&
+          typeof record["sha256"] === "string" &&
+          /^[0-9a-f]{64}$/u.test(record["sha256"])
+        );
+      },
+    );
+    const covered =
+      urls.length > 0 &&
+      hashes.length === urls.length &&
+      urls.every((url) => hashes.filter((hash) => hash.url === url).length === 1);
+    if (!validPath || !covered) throw new Error(`provenance entry ${index} is malformed`);
+    return {
+      path: file as string,
+      outputs: urls,
+      outputFiles: hashes.map(({ url, sha256: hash }) => ({ url, sha256: hash })),
+    };
   });
 }
 
@@ -536,11 +576,16 @@ function manifestSources(manifest: unknown): { at: string; src: string[] }[] {
 }
 
 /**
- * The generated manifest must be the current one: schema-valid (legacy or stale shapes fail),
- * WebM first with an MP3 fallback for every cue, exactly the provenance outputs, and every WebM
- * an EBML file declaring the Opus codec.
+ * The committed manifest must be the current one: schema-valid (legacy or stale shapes fail),
+ * WebM first with an MP3 fallback for every cue, exactly the provenance outputs, and every WebM in
+ * `audioDir` an EBML file declaring the Opus codec.
  */
-async function verifyManifest(file: string, entries: ProvenanceEntry[], problems: Problem[]) {
+async function verifyManifest(
+  file: string,
+  audioDir: string,
+  entries: ProvenanceEntry[],
+  problems: Problem[],
+) {
   let manifest: unknown;
   try {
     manifest = JSON.parse((await readRegularFile(file)).toString("utf8"));
@@ -555,7 +600,7 @@ async function verifyManifest(file: string, entries: ProvenanceEntry[], problems
       message: `stale or legacy manifest (schema: ${parsed.error.issues
         .slice(0, 3)
         .map((issue) => issue.path.join(".") || issue.message)
-        .join(", ")}); run pnpm audio:optimize`,
+        .join(", ")}); regenerate the audio set with pnpm audio:optimize`,
     });
   const listed = new Set<string>();
   for (const { at, src } of manifestSources(manifest)) {
@@ -569,11 +614,10 @@ async function verifyManifest(file: string, entries: ProvenanceEntry[], problems
       problems.push({ file, message: `${url} is not an output of docs/audio-provenance.json` });
   for (const url of expected)
     if (!listed.has(url)) problems.push({ file, message: `${url} is missing from the manifest` });
-  const root = path.dirname(path.dirname(file));
   for (const url of expected) {
     if (!url.endsWith(".webm")) continue;
     try {
-      const head = await readHead(path.join(root, url), 4096);
+      const head = await readHead(path.join(audioDir, audioRelative(url)), 4096);
       if (!head.includes(Buffer.from("webm")) || !head.includes(Buffer.from("A_OPUS")))
         problems.push({ file: url, message: "not a WebM file with the Opus codec" });
     } catch {
@@ -675,8 +719,33 @@ async function verifyLocales(options: PackageOptions, problems: Problem[]): Prom
   return `locale bundle ${registry.buildId.slice(0, 12)}: ${registry.locales.length} locales, ${assets} assets in both API and web`;
 }
 
-/** Verifies audio sources against provenance and, when generated, the published outputs. */
-async function verifyAudio(options: PackageOptions, problems: Problem[]): Promise<string> {
+/** Relative paths (with `/`) of every non-directory entry under `dir`; symlinks are not followed. */
+async function listTree(dir: string, prefix = ""): Promise<string[]> {
+  const found: string[] = [];
+  for (const item of await readdir(path.join(dir, prefix), { withFileTypes: true })) {
+    const relative = prefix ? `${prefix}/${item.name}` : item.name;
+    if (item.isDirectory()) found.push(...(await listTree(dir, relative)));
+    else found.push(relative);
+  }
+  return found.sort();
+}
+
+/** Every file of the committed audio set, relative to its directory: cues, credits, manifest. */
+function audioSetFiles(entries: ProvenanceEntry[]): string[] {
+  return [...entries.flatMap((entry) => entry.outputs.map(audioRelative)), ...AUDIO_EXTRA_FILES];
+}
+
+/**
+ * Verifies the committed, already optimized audio set in `audio-assets/kabuki-neko-audio` against
+ * docs/audio-provenance.json: every recorded file exists as a regular file with its SHA-256 and the
+ * signature of its extension, no unrecorded file exists, the manifest is current (see
+ * verifyManifest) and the credits are present. Returns the provenance entries, or null when the
+ * provenance itself is unreadable.
+ */
+export async function verifyCommittedAudio(
+  options: PackageOptions,
+  problems: Problem[],
+): Promise<ProvenanceEntry[] | null> {
   let entries: ProvenanceEntry[];
   try {
     entries = provenanceEntries(
@@ -684,71 +753,95 @@ async function verifyAudio(options: PackageOptions, problems: Problem[]): Promis
     );
   } catch (error) {
     problems.push({ file: PROVENANCE_FILE, message: describe(error) });
-    return "audio provenance unreadable";
+    return null;
   }
-  const sourceRoot = path.join(options.root, AUDIO_SOURCE_DIR);
-  const listed = new Set(entries.map((entry) => entry.path));
+  const committed = path.join(options.root, AUDIO_DIR);
+  const hashes = new Map(
+    entries.flatMap((entry) => entry.outputFiles).map((item) => [audioRelative(item.url), item]),
+  );
   try {
-    for (const folder of await readdir(sourceRoot, { withFileTypes: true })) {
-      if (!folder.isDirectory()) continue;
-      for (const item of await readdir(path.join(sourceRoot, folder.name)))
-        if (item.endsWith(".mp3") && !listed.has(`${folder.name}/${item}`))
-          problems.push({
-            file: `${AUDIO_SOURCE_DIR}/${folder.name}/${item}`,
-            message: "source has no provenance entry",
-          });
-    }
+    for (const relative of await listTree(committed))
+      if (!hashes.has(relative) && !(AUDIO_EXTRA_FILES as readonly string[]).includes(relative))
+        problems.push({
+          file: `${AUDIO_DIR}/${relative}`,
+          message: "audio file has no provenance entry",
+        });
   } catch (error) {
-    problems.push({ file: AUDIO_SOURCE_DIR, message: `cannot list sources: ${describe(error)}` });
+    problems.push({ file: AUDIO_DIR, message: `cannot list the audio set: ${describe(error)}` });
   }
-  for (const entry of entries) {
-    const file = `${AUDIO_SOURCE_DIR}/${entry.path}`;
+  for (const [relative, item] of hashes) {
+    const file = `${AUDIO_DIR}/${relative}`;
     try {
-      if (sha256(await readRegularFile(path.join(options.root, file))) !== entry.sha256)
+      const data = await readRegularFile(path.join(options.root, file));
+      if (!audioSignatureMatches(relative, data.subarray(0, 4)))
+        problems.push({ file, message: "audio signature does not match its extension" });
+      if (sha256(data) !== item.sha256)
         problems.push({ file, message: "SHA-256 differs from docs/audio-provenance.json" });
     } catch (error) {
       problems.push({ file, message: `missing or unreadable: ${describe(error)}` });
     }
   }
-  const generated = path.join(options.publicDir, "audio");
-  const exists = await lstat(generated).then(
+  await verifyManifest(path.join(committed, "audio-manifest.json"), committed, entries, problems);
+  const credits = `${AUDIO_DIR}/CREDITS.md`;
+  try {
+    if ((await readRegularFile(path.join(options.root, credits))).length === 0)
+      problems.push({ file: credits, message: "credits are empty" });
+  } catch (error) {
+    problems.push({ file: credits, message: `missing or unreadable: ${describe(error)}` });
+  }
+  return entries;
+}
+
+/**
+ * Verifies the committed audio set and its published copy in `<public>/audio`: the copy must hold
+ * exactly the committed files, byte-for-byte (no missing, changed or stale file). A missing copy
+ * fails only with `--require-audio`.
+ */
+async function verifyAudio(options: PackageOptions, problems: Problem[]): Promise<string> {
+  const entries = await verifyCommittedAudio(options, problems);
+  if (!entries) return "audio provenance unreadable";
+  const committed = path.join(options.root, AUDIO_DIR);
+  const published = path.join(options.publicDir, "audio");
+  const exists = await lstat(published).then(
     (info) => info.isDirectory(),
     () => false,
   );
   if (!exists) {
     if (options.requireAudio)
       problems.push({
-        file: generated,
-        message: "generated audio missing; run pnpm audio:optimize",
+        file: published,
+        message: "published audio missing; run pnpm build:assets",
       });
-    return `${entries.length} audio sources verified; generated audio not present`;
+    return `${entries.length} audio cues verified; published copy not present`;
   }
-  let outputs = 0;
-  for (const entry of entries)
-    for (const output of entry.outputs) {
-      const file = path.join(options.publicDir, output);
-      try {
-        if (!audioSignatureMatches(output, await readHead(file, 4)))
-          problems.push({ file, message: "audio signature does not match its extension" });
-        outputs++;
-      } catch (error) {
-        problems.push({ file, message: `missing or unreadable: ${describe(error)}` });
-      }
-    }
-  await verifyManifest(path.join(generated, "audio-manifest.json"), entries, problems);
-  for (const [file, check] of [
-    [path.join(generated, "audio-manifest.json"), null],
-    [path.join(generated, "CREDITS.md"), path.join(sourceRoot, "CREDITS.md")],
-  ] as const) {
+  const names = audioSetFiles(entries);
+  for (const name of names) {
+    const file = path.join(published, name);
+    let original: Buffer;
     try {
-      const data = await readRegularFile(file);
-      if (check !== null && !data.equals(await readRegularFile(check)))
-        problems.push({ file, message: "differs from the source CREDITS.md" });
+      original = await readRegularFile(path.join(committed, name));
+    } catch {
+      continue; // reported by verifyCommittedAudio
+    }
+    try {
+      if (!(await readRegularFile(file)).equals(original))
+        problems.push({ file, message: "differs from the committed audio set" });
     } catch (error) {
       problems.push({ file, message: `missing or unreadable: ${describe(error)}` });
     }
   }
-  return `${entries.length} audio sources and ${outputs} generated outputs verified`;
+  try {
+    for (const relative of await listTree(published))
+      if (!names.includes(relative))
+        problems.push({
+          file: path.join(published, relative),
+          message: "not part of the committed audio set (stale file)",
+        });
+  } catch (error) {
+    problems.push({ file: published, message: `cannot list: ${describe(error)}` });
+  }
+  const files = entries.reduce((total, entry) => total + entry.outputs.length, 0);
+  return `${entries.length} audio cues and ${files} optimized files verified; published copy identical`;
 }
 
 /** Runs every verification; returns the problems and a human-readable summary. */
@@ -780,7 +873,8 @@ export async function verifyAssets(
 }
 
 /**
- * Publishes `files` (name → source) as the directory `target` through a staging directory: each
+ * Publishes `files` (name → source; a name may contain `/` subfolders) as the directory `target`
+ * through a staging directory: each
  * copy is compared with its source, then the directory is swapped in. The previous directory
  * survives any failure.
  */
@@ -795,6 +889,7 @@ async function publishDirectory(target: string, files: { name: string; source: s
       const source = await readRegularFile(file.source);
       if (source.length === 0) throw new Error(`${file.source} is empty`);
       const copy = path.join(staging, file.name);
+      await mkdir(path.dirname(copy), { recursive: true });
       await writeFile(copy, source, { flag: "wx" });
       if (!(await readFile(copy)).equals(source))
         throw new Error(`${file.name} copy differs from its source`);
@@ -829,7 +924,7 @@ export async function packageLegal(options: PackageOptions): Promise<string[]> {
   return written;
 }
 
-/** Copies the generated audio manifest into `<api>/audio` so the API metadata matches the web. */
+/** Copies the published audio manifest into `<api>/audio` so the API metadata matches the web. */
 export async function packageApiAudio(options: PackageOptions): Promise<string[]> {
   const manifest = path.join(options.publicDir, "audio", "audio-manifest.json");
   const present = await lstat(manifest).then(
@@ -842,19 +937,29 @@ export async function packageApiAudio(options: PackageOptions): Promise<string[]
   ]);
 }
 
-/** Runs `pnpm audio:optimize` (scripts/optimize-audio.mjs) for `root` into `<public>/audio`. */
-function optimizeAudio(options: PackageOptions) {
-  execFileSync(
-    process.execPath,
-    [
-      path.join(ROOT, "scripts/optimize-audio.mjs"),
-      "--source",
-      path.join(options.root, AUDIO_SOURCE_DIR),
-      "--out",
-      path.join(options.publicDir, "audio"),
-    ],
-    { stdio: "inherit" },
+/**
+ * Copies the committed audio set byte-for-byte into `<public>/audio` (staged and swapped in, so
+ * stale files disappear and a failure keeps the previous copy). No encoder runs: the committed
+ * files are already optimized.
+ */
+export async function publishAudio(
+  options: PackageOptions,
+  entries: ProvenanceEntry[],
+): Promise<string[]> {
+  const committed = path.join(options.root, AUDIO_DIR);
+  return publishDirectory(
+    path.join(options.publicDir, "audio"),
+    audioSetFiles(entries).map((name) => ({ name, source: path.join(committed, name) })),
   );
+}
+
+/** Prints the problems and marks the run as failed; packaged copies are left as they were. */
+function fail(problems: Problem[]): void {
+  for (const problem of problems) process.stderr.write(`${problem.file}: ${problem.message}\n`);
+  process.stderr.write(
+    `package-assets: ${problems.length} problem(s); packaged copies were not changed\n`,
+  );
+  process.exitCode = 1;
 }
 
 /** CLI entry: verify, then package the legal texts and API metadata; exit 1 on any problem. */
@@ -867,7 +972,7 @@ async function main() {
       locales: { type: "string" },
       "require-audio": { type: "boolean", default: false },
       "require-locales": { type: "boolean", default: false },
-      "ensure-audio": { type: "boolean", default: false },
+      "publish-audio": { type: "boolean", default: false },
     },
   });
   const root = path.resolve(values.root ?? ROOT);
@@ -879,24 +984,14 @@ async function main() {
     localesDir: path.resolve(values.locales ?? path.join(root, "locales-built")),
     requireLocales: values["require-locales"],
   };
-  if (values["ensure-audio"]) {
-    const generated = await lstat(
-      path.join(options.publicDir, "audio", "audio-manifest.json"),
-    ).then(
-      () => true,
-      () => false,
-    );
-    if (!generated) optimizeAudio(options);
+  if (values["publish-audio"]) {
+    const problems: Problem[] = [];
+    const entries = await verifyCommittedAudio(options, problems);
+    if (!entries || problems.length > 0) return fail(problems);
+    await publishAudio(options, entries);
   }
   const { problems, summary } = await verifyAssets(options);
-  if (problems.length > 0) {
-    for (const problem of problems) process.stderr.write(`${problem.file}: ${problem.message}\n`);
-    process.stderr.write(
-      `package-assets: ${problems.length} problem(s); packaged copies were not changed\n`,
-    );
-    process.exitCode = 1;
-    return;
-  }
+  if (problems.length > 0) return fail(problems);
   const written = [...(await packageLegal(options)), ...(await packageApiAudio(options))];
   for (const line of summary) process.stdout.write(`${line}\n`);
   process.stdout.write(

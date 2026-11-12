@@ -5,7 +5,8 @@
 #                unit tests, measuring-tool contracts (tests/performance), native module check.
 #   2. supply-chain — dependency audit, license inventory and a dependency SBOM (artifacts kept).
 #   3. drivers — real-engine driver contracts and integration suites (Docker testcontainers).
-#   4. e2e     — production build (ffmpeg for the audio set) and Playwright E2E (reports kept).
+#   4. e2e     — production build and Playwright E2E (reports kept). The audio set is committed
+#                already optimized, so builds copy it and need no ffmpeg.
 #   5. docker  — both Compose profiles validated, API/web images built, distribution checks.
 #   6. release-evidence — scripts/verify-release.ts: report-only on branches and pull requests,
 #                strict (fails on any PENDING/GAP row) on version tags.
@@ -65,7 +66,8 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
       # The API media-processor spec builds its audio/video fixtures with ffmpeg and probes them
-      # with ffprobe, and test:audio encodes with ffmpeg; the runner image has neither.
+      # with ffprobe, and test:audio exercises the maintainer-only optimizer; the runner image has
+      # neither. The build itself no longer needs ffmpeg (the audio set is committed optimized).
       - name: ffmpeg for the media and audio tests
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Unit tests
@@ -117,6 +119,7 @@ jobs:
         run: corepack enable && corepack prepare "pnpm@${PNPM_VERSION}" --activate
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
+      # ffprobe for the media integration suites (uploads are probed); the audio needs no encoder.
       - name: Build packages and assets
         run: |
           sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
@@ -148,8 +151,6 @@ jobs:
         run: corepack enable && corepack prepare "pnpm@${PNPM_VERSION}" --activate
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
-      - name: ffmpeg for the audio set
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Production build
         run: pnpm build
       - name: Playwright browser
@@ -195,7 +196,6 @@ jobs:
         run: DEPLOYMENT_PROFILE=scale ALLOW_INSECURE_LOCAL_HTTP=true docker compose -f docker/docker-compose.yml --profile scale config --quiet
       - name: Distribution checks (legal, attribution, audio, locales)
         run: |
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
           pnpm build:assets
           pnpm exec jest --config tests/jest.contracts.config.cjs tests/contracts/distribution.spec.ts
       - name: Build API image

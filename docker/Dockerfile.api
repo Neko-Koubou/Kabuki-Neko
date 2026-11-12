@@ -5,15 +5,16 @@
 # Stages:
 # 1. assets:
 #    - installs the whole workspace from the frozen lockfile;
-#    - runs `pnpm build:assets`: locale bundle; audio optimized with ffmpeg; LICENSE, notices and
-#      the audio manifest packaged and verified (scripts/package-assets.ts).
+#    - runs `pnpm build:assets`: locale bundle; the committed, already optimized audio set copied
+#      to apps/web/public/audio (no encoder runs); LICENSE, notices and the audio manifest packaged
+#      and verified (scripts/package-assets.ts).
 # 2. build:
 #    - compiles the API and its workspace packages;
 #    - `pnpm deploy` collects only production dependencies. Native modules (better-sqlite3, sharp)
 #      are built or fetched here, with compilers that never reach the runtime image.
 # 3. runtime, a fresh slim image with:
 #    - the deployed API;
-#    - the immutable locale bundle, the generated audio set with its manifest and credits (the API
+#    - the immutable locale bundle, the published audio set with its manifest and credits (the API
 #      checks that every manifest entry exists), and the legal texts;
 #    - a pinned ffprobe (Debian's ffmpeg package) for media probing;
 #    - tini for signal forwarding.
@@ -36,10 +37,11 @@ ARG TINI_VERSION=0.19.0-1+b3
 
 FROM ${NODE_IMAGE} AS assets
 ARG PNPM_VERSION
-ARG FFMPEG_VERSION
 ENV CI=true PNPM_HOME=/pnpm PATH=/pnpm:$PATH
+# Compilers for the native modules only; the audio is committed already optimized, so the build
+# needs no ffmpeg (ffprobe is installed in the runtime stage for media probing).
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates "ffmpeg=${FFMPEG_VERSION}" g++ make python3 \
+  && apt-get install -y --no-install-recommends ca-certificates g++ make python3 \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /repo
 COPY . .
@@ -70,7 +72,7 @@ WORKDIR /app
 COPY --from=build /out /app
 COPY --from=assets /repo/locales-built /app/locales-built
 # The API verifies that every manifest entry exists next to the manifest, so it ships the whole
-# generated audio set (manifest, 40 WebM/MP3 files, CREDITS.md) that the web image serves.
+# published audio set (manifest, 40 WebM/MP3 files, CREDITS.md) that the web image serves.
 COPY --from=assets /repo/apps/web/public/audio /app/audio
 COPY --from=assets /repo/apps/api/assets/legal /app/legal
 COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/kabuki-entrypoint

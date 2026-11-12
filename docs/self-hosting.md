@@ -44,6 +44,10 @@ git checkout <tag-rilis>   # gunakan tag rilis, bukan cabang pengembangan
 Image dibangun di server Anda dari source ini (`--build`); proyek tidak menerbitkan image ke
 registry.
 
+Audio sudah disimpan dalam bentuk **teroptimasi** di `audio-assets/kabuki-neko-audio/` (WebM/Opus
+dan MP3 per cue, beserta manifest dan kredit). Build hanya menyalin dan memverifikasinya, jadi
+tidak ada langkah optimasi audio dan ffmpeg tidak diperlukan untuk audio saat self-host.
+
 ### 3. Konfigurasi
 
 ```bash

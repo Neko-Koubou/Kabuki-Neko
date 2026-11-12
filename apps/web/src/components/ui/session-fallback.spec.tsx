@@ -33,11 +33,17 @@ vi.mock("next/navigation", () => ({
 }));
 
 const ALL = ["common", "accessibility", "validation", "auth", "player", "about"] as const;
-/** Lobby tracks from the packaged audio manifest (a valid public-config fixture). */
+/**
+ * Lobby tracks from the committed, already optimized audio manifest (a valid public-config
+ * fixture); read from the repository so the test needs no prior `pnpm build:assets`.
+ */
 const LOBBY_TRACKS: unknown = JSON.parse(
   process
     .getBuiltinModule("node:fs")
-    .readFileSync(`${process.cwd()}/public/audio/audio-manifest.json`, "utf8"),
+    .readFileSync(
+      `${process.cwd()}/../../audio-assets/kabuki-neko-audio/audio-manifest.json`,
+      "utf8",
+    ),
 ).lobby;
 
 /** Renders with the root providers (theme + auth with a scripted fetch). */

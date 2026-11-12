@@ -27,7 +27,7 @@ Source integrity:
 
 ## Audio assets (third-party, release-unverified)
 
-The 20 supplied audio files in `audio-assets/kabuki-neko-audio/` (10 BGM, 10 SFX) and the 40 WebM/MP3 files generated from them by `pnpm audio:optimize` are **not** covered by the project LICENSE. Copyright stays with the individual composers/creators who publish them on OpenTracks (formerly DOVA-SYNDROME) under the [OpenTracks Audio Source Usage License](https://opentracks.com/en/help/articles/license/) plus any creator-specific conditions. Per-track titles, composers and source links are in the [audio credits](audio-assets/kabuki-neko-audio/CREDITS.md) (copied byte-for-byte to `/audio/CREDITS.md`), and per-file SHA-256, duration, outputs and verification evidence are in [`docs/audio-provenance.json`](docs/audio-provenance.json).
+The 40 WebM/MP3 files in `audio-assets/kabuki-neko-audio/`, optimized from 20 supplied audio files (10 BGM, 10 SFX) and committed in that converted form, are **not** covered by the project LICENSE. Copyright stays with the individual composers/creators who publish them on OpenTracks (formerly DOVA-SYNDROME) under the [OpenTracks Audio Source Usage License](https://opentracks.com/en/help/articles/license/) plus any creator-specific conditions. Per-track titles, composers and source links are in the [audio credits](audio-assets/kabuki-neko-audio/CREDITS.md) (copied byte-for-byte to `/audio/CREDITS.md`), and per-file SHA-256 (supplied original and each optimized file), duration, outputs and verification evidence are in [`docs/audio-provenance.json`](docs/audio-provenance.json).
 
 Checked on 2026-11-08 against the official license page and each BGM source page:
 

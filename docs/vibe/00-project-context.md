@@ -87,7 +87,7 @@ tests/
                             # (users, quizzes, quiz-transfer, media, storage-serving, system, game-gateway)
   (e2e/ belum ada)          # Playwright — dibuat oleh task E2E
   helpers/runtime.ts        # runtime terisolasi + katalog sintetis + global teardown
-audio-assets/kabuki-neko-audio/  # sumber audio (20 MP3 + CREDITS.md)
+audio-assets/kabuki-neko-audio/  # audio teroptimasi (20 cue × WebM+MP3, manifest, CREDITS.md) — build hanya menyalin
 docs/vibe/                  # artefak pipeline 00–07
 data/, uploads/             # data runtime lokal — di-gitignore, jangan di-commit
 ```

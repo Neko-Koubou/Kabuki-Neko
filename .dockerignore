@@ -16,7 +16,8 @@
 **/*.tsbuildinfo
 **/coverage
 
-# Generated assets (rebuilt by `pnpm build:assets` inside the image)
+# Generated assets (rebuilt by `pnpm build:assets` inside the image; the audio is copied from the
+# committed, already optimized audio-assets/kabuki-neko-audio)
 locales-built
 apps/web/public/audio
 apps/web/public/.audio.*
