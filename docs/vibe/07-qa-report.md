@@ -71,19 +71,24 @@ Pemetaan memakai peta `TRACE` di `tests/e2e/journeys.spec.ts`. Test "traces ever
 | US-20 Kinerja & audit | AC-20-01, AC-20-02 | `tests/integration/auth-races.spec.ts` › never writes passwords, tokens, cookies or invite codes to the API output; `tests/integration/room-retention.spec.ts` › never evicts a report that is not durable and raises one 24 h alarm; `apps/api/src/common/audit.service.spec.ts`; `tests/performance/*.spec.ts`; `pnpm benchmark:game` mode memory dan Redis | **FAIL (sebagian)** — audit, AC-20-02 dan benchmark memory PASS (p95 20,59 ms); benchmark Redis 2 node FAIL (lihat catatan) |
 | US-21 Multibahasa | AC-21-01 – AC-21-04 | `tests/e2e/localization.spec.ts` (5 kasus); `tests/contracts/locale-coverage.spec.ts`, `locale-build.spec.ts`, `locale-packages.spec.ts`, `localization-roundtrip.spec.ts`; `tests/e2e/responsive.spec.ts` › Japanese and Simplified Chinese wrap at 320 px; `pnpm locales:validate` | **PASS** |
 
-**Catatan US-20 (mode Redis 2 node): FAIL, terkonfirmasi ulang dari commit QA.**
-- **Hasil**: 200 klien, 102 transisi, 1.057 s, PostgreSQL + Redis 7.4.12 + 2 node API, loopback pada satu host 4 core.
-  - Transport p50 13,97 ms, **p95 282,57 ms**, p99 656,72 ms, max 2.484 ms.
-  - Kehilangan pengiriman 5.500/20.400 (26,96%).
-  - **100 pemain di node B terputus** (`transport close`).
-  - 2.568 jawaban ditolak; antrean laporan 9.857 ms untuk 1.132 jawaban.
-  - Record: `test-results/benchmark/redis.json`.
-- **Perbandingan**: hasil ini sama polanya dengan TASK-179 (p95 310 ms, kehilangan 28,9%, node B memutus 100 pemain). Masalahnya belum diperbaiki dan tidak tercatat di `06-code-review.md`.
-- **Akar masalah**: belum ditemukan. Kandidat:
-  - saturasi CPU: dua node API, PostgreSQL, Redis, dan 200 klien berbagi 4 core, sehingga ping Socket.io atau adapter Redis tertunda;
-  - jalur fan-out `@socket.io/redis-adapter` ke node kedua.
-  Diagnosis butuh profiling per node dan run di host terpisah, di luar batas 3 percobaan terfokus run QA ini.
-- **Tindak lanjut**: [04-tasks.md](04-tasks.md) Phase 7 — `TASK-183` (admission tanpa full-state settle), `TASK-184` (diagnostik per node + verdict jujur), `TASK-185` (ukur ulang dan tetapkan akar masalah). Target PRD p95 < 50 ms **belum terbukti** untuk topologi multi-instance.
+**Catatan US-20 (diperbarui TASK-185, 2026-11-12): FAIL, akar masalah ditetapkan.** Rincian di [docs/performance-results.md](../performance-results.md) §"Re-measurement and root cause".
+- **Memory, 1 node**:
+  - transport p95 14,36 ms (target terpenuhi);
+  - admission p50 2,8 s, 10 jawaban tidak diterima;
+  - event loop API terblokir sampai 4,9 s, sementara load generator tetap idle.
+- **Redis, 2 node**:
+  - transport p95 300,87 ms;
+  - kehilangan 28,9%;
+  - node B mati di detik 412 sehingga 100 pemain terputus.
+- **Akar masalah (cacat server)**:
+  1. Publish adapter Redis yang gagal atau timeout menjadi unhandled rejection dan **mematikan proses API** (`Error: Command timed out`).
+  2. Jalur publish gateway memblokir event loop dengan deep copy state yang terus membesar, proyeksi host penuh di setiap diff, dan proyeksi O(n²) per pemain saat reveal/podium.
+  Hipotesis lama "settle per jawaban" terbukti bukan penyebab utama.
+- **Tindak lanjut**: [04-tasks.md](04-tasks.md)
+  - TASK-185A: cegah crash;
+  - TASK-185B–D: jalur publish dan settle;
+  - TASK-185E: ukur ulang.
+  Target PRD p95 < 50 ms **belum terbukti** untuk multi-instance.
 
 ## 3. Bug dan perbaikan dalam run ini
 

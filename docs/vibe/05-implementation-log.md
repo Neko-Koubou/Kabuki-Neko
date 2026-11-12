@@ -2424,21 +2424,34 @@
     - 0 disconnects; admission p50 15.85 ms at 20 clients.
   - Not run: a live `--api-urls` run against nodes on another machine (no second machine here). The path is covered by the unit validation only.
 
-## TASK-185: Ukur ulang topologi Redis dua node dan tetapkan akar masalah — IN PROGRESS
-- **Started**: 2026-11-12 (Asia/Jakarta)
-- **Plan**: `docs/performance-results.md`, `docs/vibe/07-qa-report.md`
-- **Done so far**:
-  - Memory run done: FAIL, 10 answers not admitted; transport p95 14.36 ms; admission p50 2.80 s.
-    - API node: event-loop lag up to 4.9 s, and only 268 of ~459 probe samples (its loop was blocked).
-    - Load generator: lag max 31 ms, CPU 1.5%.
-  - First redis run aborted after ~8 min: a host command got no ACK within 15 s, and `step()` threw, so no record was written.
-  - CPU profile (memory, 200 clients, 8 transitions) found the root cause in the gateway publish path:
-    - `structuredClone` of the full private state in `getPrivateSnapshot` per diff/settle;
-    - `projectHost` Zod parse, with grapheme checks of every nickname, on every diff;
-    - O(n²) `projectPlayer` per player at reveal and podium.
-  - Corrective tasks TASK-185A–D added.
-  - Scope extension (needed by this task's DoD, which requires a redis record): `scripts/benchmark-game.ts` + `tests/performance/game-benchmark.spec.ts`.
-    - Host commands without an ACK are retried and recorded.
-    - A failed step ends the run early with `abortReason` in the record and verdict instead of throwing it away.
-    - test:performance 22/22, eslint, tsc, Prettier pass.
-- **Verification**: redis re-run in progress
+## TASK-185: Ukur ulang topologi Redis dua node dan tetapkan akar masalah — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `docs/performance-results.md`: new section "Re-measurement and root cause".
+  - `docs/vibe/07-qa-report.md`: US-20 note.
+  - Scope extension, recorded because the DoD needs a redis record that the harness kept losing:
+    - `scripts/benchmark-game.ts`: a host command without an ACK is retried and recorded, and a failed step ends the run early with `abortReason`. A node that dies has its exit code and last output in the record. A run that cannot finish carries each node's last output in the error.
+    - `tests/performance/game-benchmark.spec.ts`: verdict case for `abortReason`.
+  - `docs/vibe/04-tasks.md`: corrective tasks TASK-185A (crash), TASK-185B–D (publish path, settle read) and TASK-185E (re-measure).
+- **Runs** (same 4-core host, loopback):
+  - **Memory, 200 clients, 100 transitions** → FAIL (10 answers not admitted).
+    - Transport p95 14.36 ms; admission p50 2,800 ms / p95 10,973 ms.
+    - API loop lag max 4,905 ms, with only 268 of ~459 probe samples (loop blocked).
+    - Load generator lag max 31 ms, CPU 1.5%.
+  - **Redis, 200 clients, 100 transitions** → FAIL.
+    - Transport p95 300.87 ms; delivery loss 28.9%; 2,469 answers not admitted.
+    - Node B lost all 100 players at 412 s. Its probe stopped at 389 samples.
+  - Two further redis runs did not finish: one host command got no ACK, and one REST call hit a node that was gone. This led to the harness changes above.
+  - **Redis, 200 clients, 60 transitions** (crash capture): node A exited with code 1 after an unhandled `Error: Command timed out` from ioredis.
+  - CPU profile (memory, 200 clients, 8 transitions): busy time is in the gateway `diff`:
+    - `structuredClone` in `getPrivateSnapshot` ≈2.4 s, including settle;
+    - `projectHost` grapheme/Zod ≈0.6 s;
+    - per-player `projectPlayer` at reveal/podium ≈0.6 s.
+- **Root cause** (server defects, conclusion (b)):
+  1. `@socket.io/redis-adapter` 8.3.0 calls `pubClient.publish` without catching it, and the pub client has `commandTimeout: 2000`. A stalled loop or a Redis outage therefore crashes the API node.
+  2. The publish path blocks the event loop for seconds, and the cost grows with the number of played questions.
+- **Verification**:
+  - `pnpm test:performance -- tests/performance/game-benchmark.spec.ts` → 22/22.
+  - `pnpm exec eslint scripts tests/performance` → pass; tsc (strict, commonjs) for the script → pass.
+  - `pnpm exec prettier --check docs/performance-results.md` → pass.
+  - Records `test-results/benchmark/memory.json` and `redis.json` are referenced from the doc (copies in the session scratchpad).

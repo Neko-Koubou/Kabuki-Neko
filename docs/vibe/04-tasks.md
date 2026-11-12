@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 221 task selesai, 7 task Pending (Phase 7 tindak lanjut QA, 2026-11-12)** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 222 task selesai, 9 task Pending (Phase 7 tindak lanjut QA, 2026-11-12)** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -20,7 +20,7 @@ Status Legend: `- [ ]` Pending | `- [~]` In Progress | `- [x]` Completed | `- [!
 | 4. Frontend Design Tokens, Base UI & State Layer | TASK-087–TASK-131 | 45 | Fondasi M5–M6; source katalog M1 dituntaskan sebelum UI |
 | 5. Feature Screens, API Integration & 5 UI States | TASK-132–TASK-163 | 32 | M5 → M6 |
 | 6. Hardening, Edge Cases & Polish | TASK-164–TASK-182 | 19 | M7 + release evidence + paket self-host Docker |
-| 7. Tindak lanjut QA | TASK-183–TASK-189 (+ TASK-183A, TASK-185A–D) | 12 | Temuan terbuka [07-qa-report.md](07-qa-report.md): benchmark Redis dua node (US-20), fixture uji root/proxy; ruang disk Docker yang dapat diatur (TASK-188–189, permintaan pengguna 2026-11-12) |
+| 7. Tindak lanjut QA | TASK-183–TASK-189 (+ TASK-183A, TASK-185A–E) | 13 | Temuan terbuka [07-qa-report.md](07-qa-report.md): benchmark Redis dua node (US-20), fixture uji root/proxy; ruang disk Docker yang dapat diatur (TASK-188–189, permintaan pengguna 2026-11-12) |
 
 **Urutan:** ambil task Pending bernomor terkecil yang semua Depends On-nya Completed. Dependensi per-task adalah DAG operasional; phase merangkum milestone, bukan izin mengerjakan seluruh phase dalam satu `/vibe-code`. API/DB/adapter selesai sebelum integrasi UI; catalog tools/contracts lebih awal dan enam katalog lengkap tersedia sebelum provider UI. Tidak ada delegasi atau eksekusi agen paralel yang diperlukan oleh plan ini.
 
@@ -3006,7 +3006,7 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - `pnpm exec eslint scripts tests/performance` dan `pnpm exec tsc --noEmit` untuk script lulus.
   - Run singkat `pnpm benchmark:game --clients 20 --transitions 10 --mode redis` menghasilkan tabel per node.
 
-### - [~] TASK-185: Ukur ulang topologi Redis dua node dan tetapkan akar masalah
+### - [x] TASK-185: Ukur ulang topologi Redis dua node dan tetapkan akar masalah
 - **Traceability**: `US-16`, `US-20`, NFR-01, [07-qa-report.md §2 US-20](07-qa-report.md)
 - **Depends On**: `TASK-183`, `TASK-183A`, `TASK-184`
 - **Target Files**:
@@ -3027,9 +3027,32 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - `07-qa-report.md` US-20 berstatus PASS atau tetap FAIL dengan akar masalah dan task lanjutan.
   - `pnpm exec prettier --check docs/performance-results.md` lulus.
 
-### - [ ] TASK-185A: Sediakan pembacaan private state read-only tanpa salinan di kedua state store
+### - [ ] TASK-185A: Cegah crash node API saat publish adapter Redis gagal
+- **Traceability**: `US-16`, `US-17`, `US-20`, NFR-06 (reliability), akar masalah TASK-185 (log node yang mati di [05-implementation-log.md](05-implementation-log.md)).
+- **Depends On**: `TASK-185`, `TASK-076`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/providers/state/state.module.ts`
+  - `CREATE` `apps/api/src/providers/state/state.module.spec.ts`
+- **Implementation Specs**:
+  - Masalah (terkonfirmasi TASK-185):
+    - `@socket.io/redis-adapter` 8.3.0 memanggil `pubClient.publish(...)` tanpa `await`/`catch`;
+    - klien pub dibuat dengan `commandTimeout: 2000`;
+    - publish yang timeout (event loop tersendat) atau gagal (Redis putus) menjadi unhandled rejection, sehingga proses API keluar dengan `Error: Command timed out` dan semua pemain di node itu terputus.
+  - Bungkus `publish`/`spublish` klien pub milik adapter, sehingga rejection ditangkap, dihitung, dan dicatat tanpa secret. Pesan yang gagal sama nasibnya dengan pesan fan-out yang hilang: klien memulihkannya lewat heartbeat `room:version`/`room:sync`.
+  - Perintah state (klien command) tetap memakai timeout dan tetap ditolak secara eksplisit ke pemanggil. Tidak ada handler `unhandledRejection` global yang menelan error lain.
+  - Kontrak startup gate (STATE_UNAVAILABLE) tidak berubah.
+- **Definition of Done (Verification)**:
+  - Spec dengan klien palsu yang `publish`-nya menolak (timeout dan koneksi tertutup):
+    - tidak ada unhandled rejection;
+    - kegagalan dihitung;
+    - klien command tetap meneruskan error.
+  - Spec gagal pada kode lama (rejection tidak tertangani).
+  - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
+  - `pnpm test:contracts --testPathPatterns='state-parity|redis'` dan integration `realtime-races` lulus.
+
+### - [ ] TASK-185B: Sediakan pembacaan private state read-only tanpa salinan di kedua state store
 - **Traceability**: `US-16`, `US-20`, NFR-01, akar masalah TASK-185 (CPU profile di [05-implementation-log.md](05-implementation-log.md)), [SA §5](03-system-analysis.md).
-- **Depends On**: `TASK-185`, `TASK-082A`, `TASK-047`
+- **Depends On**: `TASK-185A`, `TASK-082A`, `TASK-047`
 - **Target Files**:
   - `MODIFY` `apps/api/src/providers/state/game-state.interface.ts`
   - `MODIFY` `apps/api/src/providers/state/memory-state.store.ts`
@@ -3051,9 +3074,9 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
   - `pnpm test:contracts --testPathPatterns=state-parity` lulus.
 
-### - [ ] TASK-185B: Buat jalur publish gateway O(n) tanpa proyeksi penuh berulang
+### - [ ] TASK-185C: Buat jalur publish gateway O(n) tanpa proyeksi penuh berulang
 - **Traceability**: `US-09`, `US-10`, `US-13`, `US-20`, NFR-01, ADR-04 (allowlist per role), akar masalah TASK-185.
-- **Depends On**: `TASK-185A`, `TASK-183A`, `TASK-076`
+- **Depends On**: `TASK-185B`, `TASK-183A`, `TASK-076`
 - **Target Files**:
   - `MODIFY` `apps/api/src/modules/game-engine/room-projector.ts`
   - `MODIFY` `apps/api/src/modules/game-engine/room-projector.spec.ts`
@@ -3079,9 +3102,9 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - Integration `payload-privacy|game-gateway|realtime-races|recovery` lulus.
   - E2E `player.spec.ts`, `host.spec.ts` lulus.
 
-### - [ ] TASK-185C: Pakai pembacaan read-only di settle
+### - [ ] TASK-185D: Pakai pembacaan read-only di settle
 - **Traceability**: `US-10`, `US-20`, NFR-01, akar masalah TASK-185.
-- **Depends On**: `TASK-185A`, `TASK-183`
+- **Depends On**: `TASK-185B`, `TASK-183`
 - **Target Files**:
   - `MODIFY` `apps/api/src/modules/game-engine/game.service.ts`
   - `MODIFY` `apps/api/src/modules/game-engine/game.service.spec.ts`
@@ -3093,9 +3116,9 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
   - Integration `recovery|realtime-races|finalization-failures` lulus.
 
-### - [ ] TASK-185D: Ukur ulang setelah perbaikan jalur publish
+### - [ ] TASK-185E: Ukur ulang setelah perbaikan jalur publish
 - **Traceability**: `US-16`, `US-20`, NFR-01, [07-qa-report.md §2 US-20](07-qa-report.md)
-- **Depends On**: `TASK-185B`, `TASK-185C`, `TASK-184`
+- **Depends On**: `TASK-185A`, `TASK-185C`, `TASK-185D`, `TASK-184`
 - **Target Files**:
   - `MODIFY` `docs/performance-results.md`
   - `MODIFY` `docs/vibe/07-qa-report.md`

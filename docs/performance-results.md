@@ -116,6 +116,95 @@ Report queue age: 830 ms.
 4. **Report finalization keeps up.** Writing 5,000 answers became durable within about one
    second of the game's end in both topologies.
 
+## Re-measurement and root cause (2026-11-12, TASK-185)
+
+Same host and harness as above. The commit includes TASK-183/183A:
+
+- settles are coalesced per room;
+- gateway publishes are coalesced per room;
+- answer ACKs no longer wait for the publish.
+
+The benchmark now records a per-process table (TASK-184): event-loop delay above the 10 ms
+sampling resolution, CPU as % of one core, heap, disconnects per node, and the exit code and last
+output of a node that dies mid-run. The verdict also fails on answers not admitted, a report that
+is not durable, or a run that aborted.
+
+### Memory mode, 200 clients: **FAIL** (10 answers not admitted)
+
+Record `test-results/benchmark/memory.json`. 102 transitions in 459 s; delivery loss 0/20,400;
+transport p95 **14.36 ms**; report durable after 1,239 ms.
+
+| Measure (ms)                 | n      | p50      | p95       | p99       | max       |
+| ---------------------------- | ------ | -------- | --------- | --------- | --------- |
+| Transport (commit → receipt) | 53,286 | 4.34     | 14.36     | 37.18     | 43.65     |
+| Admission (answer ACK RTT)   | 4,990  | 2,800.06 | 10,973.34 | 13,139.65 | 14,926.40 |
+| State commit (host ACK RTT)  | 52     | 73.22    | 172.07    | 1,063.82  | 1,063.82  |
+
+| Process        | Loop lag p99 per 1 s, median / p95 / max (ms) | CPU mean / max (% of one core) |
+| -------------- | --------------------------------------------- | ------------------------------ |
+| API node       | 0.68 / 925.85 / 4,905.72                      | 32.3 / 112                     |
+| Load generator | 0.84 / 2.21 / 4.30                            | 1.5 / 9.1                      |
+
+The API node's probe wrote only 268 one-second samples in 459 s: its event loop was blocked for
+the rest. The load generator stayed idle. **The admission latency is caused by the server
+blocking its own event loop, not by the harness or by CPU saturation** (mean 32% of one core).
+
+### Redis mode, two nodes, 200 clients: **FAIL**
+
+Record `test-results/benchmark/redis.json`. 102 transitions in 1,061 s.
+
+- Transport p95 **300.87 ms**.
+- Delivery loss 5,900/20,400 (28.9%).
+- 2,469 answers not admitted.
+- **Node B lost all 100 players** (`transport close`) 412 s after start.
+
+| Measure (ms)                 | n       | p50      | p95      | p99      | max      |
+| ---------------------------- | ------- | -------- | -------- | -------- | -------- |
+| Transport (commit → receipt) | 102,066 | 11.17    | 300.87   | 693.44   | 2,187.57 |
+| Admission (answer ACK RTT)   | 1,131   | 4,232.18 | 5,506.54 | 5,814.11 | 6,019.19 |
+| State commit (host ACK RTT)  | 52      | 928.79   | 1,852.78 | 4,826.66 | 4,826.66 |
+
+| Process        | Loop lag p99 per 1 s, median / p95 / max (ms) | CPU mean / max (% of one core) | Probe samples |
+| -------------- | --------------------------------------------- | ------------------------------ | ------------- |
+| API node A     | 161.31 / 320.30 / 1,027.04                    | 66.9 / 163                     | 1,016         |
+| API node B     | 43.38 / 242.05 / 909.60                       | 42.4 / 133.4                   | 389           |
+| Load generator | 1.67 / 4.57 / 10.53                           | 1.0 / 10.4                     | 1,060         |
+
+Node B's probe stopped after 389 samples, shortly before its players disconnected. Two other
+Redis runs on this commit did not finish: one aborted on a host command without an ACK, one on a
+REST call to a node that was gone. A shorter run (60 transitions) that kept the dead node's output
+showed why.
+
+### Root cause
+
+1. **A node crashes on a failed Redis publish (server defect).** `@socket.io/redis-adapter`
+   8.3.0 calls `pubClient.publish(...)` without awaiting or catching it. The pub client is
+   created with `commandTimeout: 2000` (`apps/api/src/providers/state/state.module.ts`). When the
+   event loop stalls past 2 s, a publish times out, the rejection is unhandled, and Node exits:
+
+   ```text
+   Error: Command timed out
+       at Timeout.<anonymous> (ioredis/built/Command.js:195:33)
+   ```
+
+   A Redis outage would do the same. Every player on that node is disconnected, which is
+   finding 3 above. That finding had attributed it only to a starved event loop.
+
+2. **The publish path blocks the event loop for seconds (server defect).** A CPU profile of the
+   API node (memory mode, 200 clients) puts almost all busy time in the gateway's `diff`:
+   - `structuredClone` of the whole private room state in `getPrivateSnapshot` on every diff and
+     every settle round (≈2.4 s of a 33 s profile). The state grows with every played question,
+     because it keeps all answers and per-player results, so the cost rises during the game.
+   - `projectHost` on every diff, even when only the answer count changed, with Zod validation
+     that checks the grapheme length of all 200 nicknames (≈0.6 s).
+   - At reveal and podium, `projectPlayer` once per player, each validating a snapshot that
+     lists all 200 players: O(n²) (≈0.6 s).
+3. Finding 2 above (the full-state settle on every admission) was not the main cause. Coalescing
+   it (TASK-183) and the publishes (TASK-183A) changed admission latency very little.
+
+These are server defects, not harness limits. Fixes are planned in TASK-185A (crash), TASK-185B–D
+(read-only state reads, an O(n) publish path, the settle read) and TASK-185E (re-measure).
+
 ## Not covered
 
 - More than 200 clients: needs a separate harness and run. The CLI refuses `--clients` above 200.
