@@ -162,13 +162,14 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Operasi atomik `expireToPodium` (memory + Lua) untuk fase pra-PODIUM non-LOBBY, lalu `game.finalize`.
   - LOST hanya untuk LOBBY atau state yang hilang.
 
-#### MJ-07 [MAJOR] [OPEN] `correctCount`/`unansweredCount` ikut menghitung soal ×0 (dan POLL untuk unanswered)
+#### MJ-07 [MAJOR] [RESOLVED] `correctCount`/`unansweredCount` ikut menghitung soal ×0 (dan POLL untuk unanswered)
 - **File:Line**: `apps/api/src/modules/game-engine/score-calculator.ts:273`; `game.service.ts:110-111`.
 - **Masalah**:
   - Jawaban benar di soal ×0 menambah `correctCount`, yang dipakai sebagai tie-break.
   - UNANSWERED dihitung juga untuk POLL dan ×0.
   - Melanggar SA §4.5.
 - **Perbaikan**: hitung keduanya hanya bila `type !== "POLL" && pointsMultiplier > 0`, lalu perbarui spec skor, game, dan laporan.
+- **Resolusi**: `computeQuestionResult` (`score-calculator.ts`) menambah `correctCount` hanya bila `type !== "POLL" && pointsMultiplier > 0`; `buildFrozenReport` (`game.service.ts`) menghitung `unansweredCount` hanya untuk soal berpoin. Spec baru di `scoring.spec.ts` (jawaban benar ×0 tidak menambah correctCount) dan `game.service.spec.ts` (laporan beku: correct/unanswered 0 untuk soal ×0); keduanya gagal pada kode lama. API Jest 32/233, tsc, lint PASS.
 
 #### MJ-08 [MAJOR] [OPEN] Baca kuis memakai write transaction + `FOR UPDATE`, dan daftar kuis N+1
 - **File:Line**:

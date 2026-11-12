@@ -53,7 +53,7 @@ let rooms: RoomRegistryService;
 let frozen: FrozenReport[];
 
 /** Playable quiz: SINGLE_CHOICE (key = option 0) or MULTIPLE_SELECT (keys = options 0 and 1). */
-async function quiz(kinds: Kind[]) {
+async function quiz(kinds: Kind[], multipliers: readonly number[] = []) {
   const id = await quizzes.create(host.user.id, { title: "Engine" }, 1);
   const write = quizWriteSchema.parse({
     title: "Engine",
@@ -72,7 +72,7 @@ async function quiz(kinds: Kind[]) {
       videoEndSec: null,
       mediaRevealMode: "NONE",
       timeLimitSec: 20,
-      pointsMultiplier: 1,
+      pointsMultiplier: multipliers[orderIndex] ?? 1,
       explanationText: null,
       accessibility: emptyAccessibility(),
       options: [0, 1, 2].map((optionIndex) => ({
@@ -88,8 +88,8 @@ async function quiz(kinds: Kind[]) {
   return { id, revision: await quizzes.save(host.user.id, id, 1, write, 2) };
 }
 /** Creates a room for a quiz of `kinds` and joins `players` players. */
-async function room(kinds: Kind[], players = 2) {
-  const { id, revision } = await quiz(kinds);
+async function room(kinds: Kind[], players = 2, multipliers: readonly number[] = []) {
+  const { id, revision } = await quiz(kinds, multipliers);
   const ack = await rooms.createRoom(host, {
     requestId: randomUUID(),
     quizId: id,
@@ -331,6 +331,27 @@ it("ends an empty lobby and an active question with immutable reports", async ()
   expect((await state(identity)).phase).toBe("PODIUM");
   await advance(identity, 1);
   expect((await state(identity)).phase).toBe("FINISHED");
+});
+
+it("counts correct and unanswered only on scored questions, never on ×0 (MJ-07)", async () => {
+  const { identity, bindings } = await room(["SINGLE_CHOICE", "SINGLE_CHOICE"], 2, [0, 1]);
+  const [a, b] = bindings as [PlayerBinding, PlayerBinding];
+  await toAnswering(identity);
+  await submit(identity, a, await publicIndex(identity, 0)); // correct, but worth ×0
+  await command(identity, "host:end_game");
+  const report = frozen.at(-1);
+  expect(report?.answers.find((x) => x.playerId === a.playerId)?.result).toBe("CORRECT");
+  expect(report?.answers.find((x) => x.playerId === b.playerId)?.result).toBe("UNANSWERED");
+  // A ×0 question is neither a tie-break "correct" nor a scored unanswered opportunity.
+  expect(report?.players.find((p) => p.id === a.playerId)).toMatchObject({
+    finalScore: 0,
+    correctCount: 0,
+    unansweredCount: 0,
+  });
+  expect(report?.players.find((p) => p.id === b.playerId)).toMatchObject({
+    correctCount: 0,
+    unansweredCount: 0,
+  });
 });
 
 it("recovers after a crash during result commit and during report freeze", async () => {

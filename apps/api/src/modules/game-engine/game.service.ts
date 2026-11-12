@@ -108,7 +108,10 @@ export function buildFrozenReport(state: Readonly<ActiveRoomState>, endedAt: num
           true,
         );
       const outcome = personal.result === "NOT_ELIGIBLE" ? "UNANSWERED" : personal.result;
-      if (outcome === "UNANSWERED") unanswered.set(playerId, (unanswered.get(playerId) ?? 0) + 1);
+      // Unanswered counts only scored opportunities: POLL and ×0 questions never count (SA §4.5;
+      // code review MJ-07).
+      if (outcome === "UNANSWERED" && snapshot.type !== "POLL" && snapshot.pointsMultiplier > 0)
+        unanswered.set(playerId, (unanswered.get(playerId) ?? 0) + 1);
       answers.push({
         playerId,
         questionIndex,
