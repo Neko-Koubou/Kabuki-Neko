@@ -33,8 +33,23 @@
 
 name: kabuki-neko
 
+# Disk space (TASK-189; docs/self-hosting.md "Disk space"):
+# - Container logs rotate: KN_LOG_MAX_SIZE per file (default 10m), KN_LOG_MAX_FILE files per
+#   container (default 3), so logs never fill the disk.
+# - Uploaded media stop at MEDIA_STORAGE_QUOTA_MIB (default 10240 = 10 GiB; 0 = unlimited).
+# - Redis (scale) stops at KN_REDIS_MAXMEMORY (default 1gb) with noeviction: game state is never
+#   dropped silently, writes fail explicitly instead.
+# - Docker cannot cap a named volume's size. To put the data on a disk or partition of a chosen
+#   size, add the docker-compose.paths.yml override.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: ${KN_LOG_MAX_SIZE:-10m}
+    max-file: "${KN_LOG_MAX_FILE:-3}"
+
 x-api-environment: &api-environment
   NODE_ENV: production
+  MEDIA_STORAGE_QUOTA_MIB: ${MEDIA_STORAGE_QUOTA_MIB:-10240}
   DEPLOYMENT_PROFILE: ${DEPLOYMENT_PROFILE:-default}
   DEPLOYMENT_TOPOLOGY: single
   NEXT_PUBLIC_APP_URL: ${KN_PUBLIC_URL:-http://localhost:3000}
@@ -63,6 +78,7 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.api
     image: kabuki-neko-api:${KN_IMAGE_TAG:-local}
+    logging: *logging
     restart: unless-stopped
     environment: *api-environment
     volumes:
@@ -97,6 +113,7 @@ services:
         # Scale profile media (S3_PUBLIC_URL); harmless for the default profile.
         NEXT_PUBLIC_MEDIA_ORIGINS: ${KN_MEDIA_PUBLIC_URL:-http://localhost:9000/kabuki-neko-media}
     image: kabuki-neko-web:${KN_IMAGE_TAG:-local}
+    logging: *logging
     restart: unless-stopped
     environment:
       API_INTERNAL_URL: http://api:3001
@@ -115,6 +132,7 @@ services:
   secrets-init:
     profiles: ["scale"]
     image: kabuki-neko-api:${KN_IMAGE_TAG:-local}
+    logging: *logging
     user: "0:0"
     environment:
       KN_ROTATE_JWT_SECRETS: ${KN_ROTATE_JWT_SECRETS:-false}
@@ -150,6 +168,7 @@ services:
   postgres:
     profiles: ["scale"]
     image: postgres:16-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
+    logging: *logging
     restart: unless-stopped
     environment:
       POSTGRES_USER: kabuki
@@ -170,8 +189,20 @@ services:
   redis:
     profiles: ["scale"]
     image: redis:7-alpine@sha256:7b1753b4c5ad8458906c272a8132b8c15f5557b000379eb115fb239706a384b7
+    logging: *logging
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--save", ""]
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --save
+      - ""
+      - --maxmemory
+      - ${KN_REDIS_MAXMEMORY:-1gb}
+      - --maxmemory-policy
+      - noeviction
     volumes:
       - kabuki-redis:/data
     healthcheck:
@@ -214,6 +245,7 @@ services:
       secrets:
         - build_ca
     image: ${KN_MINIO_IMAGE:-kabuki-neko/minio:9e49d5e7a648}
+    logging: *logging
     restart: unless-stopped
     command: ["server", "/data"]
     environment:
@@ -233,6 +265,7 @@ services:
   minio-init:
     profiles: ["scale"]
     image: kabuki-neko-api:${KN_IMAGE_TAG:-local}
+    logging: *logging
     entrypoint: ["node", "-e"]
     working_dir: /app
     command:

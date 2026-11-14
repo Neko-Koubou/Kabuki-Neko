@@ -2704,3 +2704,31 @@
   - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
   - `pnpm --filter @kabuki-neko/api test` → 39/39 suites, 278/278 tests.
   - `KABUKI_TEST_BUILD_CA=/root/.ccr/ca-bundle.crt pnpm test:integration --testPathPatterns='media'` → 2/2 suites, 15/15 tests (media + media-failures, including MinIO).
+
+## TASK-189: Atur ruang disk Docker: rotasi log, batas memori Redis, lokasi volume, dan rekomendasi — DONE
+- **Date**: 2026-11-14 (Asia/Jakarta)
+- **Files**:
+  - `docker/docker-compose.yml`:
+    - an `x-logging` anchor (json-file, `max-size ${KN_LOG_MAX_SIZE:-10m}`, `max-file ${KN_LOG_MAX_FILE:-3}`) on all 7 services;
+    - the API gets `MEDIA_STORAGE_QUOTA_MIB` (`${MEDIA_STORAGE_QUOTA_MIB:-10240}`, TASK-188);
+    - Redis (scale) runs with `--maxmemory ${KN_REDIS_MAXMEMORY:-1gb} --maxmemory-policy noeviction`, so game state is never evicted and writes fail explicitly;
+    - a header note that Docker cannot cap named volumes.
+    - Default chosen: 1 GB for Redis instead of the planned 256 MB. One large room (200 players, many questions) holds several MB of state, so 256 MB would bound active rooms too tightly.
+  - `docker/docker-compose.paths.yml` (new, optional override): maps `kabuki-data`, `kabuki-uploads` and the scale `kabuki-postgres`, `kabuki-redis`, `kabuki-minio` volumes to host folders.
+    - Folders come from `KN_DATA_PATH`/`KN_UPLOADS_PATH`/`KN_POSTGRES_PATH`/`KN_REDIS_PATH`/`KN_MINIO_PATH`, defaulting under `KN_STORAGE_ROOT`=/var/lib/kabuki-neko.
+    - Owners are documented from the images: api 10001, postgres 70, redis 999, minio 65532.
+    - Secrets stay a named volume.
+  - `.env.example`: a "Disk space" block with every new variable, its default and meaning.
+  - `docs/self-hosting.md` (ID + EN):
+    - new §6a "Ruang disk / Disk space": recommended space per profile (20 GB default, 30 GB scale), the settings table, the soft quota bound, Redis sizing, the paths override with exact commands, monitoring (`docker system df -v`, `du`, `docker builder prune`), and an honest note that a hard cap needs a disk or partition;
+    - §1 prerequisites point to it.
+- **Verification**:
+  - `docker compose … config --quiet` → pass for default; `--profile scale`; `-f docker-compose.paths.yml --profile scale`; `-f docker-compose.tls.yml` (KN_DOMAIN=localhost); and paths + TLS + scale.
+  - The rendered config follows defaults and overrides: with KN_LOG_MAX_SIZE=5m, KN_LOG_MAX_FILE=2, KN_REDIS_MAXMEMORY=256mb and MEDIA_STORAGE_QUOTA_MIB=2048, all 7 services get 5m/2, Redis gets 256mb, and the API gets 2048.
+  - Live, with the paths override and folders owned by uid 10001:
+    - the API became healthy, setup-status was 200, and the SQLite database and runtime secrets were written in the host folder;
+    - the container log config was json-file 10m/3, and the API env had MEDIA_STORAGE_QUOTA_MIB=10240.
+  - Live Redis (scale, paths, KN_REDIS_MAXMEMORY=512mb) → `CONFIG GET maxmemory` 536870912, policy noeviction, AOF written in the host folder. Torn down afterwards.
+  - API image rebuilt at the TASK-188 commit, then `bash scripts/selfhost-smoke.sh --no-build --purge` (default profile) → PASS (5 checks).
+  - Every KN_*/MEDIA_* variable named in the guide is present in `.env.example`.
+  - Prettier check of the guide and both Compose files → pass.
