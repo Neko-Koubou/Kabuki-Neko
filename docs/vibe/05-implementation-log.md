@@ -2732,3 +2732,9 @@
   - API image rebuilt at the TASK-188 commit, then `bash scripts/selfhost-smoke.sh --no-build --purge` (default profile) → PASS (5 checks).
   - Every KN_*/MEDIA_* variable named in the guide is present in `.env.example`.
   - Prettier check of the guide and both Compose files → pass.
+
+## TASK-185K: Rancang ulang tata letak state room di Redis (jawaban dan hasil di luar blob) — IN PROGRESS
+- **Started**: 2026-11-17 (Asia/Jakarta)
+- **Plan**: `docs/vibe/03-system-analysis.md` (ADR), `docs/vibe/04-tasks.md` (implementation tasks); no application code
+- **Done so far**: none yet
+- **Verification**: pending

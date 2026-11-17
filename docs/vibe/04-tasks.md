@@ -3220,7 +3220,7 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - Spec: pembacaan tidak memakai EVALSHA, dibuktikan dengan `SCRIPT FLUSH` sebelum baca.
   - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
 
-### - [ ] TASK-185K: Rancang ulang tata letak state room di Redis (jawaban dan hasil di luar blob)
+### - [~] TASK-185K: Rancang ulang tata letak state room di Redis (jawaban dan hasil di luar blob)
 - **Traceability**: `US-10`, `US-16`, `US-20`, NFR-01, ADR-03 (atomisitas Lua same-slot), temuan TASK-185I.
 - **Depends On**: `TASK-185J`
 - **Target Files**:
