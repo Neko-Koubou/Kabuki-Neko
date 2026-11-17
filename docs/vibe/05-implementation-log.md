@@ -2779,3 +2779,31 @@
   - `pnpm --filter @kabuki-neko/api test` → 39/39 suites, 280/280 tests (window consumers: projector, settle, gateway diff).
   - `pnpm test:contracts --testPathPatterns=state-parity` → 36/36.
   - `pnpm test:integration --testPathPatterns='recovery|realtime-races|game-gateway|payload-privacy'` → 4/4 suites, 22/22 tests.
+
+## TASK-185M: Store Redis v2: siklus hidup room, pembacaan, lease, dan laporan — DONE
+- **Date**: 2026-11-17 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/providers/state/lua/v2-room.lua` (new).
+    - Named `lua/v2-room.lua` instead of `lua/v2/room.lua`: `nest-cli.json` copies only `providers/state/lua/*.lua`, and a flat name needs no build config change. The same convention applies to the later v2 scripts.
+    - Declared KEYS: meta, join-receipts, lease, players, commands, tickets, report. Per-question keys `:answers:<q>`, `:closed:<q>`, `:result:<q>` are derived from the validated `{PIN}` prefix, so they share the slot.
+    - Operations: `create` (writes core/quiz/expiry/durable and every non-empty piece); `read` (multi-bulk raw pieces, mode `window` = current + latest scored question, mode `full` = questions 0..current plus every scored one); `acquireLease`/`renewLease`/`releaseLease`; `releaseRoom` (same durability gate as v1, deletes the fixed keys and each question's keys by name from the quiz length, no SCAN); `freezeReport` (revision CAS, `:report`, PERSIST every room key); `acknowledgeDurableReport`; `markFinalization`; `expireToPodium`.
+    - Keys written later follow meta's physical expiry (`PEXPIRETIME`).
+  - `apps/api/src/providers/state/redis-v2-state.store.ts` (new): `RedisV2StateStore implements IGameStateStore`.
+    - Keys use the `kabukineko:<ns>:v2:room:{pin}` prefix.
+    - `getPrivateSnapshot` assembles every piece and validates it with `activeRoomStateSchema`.
+    - `readPrivateSnapshot` returns the window: pieces restored with `restoreArrays`, not validated, cached by a fingerprint of the raw pieces (an unchanged room returns the same object).
+    - `getRoleSnapshot` projects the window, with the v1 expiry and principal checks.
+    - Leases, release, freeze/ack/finalization and expireToPodium are implemented.
+    - The other gameplay methods fail closed with STATE_UNAVAILABLE until TASK-185N/O/P.
+    - Not installed in `StateModule`.
+  - `tests/contracts/redis-v2-state.spec.ts` (new, real Redis; fixtures copied from state-parity):
+    - create/EXISTS into separate keys (no `state` field), with full read = seeded state and window read = `windowRoomState(seed)`; the window object is reused; other session/PIN give null; empty collections survive cjson;
+    - release deletes every key (checked with KEYS on the test prefix);
+    - lease epochs and ROOM_NOT_FOUND;
+    - report freeze CAS, persistence (PTTL -1), FINALIZATION_PENDING before durability, release refused, then ready and release;
+    - unported operations fail closed, and v1 keys are ignored.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - Build copies `v2-room.lua` into `dist`.
+  - `pnpm --filter @kabuki-neko/api test` → 280/280.
+  - `pnpm test:contracts --testPathPatterns='redis-v2|state-parity'` → 2/2 suites, 41/41 tests.
