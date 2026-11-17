@@ -247,7 +247,8 @@ export class GameService {
       if ("expectedPhaseVersion" in command.request)
         expected = command.request.expectedPhaseVersion;
       else {
-        const current = await this.store.getPrivateSnapshot(identity);
+        // Only the phase version is needed: the read-only window (TASK-185Q).
+        const current = await this.store.readPrivateSnapshot(identity);
         if (!current) stateError(new StateDomainError("ROOM_NOT_FOUND"));
         expected = current.phaseVersion;
       }
@@ -291,7 +292,8 @@ export class GameService {
    * for the timer. Returns true when this call froze the question.
    */
   async closeIfAllAnswered(identity: RoomIdentity): Promise<boolean> {
-    const state = await this.store.getPrivateSnapshot(identity);
+    // The current question's answers are in the read-only window (TASK-185Q).
+    const state = await this.store.readPrivateSnapshot(identity);
     const index = state?.questionIndex ?? null;
     if (!state || index === null || state.phase !== "QUESTION_ANSWERING" || !state.accepting)
       return false;
@@ -499,7 +501,9 @@ export class GameService {
    * freeze, report freeze in PODIUM and PODIUM → FINISHED after 8 s. Every step is a CAS.
    */
   async tick(identity: RoomIdentity, now: number = this.clock()): Promise<void> {
-    const state = await this.store.getPrivateSnapshot(identity);
+    // Timed steps need the phase, timing and current question only: the read-only window
+    // (TASK-185Q, ADR-13). `finalize` still reads the complete state for the report.
+    const state = await this.store.readPrivateSnapshot(identity);
     if (!state) return;
     const due = state.timing.phaseEndsAt !== null && now >= state.timing.phaseEndsAt;
     switch (state.phase) {

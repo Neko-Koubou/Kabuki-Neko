@@ -7,7 +7,7 @@ import { projectRoom } from "../../modules/game-engine/room-projector";
 import { GAME_STATE_STORE, StateDomainError } from "./game-state.interface";
 import type { RoomProjector } from "./game-state.interface";
 import { MemoryStateStore } from "./memory-state.store";
-import { RedisStateStore } from "./redis-state.store";
+import { RedisV2StateStore } from "./redis-v2-state.store";
 
 /** The domain projector registers during module initialization. No private state
  * is ever used as a temporary public projection before that registration. */
@@ -202,8 +202,10 @@ function createProjection(): StateProjection {
         projection: StateProjection,
         config: ConfigService,
       ) =>
+        // STATE_DRIVER=redis uses the v2 room layout (ADR-13, TASK-185Q). Upgrade note: rooms that
+        // a v1 deployment left running are not migrated; they end as LOST (drain before upgrading).
         connections.command
-          ? new RedisStateStore(
+          ? new RedisV2StateStore(
               connections.command,
               projection.project,
               config.get("STATE_NAMESPACE"),

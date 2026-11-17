@@ -198,7 +198,9 @@ export class RoomScheduler implements OnApplicationBootstrap, OnModuleDestroy {
   /** Lifetime, timer and retention handling for one active allocation (leader only). */
   async visit(row: Allocation, now: number = this.clock()): Promise<void> {
     const identity = { pin: row.pin_code, sessionId: row.id };
-    const state = await this.store.getPrivateSnapshot(identity);
+    // Lifetime and timer checks read the read-only window (TASK-185Q, ADR-13): phase, timing,
+    // lifetimes and the frozen report, never every played question.
+    const state = await this.store.readPrivateSnapshot(identity);
     if (!state) return this.lose(row, now, "ROOM_LOST");
     if (!(await this.lead(identity, now))) return;
     if (now - (this.heartbeats.get(row.id) ?? 0) >= ROOM_LIMITS.allocationHeartbeatMs) {
@@ -236,7 +238,7 @@ export class RoomScheduler implements OnApplicationBootstrap, OnModuleDestroy {
       // A hard-expired PODIUM can no longer transition; retention handling below still applies.
       if (!(error instanceof StateDomainError && error.code === "ROOM_EXPIRED")) throw error;
     });
-    const after = await this.store.getPrivateSnapshot(identity);
+    const after = await this.store.readPrivateSnapshot(identity);
     if (!after) return this.lose(row, now, "ROOM_LOST");
     if (FINAL.has(after.phase) && after.frozenReport && row.status === "ACTIVE")
       await this.runtime.transition(row.id, "ACTIVE", "FINALIZING", now);

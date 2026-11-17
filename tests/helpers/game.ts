@@ -347,7 +347,11 @@ export async function allocationStatus(
 
 /**
  * Ages a live room's Redis state as elapsed server time would: `mutate` edits the decoded private
- * state (e.g. moves `lobbyActiveAt` two hours back), and the hash is written back in place.
+ * state (e.g. moves `lobbyActiveAt` two hours back), and the pieces are written back in place.
+ *
+ * The Redis v2 layout (ADR-13, TASK-185Q) keeps the room's scalar fields in the `core` field of
+ * `:meta` and the frozen report in `:report`; `mutate` sees both merged as one object
+ * (`frozenReport` included) and may change either.
  */
 export async function ageRoomState(
   redisUrl: string,
@@ -358,12 +362,17 @@ export async function ageRoomState(
   const { default: Redis } = await import("ioredis");
   const redis = new Redis(redisUrl);
   try {
-    const key = `kabukineko:${namespace}:room:{${room.pinCode}}:meta`;
-    const raw = await redis.hget(key, "state");
+    const prefix = `kabukineko:${namespace}:v2:room:{${room.pinCode}}`;
+    const raw = await redis.hget(`${prefix}:meta`, "core");
     if (!raw) throw new Error("room state missing");
+    const report = await redis.get(`${prefix}:report`);
     const state = JSON.parse(raw) as Record<string, unknown>;
+    state["frozenReport"] = report === null ? null : (JSON.parse(report) as unknown);
     mutate(state);
-    await redis.hset(key, "state", JSON.stringify(state));
+    const { frozenReport, ...core } = state;
+    await redis.hset(`${prefix}:meta`, "core", JSON.stringify(core));
+    if (frozenReport !== null && frozenReport !== undefined)
+      await redis.set(`${prefix}:report`, JSON.stringify(frozenReport), "KEEPTTL");
   } finally {
     redis.disconnect();
   }

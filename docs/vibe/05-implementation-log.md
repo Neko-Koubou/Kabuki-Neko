@@ -2896,3 +2896,29 @@
   - `pnpm --filter @kabuki-neko/api test` → 280/280.
   - Build copies `v2-question.lua`.
   - `pnpm test:contracts --testPathPatterns='redis-v2|state-parity'` → 65/65, including all 14 state-parity cases on the `redis-v2` driver.
+
+## TASK-185Q: Pasang store Redis v2 dan pindahkan pembaca rutin ke jendela — DONE
+- **Date**: 2026-11-17 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/providers/state/state.module.ts`: `STATE_DRIVER=redis` installs `RedisV2StateStore`.
+    - Upgrade note in the code: v1 rooms still running are not migrated and end as LOST (drain before upgrading, ADR-13).
+  - `apps/api/src/modules/game-engine/room-scheduler.ts`: `visit` reads the window (`readPrivateSnapshot`) for both its lifetime/timer check and its post-tick check (phase, timing, lifetimes, frozen report).
+  - `apps/api/src/modules/game-engine/game.service.ts`: these read the window:
+    - `tick`;
+    - `closeIfAllAnswered` (current question's answers);
+    - the phase-version read of `hostCommand`.
+    - `finalize`/`buildFrozenReport` and `syncFinalization` keep the full `getPrivateSnapshot`.
+  - `tests/contracts/redis-cluster.spec.ts`: runs against `RedisV2StateStore`. The slot check covers the seven declared keys plus `answers:0`, `closed:0` and `result:0`.
+- **Outside the target files (needed because the Redis key layout changed)**: test helpers and integration tests that edited Redis state directly now use the v2 layout:
+  - `tests/helpers/game.ts` `ageRoomState`: edits `core` in `:meta`, and the report in `:report` with KEEPTTL;
+  - `tests/integration/room-retention.spec.ts`: v2 keys, and the stale-cleanup probe uses the v2 store;
+  - `tests/integration/finalization-failures.spec.ts`: finalization in `core`.
+- **Environment (not code)**: the first `deployment.spec` run failed because the local minio image had been pruned and `kabuki-neko-api:local` was stale.
+  - Rebuilt the API image with `docker build --secret id=build_ca,src=/root/.ccr/ca-bundle.crt`.
+  - Ran with `KABUKI_TEST_MINIO_IMAGE=kabuki-neko/minio-test:9e49d5e7a648-go1.27.3-caacf32680`.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 280/280.
+  - `pnpm test:contracts --testPathPatterns='state-parity|redis'` → 94/94 (including redis-cluster on v2).
+  - `pnpm test:integration` (realtime-races, payload-privacy, recovery, room-retention, game-gateway, finalization-failures) → 52/52; deployment → 3/3 after the image rebuild.
+  - E2E `player`/`host` → 9/9. The first attempt stopped in the web server's Next.js build guard; a plain retry passed.

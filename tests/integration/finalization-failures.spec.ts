@@ -109,17 +109,18 @@ describe.each(["sqlite", "postgres", "mysql"] as const)(
       if (finalization) {
         const redis = new Redis(s.redisUrl);
         try {
-          const key = `kabukineko:default:room:{${room.pinCode}}:meta`;
-          const state = JSON.parse((await redis.hget(key, "state")) ?? "{}") as Record<
+          // Redis v2 layout (ADR-13): the finalization status lives in the meta `core` field.
+          const key = `kabukineko:default:v2:room:{${room.pinCode}}:meta`;
+          const core = JSON.parse((await redis.hget(key, "core")) ?? "{}") as Record<
             string,
             unknown
           >;
-          state["finalization"] = {
+          core["finalization"] = {
             sessionId: room.sessionId,
             updatedAt: Date.now(),
             ...finalization,
           };
-          await redis.hset(key, "state", JSON.stringify(state), "durable", "0");
+          await redis.hset(key, "core", JSON.stringify(core), "durable", "0");
         } finally {
           redis.disconnect();
         }

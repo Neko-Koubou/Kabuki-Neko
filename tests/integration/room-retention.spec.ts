@@ -23,7 +23,7 @@
  */
 import { randomUUID } from "node:crypto";
 import Redis from "ioredis";
-import { RedisStateStore } from "../../apps/api/src/providers/state/redis-state.store";
+import { RedisV2StateStore } from "../../apps/api/src/providers/state/redis-v2-state.store";
 import {
   GameClient,
   allocationStatus,
@@ -73,7 +73,7 @@ describe.each(["sqlite", "postgres", "mysql"] as const)("room retention on %s", 
     if (!single?.redisUrl) throw new Error("redis missing");
     const redis = new Redis(single.redisUrl);
     try {
-      return (await redis.exists(`kabukineko:default:room:{${room.pinCode}}:meta`)) === 1;
+      return (await redis.exists(`kabukineko:default:v2:room:{${room.pinCode}}:meta`)) === 1;
     } finally {
       redis.disconnect();
     }
@@ -244,7 +244,7 @@ describe.each(["sqlite", "postgres", "mysql"] as const)("room retention on %s", 
     }
     const redis = new Redis(s.redisUrl);
     try {
-      await redis.hset(`kabukineko:default:room:{${room.pinCode}}:meta`, "durable", "0");
+      await redis.hset(`kabukineko:default:v2:room:{${room.pinCode}}:meta`, "durable", "0");
     } finally {
       redis.disconnect();
     }
@@ -284,7 +284,7 @@ describe.each(["sqlite", "postgres", "mysql"] as const)("room retention on %s", 
     const room = await createRoom(host, quiz);
     const redis = new Redis(s.redisUrl);
     try {
-      const stale = new RedisStateStore(
+      const stale = new RedisV2StateStore(
         redis,
         () => {
           throw new Error("not used");
