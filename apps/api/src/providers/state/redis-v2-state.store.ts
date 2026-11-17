@@ -16,15 +16,17 @@
  * Built next to v1 and not yet installed in `StateModule`. Ported so far: room lifecycle, reads,
  * leases and the report (TASK-185M); players: join, recover, presence, avatar, friendly tickets
  * (TASK-185N, `lua/v2-player.lua`); answer admission and question freeze (TASK-185O,
- * `lua/v2-answer.lua`). Results, host commands including kick, and phases (TASK-185P) fail closed
- * with STATE_UNAVAILABLE until then.
+ * `lua/v2-answer.lua`); result commits, host commands and scheduled phases (TASK-185P,
+ * `lua/v2-question.lua`, with host skip/end in `lua/v2-answer.lua` next to the freeze).
  */
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import type { Redis, Cluster } from "ioredis";
 import { z } from "zod";
 import { ERROR_CODES } from "@kabuki-neko/shared/errors";
+import { clientContracts } from "@kabuki-neko/shared/socket-events";
 import {
   finalizeStatusSchema,
   playerRoomSyncSchema,
@@ -58,6 +60,7 @@ import {
   activeRoomStateSchema,
   assembleRoomState,
   closedQuestionSchema,
+  commandAckSchema,
   commandReceiptSchema,
   friendlyTicketSchema,
   frozenReportSchema,
@@ -78,12 +81,19 @@ const fail = (code: ConstructorParameters<typeof StateDomainError>[0]): never =>
 };
 /** Script JSON replies are objects; the operation decides which fields matter. */
 const objectSchema = z.record(z.string(), z.unknown());
+/** Reply of a host command: committed or replayed, with the room's versions and the ACK. */
+const commandResultSchema = z.object({
+  committed: z.boolean(),
+  revision: z.number().int(),
+  phaseVersion: z.number().int(),
+  ack: commandAckSchema,
+});
 /** Rooms whose last read window is cached, at most (oldest dropped first). */
 const WINDOW_CACHE_ROOMS = 256;
 /** Sessions whose immutable quiz snapshot is cached for answer validation, at most. */
 const QUIZ_CACHE_SESSIONS = 256;
 /** Scripts of the v2 layout, loaded from `lua/<name>.lua`. */
-const SCRIPTS = ["v2-room", "v2-player", "v2-answer"] as const;
+const SCRIPTS = ["v2-room", "v2-player", "v2-answer", "v2-question"] as const;
 type ScriptName = (typeof SCRIPTS)[number];
 
 /** A flat `HGETALL` reply `[field, value, …]` as a record of raw JSON strings. */
@@ -388,9 +398,60 @@ export class RedisV2StateStore implements IGameStateStore {
     return z.number().int().parse(reply.revision);
   }
 
-  /** Ported in TASK-185P (results, host commands and phases); fails closed until then. */
-  async applyCommand(_input: ApplyCommandInput): Promise<CommandResult> {
-    return fail("STATE_UNAVAILABLE");
+  /**
+   * Applies one host command with v1 semantics: identity checks, the `expectedPhaseVersion`
+   * fence, deduplication by requestId in `:commands` (same ACK on replay, IDEMPOTENCY_CONFLICT on
+   * another payload). Lock, kick, start and next run in `lua/v2-question.lua`; skip and end run in
+   * `lua/v2-answer.lua`, where they freeze an answering question and wait (up to 5 s, polling
+   * every 25 ms) for the result commit that writes their ACK.
+   */
+  async applyCommand(input: ApplyCommandInput): Promise<CommandResult> {
+    const { command } = input;
+    clientContracts[command.event].request.parse(command.request);
+    if (
+      command.request.sessionId !== input.sessionId ||
+      command.request.pinCode !== input.pin ||
+      command.request.requestId !== input.requestId
+    )
+      return fail("INVALID_REFERENCE");
+    if (
+      "expectedPhaseVersion" in command.request &&
+      command.request.expectedPhaseVersion !== input.expectedPhaseVersion
+    )
+      return fail("STALE_PHASE");
+    const delayed = command.event === "host:skip_timer" || command.event === "host:end_game";
+    // next_step needs the quiz length; the script never decodes the quiz.
+    const quiz = command.event === "host:next_step" ? await this.sessionQuiz(input) : null;
+    const op = {
+      ...command.request,
+      kind: delayed ? "hostCommand" : "command",
+      event: command.event,
+      hostId: input.hostId,
+      requestId: input.requestId,
+      payloadHash: input.payloadHash,
+      expectedPhaseVersion: input.expectedPhaseVersion,
+      ...(quiz ? { questionCount: quiz.questions.length } : {}),
+    };
+    const deadline = Date.now() + 5000;
+    for (;;) {
+      try {
+        return commandResultSchema.parse(
+          restoreArrays(
+            commandResultSchema,
+            await this.run(delayed ? "v2-answer" : "v2-question", input, op),
+          ),
+        );
+      } catch (error: unknown) {
+        if (
+          !delayed ||
+          !(error instanceof StateDomainError) ||
+          error.code !== "OPERATION_PENDING" ||
+          Date.now() >= deadline
+        )
+          throw error;
+        await delay(25);
+      }
+    }
   }
   /**
    * Binds a connection to a player slot: a new join (with a 120 s idempotent join receipt and,
@@ -526,9 +587,17 @@ export class RedisV2StateStore implements IGameStateStore {
     if (result.result === "ALREADY_CLOSED") return "ALREADY_CLOSED";
     return closedQuestionSchema.parse(restoreArrays(closedQuestionSchema, result.closed));
   }
-  /** Ported in TASK-185P (results, host commands and phases); fails closed until then. */
-  async commitQuestionResult(_input: CommitQuestionInput): Promise<"COMMITTED" | "RETRY"> {
-    return fail("STATE_UNAVAILABLE");
+  /**
+   * Commits the scored result of the frozen current question (`lua/v2-question.lua` `commit`):
+   * RETRY unless the core revision and the closed-question hash still match and no result exists.
+   */
+  async commitQuestionResult(input: CommitQuestionInput): Promise<"COMMITTED" | "RETRY"> {
+    const result = await this.run("v2-question", input, {
+      ...input,
+      kind: "commit",
+      result: questionResultSchema.parse(input.result),
+    });
+    return z.enum(["COMMITTED", "RETRY"]).parse(result.result);
   }
   /** Reserves a friendly nickname for one socket in the lobby (replaces its earlier ticket). */
   async reserveFriendlyTicket(identity: RoomIdentity, ticket: FriendlyTicket): Promise<void> {
@@ -569,14 +638,33 @@ export class RedisV2StateStore implements IGameStateStore {
     });
     return z.number().int().positive().parse(reply.revision);
   }
-  /** Ported in TASK-185P (results, host commands and phases); fails closed until then. */
+  /**
+   * Scheduled phase change with a phaseVersion CAS (`lua/v2-question.lua` `transition`). Redis
+   * TIME, not the caller's `timing`, builds the new timing; entering QUESTION_ANSWERING takes the
+   * question's time limit from the session's quiz.
+   */
   async transitionPhase(
-    _identity: RoomIdentity,
-    _expectedPhaseVersion: number,
-    _phase: ActiveRoomState["phase"],
-    _timing: ActiveRoomState["timing"],
-    _questionIndex: number | null,
+    identity: RoomIdentity,
+    expectedPhaseVersion: number,
+    phase: ActiveRoomState["phase"],
+    timing: ActiveRoomState["timing"],
+    questionIndex: number | null,
   ): Promise<boolean> {
-    return fail("STATE_UNAVAILABLE");
+    let question: { index: number; timeLimitSec: number } | null = null;
+    if (phase === "QUESTION_ANSWERING" && questionIndex !== null) {
+      const quiz = await this.sessionQuiz(identity);
+      if (!quiz) return fail("ROOM_NOT_FOUND");
+      const entry = quiz.questions[questionIndex];
+      if (entry) question = { index: questionIndex, timeLimitSec: entry.timeLimitSec };
+    }
+    const result = await this.run("v2-question", identity, {
+      kind: "transition",
+      expectedPhaseVersion,
+      phase,
+      timing,
+      questionIndex,
+      question,
+    });
+    return z.boolean().parse(result.result);
   }
 }

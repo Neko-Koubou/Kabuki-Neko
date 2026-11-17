@@ -4,8 +4,8 @@
  * the seeded state, window limited to the current and latest scored question), the release that
  * deletes every room key by name, scheduler leases, the frozen report, durability and the
  * finalization status. TASK-185N adds players (joins, recovery, presence, avatars, tickets) and
- * TASK-185O answer admission, the question freeze and the flat per-answer cost.
- * Results, host commands and phases join in TASK-185P.
+ * TASK-185O answer admission, the question freeze and the flat per-answer cost, TASK-185P result
+ * commits, host commands (lock, kick, start, next, skip, end) and scheduled phase transitions.
  */
 import { createHash } from "node:crypto";
 import Redis from "ioredis";
@@ -20,6 +20,7 @@ import {
 } from "../../apps/api/src/providers/state/private-state.schema";
 import type {
   ActiveRoomState,
+  ApplyCommandInput,
   RoomProjector,
 } from "../../apps/api/src/providers/state/game-state.interface";
 import { RedisV2StateStore } from "../../apps/api/src/providers/state/redis-v2-state.store";
@@ -834,17 +835,217 @@ it("keeps admitAnswer's Redis cost flat after 20 questions x 50 players (TASK-18
   }
 });
 
-it("fails the gameplay operations that later tasks port closed, never on another layout", async () => {
-  await seed();
+/** A host command input for this room (TASK-185P). */
+function host(
+  event: "host:start_game" | "host:next_step" | "host:end_game" | "host:skip_timer",
+  phaseVersion: number,
+  requestId: string,
+) {
+  const request = {
+    sessionId: identity.sessionId,
+    pinCode: identity.pin,
+    requestId,
+    expectedPhaseVersion: phaseVersion,
+  };
+  return {
+    ...identity,
+    hostId: uuid(5),
+    requestId,
+    payloadHash: "a".repeat(64),
+    expectedPhaseVersion: phaseVersion,
+    command: { event, request },
+  } as ApplyCommandInput;
+}
+/** Ends the current phase now by moving its stored deadline to its start (scheduler shortcut). */
+async function endPhaseNow(): Promise<void> {
+  const core = JSON.parse(required(await redis.hget(`${PREFIX}:meta`, "core"))) as {
+    timing: { phaseStartedAt: number; phaseEndsAt: number | null };
+  };
+  core.timing.phaseEndsAt = core.timing.phaseStartedAt;
+  await redis.hset(`${PREFIX}:meta`, "core", JSON.stringify(core));
+}
+
+it("plays two questions to PODIUM with commands, CAS transitions and result commits (TASK-185P)", async () => {
+  const state = activeRoomStateSchema.parse(room());
+  state.quiz.questions = [question(), { ...question(), id: uuid(9), orderIndex: 1 }] as never;
+  state.players = { [uuid(6)]: player(), [uuid(7)]: { ...player(7), connected: false } };
+  await seed(state);
+  const start = await store.applyCommand(host("host:start_game", 1, uuid(40)));
+  expect(start).toMatchObject({ committed: true, phaseVersion: 2 });
+  expect(start.ack).toMatchObject({
+    ok: true,
+    data: { phase: "GAME_START_COUNTDOWN", phaseVersion: 2 },
+  });
+  // Replays return the stored ACK; another payload conflicts.
+  expect((await store.applyCommand(host("host:start_game", 1, uuid(40)))).ack).toEqual(start.ack);
   await expect(
-    store.commitQuestionResult({
+    store.applyCommand({ ...host("host:start_game", 1, uuid(40)), payloadHash: "b".repeat(64) }),
+  ).rejects.toMatchObject({ code: "IDEMPOTENCY_CONFLICT" });
+  const timing = required(await store.getPrivateSnapshot(identity)).timing;
+  // Not due yet, then due: the CAS lets exactly one transition through.
+  expect(await store.transitionPhase(identity, 2, "QUESTION_PREVIEW", timing, 0)).toBe(false);
+  await endPhaseNow();
+  const moved = await Promise.all([
+    store.transitionPhase(identity, 2, "QUESTION_PREVIEW", timing, 0),
+    store.transitionPhase(identity, 2, "QUESTION_PREVIEW", timing, 0),
+  ]);
+  expect(moved.sort()).toEqual([false, true]);
+  await endPhaseNow();
+  expect(await store.transitionPhase(identity, 3, "QUESTION_ANSWERING", timing, 0)).toBe(true);
+  let s = required(await store.getPrivateSnapshot(identity));
+  expect(s).toMatchObject({ phase: "QUESTION_ANSWERING", accepting: true, questionIndex: 0 });
+  // Only connected players are required; the time limit comes from the quiz (20 s + 1.5 s grace).
+  expect(s.requiredPlayerIds).toEqual([uuid(6)]);
+  expect(required(s.timing.acceptanceClosesAt) - required(s.timing.questionStartedAt)).toBe(21_500);
+  expect((await storedCore()).answeredRequired).toBe(0);
+  await store.admitAnswer(answer());
+  s = required(await store.getPrivateSnapshot(identity));
+  const commit = {
+    ...identity,
+    expectedRevision: s.revision,
+    closedQuestionHash: required(s.closedQuestions[0]).hash,
+    result: result(s),
+  };
+  expect(await store.commitQuestionResult({ ...commit, closedQuestionHash: "e".repeat(64) })).toBe(
+    "RETRY",
+  );
+  const outcomes = await Promise.all([
+    store.commitQuestionResult(commit),
+    store.commitQuestionResult(commit),
+  ]);
+  expect(outcomes.sort()).toEqual(["COMMITTED", "RETRY"]);
+  s = required(await store.getPrivateSnapshot(identity));
+  expect(s).toMatchObject({ phase: "ANSWER_REVEAL", phaseVersion: 5 });
+  expect(s.players[uuid(6)]?.score).toBe(1000);
+  expect(s.players[uuid(7)]?.rank).toBe(2);
+  expect(s.results[0]).toEqual(result(s));
+  expect(JSON.parse(required(await redis.hget(`${PREFIX}:meta`, "core"))).scoredQuestions).toEqual([
+    0,
+  ]);
+  // Reveal -> leaderboard -> preview of question 1.
+  await store.applyCommand(host("host:next_step", 5, uuid(41)));
+  const preview = await store.applyCommand(host("host:next_step", 6, uuid(42)));
+  expect(preview.ack).toMatchObject({
+    ok: true,
+    data: { phase: "QUESTION_PREVIEW", phaseVersion: 7 },
+  });
+  await expect(store.applyCommand(host("host:next_step", 6, uuid(43)))).rejects.toMatchObject({
+    code: "STALE_PHASE",
+  });
+  await endPhaseNow();
+  expect(await store.transitionPhase(identity, 7, "QUESTION_ANSWERING", timing, 1)).toBe(true);
+  expect((await storedCore()).answeredRequired).toBe(0);
+  // A host skip freezes question 1 and its ACK waits for the result commit.
+  const skip = store.applyCommand(host("host:skip_timer", 8, uuid(44)));
+  let frozen: ActiveRoomState | null = null;
+  for (let i = 0; i < 100 && !frozen?.closedQuestions[1]; i += 1)
+    frozen = await store.getPrivateSnapshot(identity);
+  const closed = required(required(frozen).closedQuestions[1]);
+  expect(closed).toMatchObject({ reason: "HOST_SKIP", answers: [] });
+  const second = result(required(frozen));
+  second.questionIndex = 1;
+  second.reveal.questionIndex = 1;
+  expect(
+    await store.commitQuestionResult({
       ...identity,
-      expectedRevision: 1,
-      closedQuestionHash: "d".repeat(64),
-      result: result(activeRoomStateSchema.parse(room())),
+      expectedRevision: required(frozen).revision,
+      closedQuestionHash: closed.hash,
+      result: second,
     }),
-  ).rejects.toMatchObject({ code: "STATE_UNAVAILABLE" });
-  // v1 keys are never read by v2 (ADR-13 migration by draining).
-  await redis.hset(`kabukineko:v2contract:room:{${identity.pin}}:meta`, "state", "{}");
+  ).toBe("COMMITTED");
+  expect((await skip).ack).toMatchObject({
+    ok: true,
+    data: { phase: "ANSWER_REVEAL", phaseVersion: 9 },
+  });
+  // The last reveal ends the game: PODIUM, COMPLETED, pending finalization.
+  await store.applyCommand(host("host:next_step", 9, uuid(45)));
+  s = required(await store.getPrivateSnapshot(identity));
+  expect(s).toMatchObject({ phase: "PODIUM", endReason: "COMPLETED", phaseVersion: 10 });
+  expect(s.finalization).toMatchObject({ status: "pending", retryable: true });
+  expect(Object.keys(s.results)).toEqual(["0", "1"]);
+  await endPhaseNow();
+  expect(await store.transitionPhase(identity, 10, "FINISHED", timing, 1)).toBe(true);
+  expect(required(await store.getPrivateSnapshot(identity)).phase).toBe("FINISHED");
+});
+
+it("locks the lobby, kicks players and ends a game outside ANSWERING (TASK-185P)", async () => {
+  await seed();
+  const lock: ApplyCommandInput = {
+    ...identity,
+    hostId: uuid(5),
+    requestId: uuid(50),
+    payloadHash: "a".repeat(64),
+    expectedPhaseVersion: 1,
+    command: {
+      event: "host:lock_room",
+      request: { sessionId: uuid(1), pinCode: "000123", requestId: uuid(50), isLocked: true },
+    },
+  } as ApplyCommandInput;
+  await expect(store.applyCommand({ ...lock, hostId: uuid(99) })).rejects.toMatchObject({
+    code: "FORBIDDEN",
+  });
+  expect((await store.applyCommand(lock)).ack).toMatchObject({
+    ok: true,
+    data: { isLocked: true },
+  });
+  await expect(join()).rejects.toMatchObject({ code: "ROOM_LOCKED" });
+  await expect(store.applyCommand(host("host:start_game", 1, uuid(51)))).rejects.toMatchObject({
+    code: "NO_PLAYERS",
+  });
+
+  // Kicking an unanswered required player during ANSWERING removes it from the open question.
+  await redis.flushdb();
+  await seedAnswering(answering([uuid(6), uuid(7)]));
+  await store.admitAnswer(answer(6));
+  const kick = (playerId: string, requestId: string) =>
+    store.applyCommand({
+      ...identity,
+      hostId: uuid(5),
+      requestId,
+      payloadHash: "a".repeat(64),
+      expectedPhaseVersion: 1,
+      command: {
+        event: "host:kick_player",
+        request: { sessionId: uuid(1), pinCode: "000123", requestId, playerId },
+      },
+    } as ApplyCommandInput);
+  expect((await kick(uuid(7), uuid(52))).ack).toMatchObject({
+    ok: true,
+    data: { kicked: true, playerId: uuid(7) },
+  });
+  let s = required(await store.getPrivateSnapshot(identity));
+  expect(s.requiredPlayerIds).toEqual([uuid(6)]);
+  expect(s.players[uuid(7)]).toMatchObject({ connected: false, connectionGeneration: 2 });
+  expect(s.players[uuid(7)]?.kickedAt).not.toBeNull();
+  await expect(kick(uuid(7), uuid(53))).rejects.toMatchObject({ code: "PLAYER_KICKED" });
+  await expect(kick(uuid(8), uuid(54))).rejects.toMatchObject({ code: "NOT_FOUND" });
+  // The remaining required answers are in: ALL_ANSWERED now closes the question.
+  expect(
+    await store.closeQuestion({ ...identity, expectedPhaseVersion: 1, reason: "ALL_ANSWERED" }),
+  ).toMatchObject({ reason: "ALL_ANSWERED", requiredPlayerIds: [uuid(6)] });
+
+  // end_game outside ANSWERING commits PODIUM at once.
+  await redis.flushdb();
+  const reveal = answering();
+  reveal.phase = "LEADERBOARD";
+  reveal.accepting = false;
+  await seed(reveal);
+  const ended = await store.applyCommand(host("host:end_game", 1, uuid(55)));
+  expect(ended).toMatchObject({ committed: true, phaseVersion: 2 });
+  expect(ended.ack).toMatchObject({
+    ok: true,
+    data: { phase: "PODIUM", finalization: { status: "pending" } },
+  });
+  s = required(await store.getPrivateSnapshot(identity));
+  expect(s).toMatchObject({ phase: "PODIUM", endReason: "HOST_ENDED" });
+  await expect(store.applyCommand(host("host:skip_timer", 2, uuid(56)))).rejects.toMatchObject({
+    code: "INVALID_PHASE",
+  });
+});
+
+it("never reads another layout's keys (ADR-13 migration by draining)", async () => {
+  await seed();
+  await redis.hset(`kabukineko:v2contract:room:{000124}:meta`, "sessionId", identity.sessionId);
+  await redis.hset(`kabukineko:v2contract:room:{000124}:meta`, "state", "{}");
   expect(await store.getPrivateSnapshot({ ...identity, pin: "000124" })).toBeNull();
 });

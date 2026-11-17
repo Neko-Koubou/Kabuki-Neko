@@ -23,6 +23,7 @@ import {
   RedisStateStore,
   restoreArrays,
 } from "../../apps/api/src/providers/state/redis-state.store";
+import { RedisV2StateStore } from "../../apps/api/src/providers/state/redis-v2-state.store";
 import { StateConnections, StateProjection } from "../../apps/api/src/providers/state/state.module";
 import { ConfigService } from "../../apps/api/src/config/config.service";
 import { createTestRuntime } from "../helpers/runtime";
@@ -355,7 +356,9 @@ afterAll(async () => {
   await runtime?.cleanup();
 });
 
-for (const driver of ["memory", "redis"] as const)
+// Every case runs against the memory store, the Redis v1 store and the Redis v2 layout
+// (ADR-13, TASK-185P); `driver === "redis"` blocks inspect the v1 key layout only.
+for (const driver of ["memory", "redis", "redis-v2"] as const)
   describe(`${driver} state contract`, () => {
     let store: IGameStateStore;
     let cleanup: () => void;
@@ -364,6 +367,11 @@ for (const driver of ["memory", "redis"] as const)
       now = Date.now();
       if (driver === "redis") {
         const adapter = new RedisStateStore(redis, project, "parity");
+        store = adapter;
+        cleanup = () => adapter.onModuleDestroy();
+        await redis.flushdb();
+      } else if (driver === "redis-v2") {
+        const adapter = new RedisV2StateStore(redis, project, "parity");
         store = adapter;
         cleanup = () => adapter.onModuleDestroy();
         await redis.flushdb();
@@ -453,6 +461,18 @@ for (const driver of ["memory", "redis"] as const)
         };
         required(stored.players[uuid(6)]).nickname = "x".repeat(500);
         await redis.hset(required(meta), "state", JSON.stringify(stored));
+        await expect(store.getPrivateSnapshot(identity)).rejects.toMatchObject({
+          code: "STATE_UNAVAILABLE",
+        });
+      }
+      if (driver === "redis-v2") {
+        // v2 keeps players in their own hash; an invalid player still fails the validated read.
+        const players = `kabukineko:parity:v2:room:{${identity.pin}}:players`;
+        const stored = JSON.parse(required(await redis.hget(players, uuid(6)))) as {
+          nickname: string;
+        };
+        stored.nickname = "x".repeat(500);
+        await redis.hset(players, uuid(6), JSON.stringify(stored));
         await expect(store.getPrivateSnapshot(identity)).rejects.toMatchObject({
           code: "STATE_UNAVAILABLE",
         });

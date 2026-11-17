@@ -9,6 +9,9 @@
 --          the question is frozen in the same script (ALL_ANSWERED).
 --   close: freezes the current question for TIMER, HOST_SKIP, HOST_END, ALL_ANSWERED or EXPIRED
 --          (v1 close-question.lua `close` semantics).
+--   hostCommand: host:skip_timer / host:end_game (TASK-185P). During ANSWERING they freeze the
+--          question and park the command in meta `pendingCommand` (OPERATION_PENDING); the result
+--          commit in v2-question.lua writes its ACK. Outside ANSWERING end_game goes to PODIUM.
 -- Each operation decodes only `core`, one player and the current question's answers: its cost does
 -- not grow with the number of played questions. `answeredRequired` in the core counts required
 -- players that answered the current question, so an admission never scans the answers hash.
@@ -20,7 +23,7 @@ if not prefix or #KEYS ~= 7 or KEYS[2] ~= prefix .. ':join-receipts' or KEYS[3] 
   or KEYS[6] ~= prefix .. ':tickets' or KEYS[7] ~= prefix .. ':report' then
   return err('INVALID_REFERENCE')
 end
-local META, PLAYERS = KEYS[1], KEYS[4]
+local META, PLAYERS, COMMANDS = KEYS[1], KEYS[4], KEYS[5]
 for _, key in ipairs({META, KEYS[2], KEYS[3]}) do
   local owner = redis.call('HGET', key, 'sessionId')
   if owner and owner ~= session then return err('ROOM_NOT_FOUND') end
@@ -150,6 +153,45 @@ if op.kind == 'admit' then
   if #core.requiredPlayerIds > 0 and core.answeredRequired >= #core.requiredPlayerIds then freeze('ALL_ANSWERED') end
   saveCore(true)
   return cjson.encode({answer=accepted, revision=core.revision, frozen=not core.accepting})
+end
+
+-- Host skip/end use the same atomic freeze and persist their pending receipt.
+-- The API waits/reconciles this receipt; an interim freeze is never a success ACK.
+if op.kind == 'hostCommand' then
+  if expired then return err('ROOM_EXPIRED') end
+  if op.hostId ~= core.hostId then return err('FORBIDDEN') end
+  local previous = redis.call('HGET', COMMANDS, op.requestId)
+  if previous then
+    previous = cjson.decode(previous)
+    if previous.actorId ~= op.hostId or previous.payloadHash ~= op.payloadHash then return err('IDEMPOTENCY_CONFLICT') end
+    return cjson.encode({committed=false, revision=core.revision, phaseVersion=core.phaseVersion, ack=previous.ack})
+  end
+  local pending = redis.call('HGET', META, 'pendingCommand')
+  if pending then
+    pending = cjson.decode(pending)
+    if pending.requestId == op.requestId and pending.payloadHash ~= op.payloadHash then return err('IDEMPOTENCY_CONFLICT') end
+    return err('OPERATION_PENDING')
+  end
+  if op.expectedPhaseVersion ~= core.phaseVersion then return err('STALE_PHASE') end
+  if op.event ~= 'host:skip_timer' and op.event ~= 'host:end_game' then return err('INVALID_FORMAT') end
+  if core.phase == 'QUESTION_ANSWERING' then
+    if not core.accepting then return err('OPERATION_PENDING') end
+    freeze(op.event == 'host:end_game' and 'HOST_END' or 'HOST_SKIP')
+    saveCore(false); redis.call('HSET', META, 'pendingCommand', cjson.encode(op))
+    return err('OPERATION_PENDING')
+  end
+  if op.event == 'host:skip_timer' then return err('INVALID_PHASE') end
+  if core.phase ~= 'PODIUM' and core.phase ~= 'FINISHED' then
+    core.phase = 'PODIUM'; core.phaseVersion = core.phaseVersion + 1; core.accepting = false; core.endReason = 'HOST_ENDED'
+    core.timing = {phaseStartedAt=now, phaseEndsAt=now + 8000, questionStartedAt=cjson.null, inputClosesAt=cjson.null, acceptanceClosesAt=cjson.null}
+    core.finalization = {sessionId=session, status='pending', reportId=cjson.null, retryable=true, errorCode=cjson.null, updatedAt=now}
+  end
+  local data = {phase='PODIUM', phaseVersion=core.phaseVersion, finalization=core.finalization}
+  local response = {ok=true, requestId=op.requestId, serverTime=now, data=data}
+  redis.call('HSET', COMMANDS, op.requestId, cjson.encode({actorId=op.hostId, payloadHash=op.payloadHash, ack=response, createdAt=now}))
+  followTtl(COMMANDS)
+  saveCore(true)
+  return cjson.encode({committed=true, revision=core.revision, phaseVersion=core.phaseVersion, ack=response})
 end
 
 if op.kind ~= 'close' then return err('INVALID_FORMAT') end

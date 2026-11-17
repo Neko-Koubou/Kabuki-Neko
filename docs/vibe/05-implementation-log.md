@@ -2862,3 +2862,37 @@
   - `pnpm --filter @kabuki-neko/api test` → 280/280.
   - Build copies `v2-answer.lua`.
   - `pnpm test:contracts --testPathPatterns='redis-v2|state-parity'` → 49/49.
+
+## TASK-185P: Store Redis v2: commit hasil, perintah host, dan transisi fase — DONE
+- **Date**: 2026-11-17 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/providers/state/lua/v2-question.lua` (new; flat name instead of `lua/v2/question.lua`, see TASK-185M).
+    - `commit` (v1 `close-question.lua`):
+      - RETRY unless the core revision and the closed hash still match and `:result:<q>` is missing;
+      - INVALID_REFERENCE unless the totals cover exactly the players in `:players`, each with every field;
+      - writes the player totals, `:result:<q>`, `core.scoredQuestions`, ANSWER_REVEAL or PODIUM (HOST_END/EXPIRED with a pending finalization), and the ACK of a parked host skip/end.
+    - `command` (v1 `mutate-room.lua`):
+      - FORBIDDEN, then the `:commands` receipt (replay / IDEMPOTENCY_CONFLICT), STALE_PHASE and OPERATION_PENDING;
+      - lock_room, start_game (NO_PLAYERS), next_step (question count from the adapter);
+      - kick_player removes an unanswered player from the open question's required/eligible sets, so `answeredRequired` stays exact.
+    - `transition`: phaseVersion CAS on the Redis clock. QUESTION_ANSWERING builds the required set from connected players and resets `answeredRequired`; the time limit comes from the adapter.
+  - `apps/api/src/providers/state/lua/v2-answer.lua`: `hostCommand` (skip_timer/end_game).
+    - During ANSWERING it freezes the question and parks the command in meta `pendingCommand` (OPERATION_PENDING).
+    - Outside ANSWERING, end_game moves to PODIUM (HOST_ENDED).
+    - It lives next to the freeze so the SHA-256 code exists once.
+  - `apps/api/src/providers/state/redis-v2-state.store.ts`:
+    - `applyCommand`: v1 identity checks, and skip/end wait up to 5 s for their ACK.
+    - `commitQuestionResult`.
+    - `transitionPhase`: the time limit and question count come from the cached session quiz (TASK-185O); the scripts never decode the quiz.
+    - The file comment lists every ported operation; nothing fails closed any more.
+  - `tests/contracts/state-parity.spec.ts`: a third driver `redis-v2`. Every case runs against memory, Redis v1 and Redis v2. The two v1-layout probes (TASK-185H/J) stay v1-only. v2 adds its own check that a corrupt `:players` entry fails the validated read.
+  - `tests/contracts/redis-v2-state.spec.ts`:
+    - A two-question game to FINISHED: start, replay/conflict, CAS transitions, required set and time limit, concurrent commits, reveal → leaderboard → preview, STALE_PHASE, a host skip whose ACK waits for the commit, PODIUM/COMPLETED.
+    - Lock, FORBIDDEN, NO_PLAYERS, kick during ANSWERING followed by ALL_ANSWERED, and end_game outside ANSWERING.
+    - The old fail-closed case is replaced by a layout-isolation case.
+- **Deviations**: script file names, as above.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 280/280.
+  - Build copies `v2-question.lua`.
+  - `pnpm test:contracts --testPathPatterns='redis-v2|state-parity'` → 65/65, including all 14 state-parity cases on the `redis-v2` driver.
