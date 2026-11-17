@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 236 task selesai, 1 task Pending (Phase 7 tindak lanjut QA, 2026-11-12)** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 237 task selesai, 8 task Pending (Phase 7 tindak lanjut QA, 2026-11-12)** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -20,7 +20,7 @@ Status Legend: `- [ ]` Pending | `- [~]` In Progress | `- [x]` Completed | `- [!
 | 4. Frontend Design Tokens, Base UI & State Layer | TASK-087–TASK-131 | 45 | Fondasi M5–M6; source katalog M1 dituntaskan sebelum UI |
 | 5. Feature Screens, API Integration & 5 UI States | TASK-132–TASK-163 | 32 | M5 → M6 |
 | 6. Hardening, Edge Cases & Polish | TASK-164–TASK-182 | 19 | M7 + release evidence + paket self-host Docker |
-| 7. Tindak lanjut QA | TASK-183–TASK-189 (+ TASK-183A, TASK-185A–K) | 19 | Temuan terbuka [07-qa-report.md](07-qa-report.md): benchmark Redis dua node (US-20), fixture uji root/proxy; ruang disk Docker yang dapat diatur (TASK-188–189, permintaan pengguna 2026-11-12) |
+| 7. Tindak lanjut QA | TASK-183–TASK-189 (+ TASK-183A, TASK-185A–S) | 27 | Temuan terbuka [07-qa-report.md](07-qa-report.md): benchmark Redis dua node (US-20), fixture uji root/proxy; ruang disk Docker yang dapat diatur (TASK-188–189, permintaan pengguna 2026-11-12) |
 
 **Urutan:** ambil task Pending bernomor terkecil yang semua Depends On-nya Completed. Dependensi per-task adalah DAG operasional; phase merangkum milestone, bukan izin mengerjakan seluruh phase dalam satu `/vibe-code`. API/DB/adapter selesai sebelum integrasi UI; catalog tools/contracts lebih awal dan enam katalog lengkap tersedia sebelum provider UI. Tidak ada delegasi atau eksekusi agen paralel yang diperlukan oleh plan ini.
 
@@ -3220,7 +3220,7 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - Spec: pembacaan tidak memakai EVALSHA, dibuktikan dengan `SCRIPT FLUSH` sebelum baca.
   - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
 
-### - [~] TASK-185K: Rancang ulang tata letak state room di Redis (jawaban dan hasil di luar blob)
+### - [x] TASK-185K: Rancang ulang tata letak state room di Redis (jawaban dan hasil di luar blob)
 - **Traceability**: `US-10`, `US-16`, `US-20`, NFR-01, ADR-03 (atomisitas Lua same-slot), temuan TASK-185I.
 - **Depends On**: `TASK-185J`
 - **Target Files**:
@@ -3238,6 +3238,149 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - ADR tercatat di SA.
   - Task implementasi tercantum dengan dependensi yang benar.
   - Tidak ada kode aplikasi diubah di task ini.
+
+### - [ ] TASK-185L: Pisahkan skema core room dan tetapkan kontrak pembacaan jendela
+- **Traceability**: `US-16`, `US-20`, NFR-01, ADR-13 ([SA §6.1.1](03-system-analysis.md#611-redis-room-layout-v2-adr-13-2026-11-17)).
+- **Depends On**: `TASK-185K`, `TASK-046`, `TASK-185B`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/providers/state/private-state.schema.ts`
+  - `MODIFY` `apps/api/src/providers/state/game-state.interface.ts`
+  - `MODIFY` `apps/api/src/providers/state/memory-state.store.ts`
+  - `MODIFY` `apps/api/src/providers/state/memory-state.store.spec.ts`
+- **Implementation Specs**:
+  - `roomCoreSchema`: `ActiveRoomState` tanpa `quiz`, `players`, `answers`, `closedQuestions`, `results`, `commands`, `tickets`, `frozenReport`, ditambah `answeredRequired` dan `scoredQuestions` (ADR-13).
+  - `splitRoomState(state)` dan `assembleRoomState(parts)` murni dan saling invers. Refinement lintas bagian (referensi pemain, kunci jawaban) divalidasi pada hasil rakitan penuh.
+  - Kontrak `readPrivateSnapshot` diubah menjadi **jendela**: core, quiz, dan pemain penuh; `answers`/`closedQuestions`/`results` hanya untuk soal aktif dan soal terakhir yang sudah diskor. Memory store mengimplementasikannya dengan referensi (tanpa salinan).
+  - `getPrivateSnapshot` tetap penuh.
+- **Definition of Done (Verification)**:
+  - Spec:
+    - `assembleRoomState(splitRoomState(s))` deep-equal `s` untuk state lobby, answering, reveal, dan podium;
+    - jendela memory store hanya memuat soal aktif dan soal terakhir yang diskor;
+    - konsumen jendela (projector, settle, diff) tetap lulus.
+  - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
+
+### - [ ] TASK-185M: Store Redis v2: siklus hidup room, pembacaan, lease, dan laporan
+- **Traceability**: `US-16`, `US-17`, `US-20`, ADR-13.
+- **Depends On**: `TASK-185L`, `TASK-185J`
+- **Target Files**:
+  - `CREATE` `apps/api/src/providers/state/redis-v2-state.store.ts`
+  - `CREATE` `apps/api/src/providers/state/lua/v2/room.lua`
+  - `CREATE` `tests/contracts/redis-v2-state.spec.ts`
+- **Implementation Specs**:
+  - Kunci v2 dengan prefix `kabukineko:<ns>:v2:room:{pin}`.
+  - `room.lua`:
+    - `createRoom` (tulis `core`, `quiz`, `players` kosong);
+    - `expireToPodium`, `markFinalization`, `freezeReport` (`:report`);
+    - `releaseRoom` (hapus semua kunci by name dari indeks di `core`, tanpa SCAN);
+    - operasi lease.
+  - Pembacaan tanpa skrip: `getPrivateSnapshot` merakit penuh, dan `readPrivateSnapshot` merakit jendela (HMGET/HGETALL/GET + TIME, `restoreArrays` per bagian).
+  - Method gameplay lain melempar `STATE_UNAVAILABLE` sampai task berikutnya. Store **belum dipasang** di `state.module.ts`.
+- **Definition of Done (Verification)**:
+  - Contract v2 (Redis asli):
+    - create/EXISTS;
+    - pembacaan penuh dan jendela deep-equal dengan state seed;
+    - release menghapus semua kunci room (dicek dengan `EXISTS`);
+    - lease acquire/renew/release;
+    - freeze report, lalu markFinalization.
+  - `pnpm --filter @kabuki-neko/api lint`, `typecheck` lulus.
+  - `pnpm test:contracts --testPathPatterns=redis-v2` lulus.
+
+### - [ ] TASK-185N: Store Redis v2: pemain (join, recover, presence, avatar, kick, tiket)
+- **Traceability**: `US-07`, `US-08`, `US-12`, ADR-13.
+- **Depends On**: `TASK-185M`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/providers/state/redis-v2-state.store.ts`
+  - `CREATE` `apps/api/src/providers/state/lua/v2/player.lua`
+  - `MODIFY` `tests/contracts/redis-v2-state.spec.ts`
+- **Implementation Specs**:
+  - Port semantik `bind-player.lua` dan bagian pemain/tiket/presence/kick dari `mutate-room.lua` ke `player.lua`. Setiap operasi hanya menyentuh `core` dan field pemain/tiket terkait (`HGET`/`HSET` per field).
+  - Join receipt, generation, kapasitas, dan nickname tetap persis seperti v1.
+- **Definition of Done (Verification)**:
+  - Kasus pemain dari `tests/contracts/state-parity.spec.ts` dijalankan terhadap v2 dan lulus (join/retry/recover, generasi lama ditolak, tiket friendly, kick).
+  - lint/typecheck lulus.
+
+### - [ ] TASK-185O: Store Redis v2: admisi jawaban dan freeze soal
+- **Traceability**: `US-10`, `US-11`, `US-20`, ADR-03, ADR-13.
+- **Depends On**: `TASK-185N`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/providers/state/redis-v2-state.store.ts`
+  - `CREATE` `apps/api/src/providers/state/lua/v2/answer.lua`
+  - `MODIFY` `tests/contracts/redis-v2-state.spec.ts`
+- **Implementation Specs**:
+  - `admitAnswer`:
+    - guard identik dengan v1 (TIME Redis sebagai waktu intake, deadline inklusif, dedup submissionId plus hash payload, ALREADY_ANSWERED);
+    - menulis `:answers:<q>` field playerId dan menaikkan `core.revision`/`answeredRequired`;
+    - pada jawaban wajib terakhir, freeze di skrip yang sama (`HGETALL :answers:<q>`, `:closed:<q>` plus SHA-256).
+  - `closeQuestion` (TIMER/HOST_SKIP/ALL_ANSWERED) dengan freeze yang sama.
+  - Biaya per jawaban tidak bergantung pada jumlah soal yang sudah dimainkan.
+- **Definition of Done (Verification)**:
+  - Kasus admisi/freeze dari state-parity lulus terhadap v2 (inclusive intake, natural close, freeze-once, last required answer, replay, ALREADY_ANSWERED).
+  - Spec baru: setelah 20 soal × 50 pemain, durasi `admitAnswer` (SLOWLOG/`TIME`) tidak naik terhadap soal pertama melebihi toleransi yang dicatat.
+  - lint/typecheck lulus.
+
+### - [ ] TASK-185P: Store Redis v2: commit hasil, perintah host, dan transisi fase
+- **Traceability**: `US-07`, `US-10`, `US-13`, ADR-03, ADR-13.
+- **Depends On**: `TASK-185O`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/providers/state/redis-v2-state.store.ts`
+  - `CREATE` `apps/api/src/providers/state/lua/v2/question.lua`
+  - `MODIFY` `tests/contracts/redis-v2-state.spec.ts`
+- **Implementation Specs**:
+  - `commitQuestionResult`:
+    - CAS pada `core.revision` dan hash closed;
+    - menulis `:result:<q>`, totals pemain yang berubah, `scoredQuestions`, dan fase.
+  - `applyCommand` (start/next/skip/end/lock dengan dedup `:commands`, `expectedPhaseVersion`) dan transisi fase terjadwal dengan CAS.
+  - Semantik ACK identik dengan v1.
+- **Definition of Done (Verification)**:
+  - Seluruh `tests/contracts/state-parity.spec.ts` (setiap kasus) lulus terhadap v2 sebagai driver ketiga, berdampingan dengan memory dan Redis v1.
+  - lint/typecheck lulus.
+
+### - [ ] TASK-185Q: Pasang store Redis v2 dan pindahkan pembaca rutin ke jendela
+- **Traceability**: `US-16`, `US-20`, ADR-13.
+- **Depends On**: `TASK-185P`, `TASK-185A`, `TASK-185D`, `TASK-084`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/providers/state/state.module.ts`
+  - `MODIFY` `apps/api/src/modules/game-engine/room-scheduler.ts`
+  - `MODIFY` `apps/api/src/modules/game-engine/game.service.ts`
+  - `MODIFY` `tests/contracts/redis-cluster.spec.ts`
+- **Implementation Specs**:
+  - `StateModule` memakai `RedisV2StateStore` untuk `STATE_DRIVER=redis`.
+  - Tick scheduler dan transisi waktu memakai `readPrivateSnapshot` (jendela). `finalize`/`buildFrozenReport` tetap memakai `getPrivateSnapshot` penuh.
+  - Contract Redis Cluster dijalankan terhadap v2 (multi-kunci satu slot, failover, restart AOF).
+  - Catatan upgrade: room v1 yang berjalan menjadi LOST (drain, ADR-13).
+- **Definition of Done (Verification)**:
+  - `pnpm --filter @kabuki-neko/api test` lulus.
+  - `pnpm test:contracts --testPathPatterns='state-parity|redis'` lulus.
+  - `pnpm test:integration` (realtime-races, payload-privacy, recovery, room-retention, game-gateway, finalization-failures, deployment scale) lulus.
+  - E2E `player`/`host` lulus.
+
+### - [ ] TASK-185R: Hapus store Redis v1 dan skripnya
+- **Traceability**: ADR-13 (konsekuensi), NFR-08.
+- **Depends On**: `TASK-185Q`
+- **Target Files**:
+  - `DELETE` `apps/api/src/providers/state/redis-state.store.ts` (beserta `lua/admit-answer.lua`, `lua/bind-player.lua`, `lua/close-question.lua`, `lua/mutate-room.lua`, `lua/release-room.lua`, satu unit penghapusan)
+  - `MODIFY` `tests/contracts/state-parity.spec.ts`
+- **Implementation Specs**:
+  - Hapus implementasi v1 setelah v2 terpasang dan lulus. Contract state-parity tetap menguji memory dan Redis v2.
+  - `restoreArrays` dipindah atau tetap diekspor dari store v2.
+- **Definition of Done (Verification)**:
+  - Tidak ada referensi tersisa ke v1 (`grep`).
+  - Build/lint/typecheck/test API dan contract `state-parity|redis` lulus.
+
+### - [ ] TASK-185S: Ukur ulang topologi Redis dua node dengan tata letak v2
+- **Traceability**: `US-16`, `US-20`, NFR-01, [07-qa-report.md §2 US-20](07-qa-report.md).
+- **Depends On**: `TASK-185R`
+- **Target Files**:
+  - `MODIFY` `docs/performance-results.md`
+  - `MODIFY` `docs/vibe/07-qa-report.md`
+- **Implementation Specs**:
+  - `pnpm benchmark:game --clients 200 --transitions 100` mode Redis (plus memory sebagai regresi), dengan CPU dan SLOWLOG Redis dicatat.
+  - Hasil dicatat apa adanya dan dibandingkan dengan TASK-185I.
+  - Bila masih FAIL, tetapkan bottleneck berikutnya. Bedakan batas host 4 core bersama dari cacat server, dan buat task korektif bila perlu.
+- **Definition of Done (Verification)**:
+  - Record JSON dirujuk dari dokumen.
+  - US-20 diperbarui.
+  - Prettier check lulus.
 
 ### - [x] TASK-186: Buat injeksi gagal-hapus `system.spec` tidak bergantung pada uid
 - **Traceability**: `US-15` (AC-15-01, AC-15-02), [07-qa-report.md §4](07-qa-report.md), `00-project-context.md` §6.3 butir 6.
@@ -3586,4 +3729,4 @@ Update Stage 5, 2026-10-30: TASK-001 selesai; bukti install, kompatibilitas dan 
 
 Update QA 2026-11-12: `/vibe-test` menyisakan temuan terbuka yang dijadikan Phase 7 (`TASK-183`–`TASK-187`); pemeriksaan manual di perangkat tidak dijadikan task.
 
-**Next Step**: Jalankan `/vibe-code` untuk `TASK-183`; verifikasi dan commit setiap task sesuai instruksi pengguna.
+**Next Step**: Jalankan `/vibe-code` untuk `TASK-185L` (setelah disetujui); verifikasi dan commit setiap task sesuai instruksi pengguna.

@@ -586,6 +586,62 @@ Close is two stages: atomic freeze sets `accepting=false` and captures immutable
 
 Room commands dedup `(sessionId,hostId,requestId)` hash+ACK for room lifetime. Repeated same key returns original ACK, different payload409 IDEMPOTENCY_CONFLICT. `expectedPhaseVersion` blocks second distinct next/start command for old phase; answers/presence do not cause false stale-phase errors. Submit dedup `(playerId,questionIndex)` and submissionId: same id+canonical answer returns original accepted ACK even after reveal, different answer/id409 ALREADY_ANSWERED with no score. QuizRevision protects create-room against unsaved/stale version; WS create idempotency mapping durable in request_dedup with operation `room.create`, accessible through operation lookup and host recovery after create ACK reconciliation.
 
+### 6.1.1. Redis room layout v2 (ADR-13, 2026-11-17)
+
+**Context.** §6.1 specified per-room keys (`:players`, `:answers:<index>`, `:closed:<index>`, `:result:<index>`, …). The implementation (TASK-048/050) instead stored the whole `ActiveRoomState` as one JSON string in the `state` field of `:meta`.
+
+Every gameplay script decodes and re-encodes that string with `cjson`. The string grows with every played question, because it keeps every answer, a second copy of each closed answer set, and the results per player and question. Measured at 200 players and 25 questions (TASK-185I, `docs/performance-results.md`):
+- `admit-answer` cost about 100 ms of single-threaded Redis time per answer late in the game;
+- a 200-answer burst saturated Redis, commands from both nodes timed out after 2 s, and most answers were refused.
+
+**Decision.** Restore the §6.1 key separation as layout **v2**. Every key stays in the room's hash slot `{pin}`, so the scripts keep multi-key atomicity (ADR-03 unchanged).
+
+| Key (prefix `kabukineko:<ns>:v2:room:{pin}`) | Type | Holds | Written by |
+| --- | --- | --- | --- |
+| `:meta` | hash | `sessionId`, `expiresAt`, `durable`, `core` (JSON of `RoomCore`), `quiz` (JSON, immutable after create) | every script (`core` only); `quiz` once at create |
+| `:players` | hash | playerId → `ActivePlayer` JSON | bind/recover, presence, avatar, kick; result commit (totals) |
+| `:answers:<q>` | hash | playerId → `StoredAnswer` JSON for question `q` | `admitAnswer` |
+| `:closed:<q>` | string | `ClosedQuestion` JSON | freeze (once per question) |
+| `:result:<q>` | string | `QuestionResult` JSON | result commit (once per question) |
+| `:commands` | hash | requestId → `CommandReceipt` | host commands |
+| `:tickets` | hash | ticket hash → `FriendlyTicket` | friendly nicknames |
+| `:report` | string | `FrozenReport` JSON | freeze report (once) |
+| `:join-receipts`, `:lease` | unchanged | | |
+
+`RoomCore` is `ActiveRoomState` without `quiz`, `players`, `answers`, `closedQuestions`, `results`, `commands`, `tickets` and `frozenReport`. It adds two counters:
+- `answeredRequired`, the number of required players who answered the current question, so the last-answer freeze needs no scan;
+- `scoredQuestions`, the sorted indices with a stored result.
+
+Its size depends on the player count (required/eligible ids), not on the number of questions played.
+
+**Script rules.**
+1. A script decodes only `core` and the single fields it needs, then writes back only what changed.
+2. `admitAnswer` is O(1) in played questions:
+   - `HGET` of the player and the existing answer;
+   - `HSET` of the new answer;
+   - core revision plus `answeredRequired`;
+   - on the last required answer, the freeze in the same script.
+3. The freeze reads `:answers:<q>` once (`HGETALL`), writes `:closed:<q>` with its SHA-256, and never copies other questions.
+4. Result commit (CAS on `core.revision` and the closed hash) writes `:result:<q>`, the players' totals (`HSET` of the changed players) and the phase.
+5. Reads need no script: `HMGET`/`HGETALL`/`GET` plus `TIME` (TASK-185J).
+6. Empty Lua tables are still restored per piece by schema structure (`restoreArrays`, TASK-185F).
+
+**Read contract.**
+- `getPrivateSnapshot` assembles the full `ActiveRoomState` from every key. It is for finalization and report freezing, recovery and tests.
+- `readPrivateSnapshot` returns a **window**: the full core, quiz and players, plus `answers`, `closedQuestions` and `results` of the current question and of the latest scored question only.
+- Hot readers (gateway diff, settle, scheduler tick) use the window. The projections already need only that window (`roomBase`, `latestLeaderboard`, per-player reveal/podium).
+- The memory store keeps one object in process and implements the window by reference.
+
+**Migration.** Room state is ephemeral (ADR-02). The `v2` segment in the key prefix makes a v2 deployment ignore v1 keys. Upgrading follows the existing rule for state driver or namespace changes: drain or end active rooms first. An in-flight v1 room becomes LOST and is never mis-read. No data conversion is written.
+
+**Consequences.**
+- Per-answer Redis work no longer grows with the game.
+- Reads transfer kilobytes instead of megabytes.
+- The full assembly still costs O(game) but runs once per finalization.
+- More keys per room. Release deletes them by known name (question indices from `core`), with no `SCAN`/`KEYS`.
+- The Redis Cluster contract must cover multi-key scripts across all v2 keys.
+- The v1 scripts stay until v2 passes the full parity contract, then they are removed.
+
 ### 6.2. Room allocation, leases and lifetime
 
 1. Generate crypto-random PIN uniformly000000..999999; retry unique conflict max32 then503 PIN_EXHAUSTED. Transaction locks quiz and media, copies revision/snapshot, inserts allocation CREATING + room_media refs + dedup request reservation. It does not write game_sessions yet.
@@ -936,6 +992,7 @@ Capacity reserved before join: role sync bound4MiB (full roster plus current que
 | ADR-10 | Public media immutable URLs + active reference pins, origin registry | PRIVATE is quiz access control, not media secrecy; completed report media may later be unavailable |
 | ADR-11 | Explicit profile env for scale | Native Compose profile only enables services; honest commands and driver checks needed |
 | ADR-12 | No application code generated during SA | Specs and upstream handoff only; task planning creates atomic implementation sequence |
+| ADR-13 | Redis room layout v2: per-room keys in one hash slot (`core`, players, per-question answers/closed/result, commands, tickets, report) instead of one JSON blob; hot readers use a current-question window (§6.1.1) | Per-answer Redis cost independent of questions played; full assembly only for finalization/recovery; v2 key prefix, upgrade drains rooms (no conversion); more keys released by name |
 
 ### 11.1. Design gaps closed
 

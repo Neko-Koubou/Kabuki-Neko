@@ -2733,8 +2733,27 @@
   - Every KN_*/MEDIA_* variable named in the guide is present in `.env.example`.
   - Prettier check of the guide and both Compose files → pass.
 
-## TASK-185K: Rancang ulang tata letak state room di Redis (jawaban dan hasil di luar blob) — IN PROGRESS
-- **Started**: 2026-11-17 (Asia/Jakarta)
-- **Plan**: `docs/vibe/03-system-analysis.md` (ADR), `docs/vibe/04-tasks.md` (implementation tasks); no application code
-- **Done so far**: none yet
-- **Verification**: pending
+## TASK-185K: Rancang ulang tata letak state room di Redis (jawaban dan hasil di luar blob) — DONE
+- **Date**: 2026-11-17 (Asia/Jakarta)
+- **Files**:
+  - `docs/vibe/03-system-analysis.md`: new §6.1.1 "Redis room layout v2" and ADR-13 in §11.
+    - Finding: §6.1 already specified per-room keys, but the implementation stored the whole state as one JSON blob in `:meta.state`. ADR-13 restores the separation.
+    - Layout:
+      - `:meta` holds `core` (state without quiz/players/answers/closed/results/commands/tickets/report, plus `answeredRequired` and `scoredQuestions`) and `quiz` (immutable);
+      - `:players` hash;
+      - `:answers:<q>` hash;
+      - `:closed:<q>`, `:result:<q>`, `:report` strings;
+      - `:commands`, `:tickets` hashes;
+      - all in slot `{pin}` with prefix `…:v2:room:`.
+    - Script rules: decode only core plus the single fields needed; admit is O(1) in played questions; the freeze reads one question's answers; reads use no scripts.
+    - Read contract: full assembly via `getPrivateSnapshot` (finalization/recovery); `readPrivateSnapshot` = window (current question + latest scored question).
+    - Migration: the v2 key prefix makes the upgrade drain rooms (v1 rooms become LOST), with no conversion.
+  - `docs/vibe/04-tasks.md`: implementation tasks TASK-185L–S.
+    - L: core schema + window contract (memory).
+    - M–P: a Redis v2 store built alongside v1 (lifecycle/reads/lease, players, answer+freeze, commit/commands/phases), each against the full parity contract.
+    - Q: switch over + hot readers on the window + Cluster contract.
+    - R: delete v1 (deleting one script family counts as one unit).
+    - S: re-measure.
+    - v2 is built next to v1 so every task stays green.
+- **Verification**: documentation only, no application code changed. ADR table and section anchor present; the tasks' Depends On point at the last writers of each target file.
+- **User decision needed before TASK-185L**: TASK-185L–S are a large change to the multi-instance core (about 8 tasks, several sessions). Start when approved.
