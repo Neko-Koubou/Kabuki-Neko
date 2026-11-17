@@ -15,8 +15,9 @@
  *
  * Built next to v1 and not yet installed in `StateModule`. Ported so far: room lifecycle, reads,
  * leases and the report (TASK-185M); players: join, recover, presence, avatar, friendly tickets
- * (TASK-185N, `lua/v2-player.lua`). Answers (TASK-185O) and results, host commands including kick,
- * and phases (TASK-185P) fail closed with STATE_UNAVAILABLE until then.
+ * (TASK-185N, `lua/v2-player.lua`); answer admission and question freeze (TASK-185O,
+ * `lua/v2-answer.lua`). Results, host commands including kick, and phases (TASK-185P) fail closed
+ * with STATE_UNAVAILABLE until then.
  */
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -28,6 +29,7 @@ import {
   finalizeStatusSchema,
   playerRoomSyncSchema,
 } from "@kabuki-neko/shared/schemas/game.schema";
+import { answerSchemaForQuestion } from "@kabuki-neko/shared/schemas/question.schema";
 import { avatarSchema } from "@kabuki-neko/shared/schemas/users.schema";
 import type { FinalizeStatus } from "@kabuki-neko/shared/schemas/game.schema";
 import { StateDomainError } from "./game-state.interface";
@@ -46,6 +48,7 @@ import type {
   IGameStateStore,
   Lease,
   Principal,
+  QuizSnapshot,
   RoomIdentity,
   RoomProjector,
   StoredAnswer,
@@ -77,8 +80,10 @@ const fail = (code: ConstructorParameters<typeof StateDomainError>[0]): never =>
 const objectSchema = z.record(z.string(), z.unknown());
 /** Rooms whose last read window is cached, at most (oldest dropped first). */
 const WINDOW_CACHE_ROOMS = 256;
+/** Sessions whose immutable quiz snapshot is cached for answer validation, at most. */
+const QUIZ_CACHE_SESSIONS = 256;
 /** Scripts of the v2 layout, loaded from `lua/<name>.lua`. */
-const SCRIPTS = ["v2-room", "v2-player"] as const;
+const SCRIPTS = ["v2-room", "v2-player", "v2-answer"] as const;
 type ScriptName = (typeof SCRIPTS)[number];
 
 /** A flat `HGETALL` reply `[field, value, …]` as a record of raw JSON strings. */
@@ -122,6 +127,8 @@ export class RedisV2StateStore implements IGameStateStore {
   private destroyed = false;
   /** Last read window per room, keyed by its raw pieces (see `readPrivateSnapshot`). */
   private readonly windowCache = new Map<string, { fingerprint: string; state: ActiveRoomState }>();
+  /** Immutable quiz snapshot per room session (see `sessionQuiz`). */
+  private readonly quizCache = new Map<string, QuizSnapshot>();
   /**
    * @param redis command connection (standalone or Cluster)
    * @param project allowlist role projector (TASK-076) used by `getRoleSnapshot`
@@ -450,13 +457,74 @@ export class RedisV2StateStore implements IGameStateStore {
     if (!snapshot) return fail("ROOM_EXPIRED");
     return { ...result, snapshot: playerRoomSyncSchema.parse(snapshot) };
   }
-  /** Ported in TASK-185O (answers and freeze); fails closed until then. */
-  async admitAnswer(_input: AdmitAnswerInput): Promise<StoredAnswer> {
-    return fail("STATE_UNAVAILABLE");
+  /**
+   * The quiz snapshot of a room session, read once with one `HMGET` of `:meta` and cached: a
+   * session's quiz never changes, and a reused PIN has another session id (another cache key).
+   * Null when the room is missing or belongs to another session.
+   */
+  private async sessionQuiz(identity: RoomIdentity): Promise<QuizSnapshot | null> {
+    const cacheKey = `${identity.pin}:${identity.sessionId}`;
+    const cached = this.quizCache.get(cacheKey);
+    if (cached) return cached;
+    const [meta] = this.keys(identity);
+    if (!meta || this.destroyed) return fail("STATE_UNAVAILABLE");
+    let reply: (string | null)[];
+    try {
+      reply = await this.redis.hmget(meta, "sessionId", "quiz");
+    } catch {
+      return fail("STATE_UNAVAILABLE");
+    }
+    const [sessionId, raw] = reply;
+    if (sessionId !== identity.sessionId || typeof raw !== "string") return null;
+    const quiz = quizSnapshotSchema.safeParse(piece(quizSnapshotSchema, raw));
+    if (!quiz.success) return fail("STATE_UNAVAILABLE");
+    if (this.quizCache.size >= QUIZ_CACHE_SESSIONS) {
+      const oldest = this.quizCache.keys().next().value;
+      if (oldest !== undefined) this.quizCache.delete(oldest);
+    }
+    this.quizCache.set(cacheKey, quiz.data);
+    return quiz.data;
   }
-  /** Ported in TASK-185O (answers and freeze); fails closed until then. */
-  async closeQuestion(_input: CloseQuestionInput): Promise<ClosedQuestion | "ALREADY_CLOSED"> {
-    return fail("STATE_UNAVAILABLE");
+  /**
+   * Admits one answer (`lua/v2-answer.lua` `admit`): Redis TIME intake with an inclusive
+   * deadline, replay of the same submission, ALREADY_ANSWERED otherwise, and the ALL_ANSWERED
+   * freeze in the same script when the last required player answers. The answer is validated here
+   * against the session's cached quiz, so neither side decodes the room's played questions.
+   */
+  async admitAnswer(input: AdmitAnswerInput): Promise<StoredAnswer> {
+    let quiz = await this.sessionQuiz(input);
+    if (!quiz) return fail("ROOM_NOT_FOUND");
+    let question = quiz.questions[input.questionIndex];
+    if (!question || question.id !== input.questionId) {
+      // A mismatch against a cached quiz is re-checked once against the stored one.
+      this.quizCache.delete(`${input.pin}:${input.sessionId}`);
+      quiz = await this.sessionQuiz(input);
+      if (!quiz) return fail("ROOM_NOT_FOUND");
+      question = quiz.questions[input.questionIndex];
+    }
+    if (!question || question.id !== input.questionId) return fail("QUESTION_MISMATCH");
+    const parsed = answerSchemaForQuestion(question).safeParse(input.answer);
+    if (!parsed.success) return fail("INVALID_ANSWER");
+    const result = await this.run("v2-answer", input, {
+      ...input,
+      kind: "admit",
+      answer: parsed.data,
+      question: {
+        id: question.id,
+        type: question.type,
+        optionCount: question.publicOptions.length,
+      },
+    });
+    return storedAnswerSchema.parse(restoreArrays(storedAnswerSchema, result.answer));
+  }
+  /**
+   * Freezes the current question (`lua/v2-answer.lua` `close`) for TIMER, HOST_SKIP, HOST_END,
+   * ALL_ANSWERED or EXPIRED; ALREADY_CLOSED when it is frozen already.
+   */
+  async closeQuestion(input: CloseQuestionInput): Promise<ClosedQuestion | "ALREADY_CLOSED"> {
+    const result = await this.run("v2-answer", input, { ...input, kind: "close" });
+    if (result.result === "ALREADY_CLOSED") return "ALREADY_CLOSED";
+    return closedQuestionSchema.parse(restoreArrays(closedQuestionSchema, result.closed));
   }
   /** Ported in TASK-185P (results, host commands and phases); fails closed until then. */
   async commitQuestionResult(_input: CommitQuestionInput): Promise<"COMMITTED" | "RETRY"> {

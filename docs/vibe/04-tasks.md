@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 240 task selesai, 5 task Pending (Phase 7 tindak lanjut QA, 2026-11-12)** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 241 task selesai, 4 task Pending (Phase 7 tindak lanjut QA, 2026-11-12)** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -3299,7 +3299,7 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - Kasus pemain dari `tests/contracts/state-parity.spec.ts` dijalankan terhadap v2 dan lulus (join/retry/recover, generasi lama ditolak, tiket friendly, kick).
   - lint/typecheck lulus.
 
-### - [ ] TASK-185O: Store Redis v2: admisi jawaban dan freeze soal
+### - [x] TASK-185O: Store Redis v2: admisi jawaban dan freeze soal
 - **Traceability**: `US-10`, `US-11`, `US-20`, ADR-03, ADR-13.
 - **Depends On**: `TASK-185N`
 - **Target Files**:

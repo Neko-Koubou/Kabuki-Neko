@@ -2829,3 +2829,36 @@
   - `pnpm --filter @kabuki-neko/api test` → 280/280.
   - Build copies `v2-player.lua`.
   - `pnpm test:contracts --testPathPatterns='redis-v2|state-parity'` → 44/44.
+
+## TASK-185O: Store Redis v2: admisi jawaban dan freeze soal — DONE
+- **Date**: 2026-11-17 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/providers/state/lua/v2-answer.lua` (new; flat name instead of `lua/v2/answer.lua` because nest-cli copies only `lua/*.lua`, see TASK-185M).
+    - `admit`: the v1 `admit-answer.lua` guards and error codes:
+      - Redis TIME intake and an inclusive deadline;
+      - replay of the same submissionId plus payload hash (also after the freeze);
+      - ALREADY_ANSWERED, INVALID_PHASE, TIME_EXPIRED, QUESTION_MISMATCH, SESSION_REPLACED, PLAYER_KICKED, INVALID_SESSION_TOKEN, INVALID_ANSWER.
+    - `admit` writes one field of `:answers:<q>`, adds the player to `eligiblePlayerIds`, raises `core.answeredRequired`, and on the last required answer freezes in the same script.
+    - `close`: v1 `close` semantics for TIMER, HOST_SKIP, HOST_END, ALL_ANSWERED and EXPIRED (STALE_PHASE → ALREADY_CLOSED → phase/reason checks). ALL_ANSWERED is checked with HEXISTS per required player, not with the counter.
+    - Freeze: `HGETALL :answers:<q>`, answers sorted by player id, the same record and SHA-256 (pure Lua) as v1, written once to `:closed:<q>` with the room's TTL.
+    - Only `core`, one player and the current question's answers are decoded.
+  - `apps/api/src/providers/state/redis-v2-state.store.ts`: `admitAnswer` and `closeQuestion`.
+    - `admitAnswer` validates the answer with `answerSchemaForQuestion` against the session's quiz, read once with `HMGET meta sessionId quiz` and cached per pin and sessionId (at most 256 sessions).
+      - A session's quiz is immutable, and a reused PIN has another sessionId.
+      - A mismatch against the cache is re-checked once against Redis.
+      - The script receives `{id, type, optionCount}` and repeats v1's structural checks without decoding the quiz.
+  - `tests/contracts/redis-v2-state.spec.ts`: five new cases.
+    - Concurrent duplicate admission, the ALL_ANSWERED freeze-once, ALREADY_CLOSED, replay and ALREADY_ANSWERED.
+    - The required counter, the ALL_ANSWERED check, refused submissions, and freezing on the second required answer.
+    - Eligible players.
+    - Timer close only after the deadline, STALE_PHASE, HOST_SKIP, TIME_EXPIRED after the deadline, natural close once.
+    - Flat cost.
+- **Flat-cost tolerance (recorded)**: the SLOWLOG median of 49 admissions after 19 played questions × 50 players must stay ≤ 2 × the first question's median + 100 µs. Measured on three runs: first 450/490/534 µs, late 470/458/565 µs.
+- **Deviations**:
+  - Script file name, as above.
+  - Host skip/end with a pending ACK stays in TASK-185P (host commands).
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 280/280.
+  - Build copies `v2-answer.lua`.
+  - `pnpm test:contracts --testPathPatterns='redis-v2|state-parity'` → 49/49.
