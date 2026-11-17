@@ -1,0 +1,53 @@
+# Optional override: keep Kabuki Neko's data in host folders you choose instead of Docker-managed
+# named volumes (TASK-189; docs/self-hosting.md "Disk space").
+#
+# Docker cannot limit the size of a named volume. To give the instance a fixed amount of space,
+# put these folders on a disk or partition of that size, then start with:
+#
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.paths.yml up -d
+#
+# Every folder must exist before the first start and be writable by the service that uses it
+# (the containers run as fixed, unprivileged users):
+#
+#   KN_DATA_PATH      API data: SQLite database, runtime secrets   uid 10001
+#   KN_UPLOADS_PATH   uploaded media (default profile)              uid 10001
+#   KN_POSTGRES_PATH  PostgreSQL data (scale profile)               uid 70
+#   KN_REDIS_PATH     Redis append-only file (scale profile)        uid 999
+#   KN_MINIO_PATH     MinIO objects (scale profile)                 uid 65532
+#
+# Each path defaults to a folder under KN_STORAGE_ROOT (default /var/lib/kabuki-neko). Only the
+# folders of the profile you run are used. Generated secrets (kabuki-secrets) stay a named volume.
+# Switching an existing instance to host folders does not move its data: back it up and restore
+# it first (docs/operations.md).
+
+volumes:
+  kabuki-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${KN_DATA_PATH:-${KN_STORAGE_ROOT:-/var/lib/kabuki-neko}/data}
+  kabuki-uploads:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${KN_UPLOADS_PATH:-${KN_STORAGE_ROOT:-/var/lib/kabuki-neko}/uploads}
+  kabuki-postgres:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${KN_POSTGRES_PATH:-${KN_STORAGE_ROOT:-/var/lib/kabuki-neko}/postgres}
+  kabuki-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${KN_REDIS_PATH:-${KN_STORAGE_ROOT:-/var/lib/kabuki-neko}/redis}
+  kabuki-minio:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${KN_MINIO_PATH:-${KN_STORAGE_ROOT:-/var/lib/kabuki-neko}/minio}

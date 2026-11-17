@@ -16,7 +16,14 @@ import type {
   QuizSnapshot,
 } from "../../providers/state/game-state.interface";
 import { StateDomainError } from "../../providers/state/game-state.interface";
-import { projectHost, projectPlayer, projectRoom } from "./room-projector";
+import {
+  projectFinalization,
+  projectHost,
+  projectPlayer,
+  projectPlayerPodium,
+  projectPlayerReveal,
+  projectRoom,
+} from "./room-projector";
 import { computeQuestionResult } from "./score-calculator";
 
 type Phase = ActiveRoomState["phase"];
@@ -364,4 +371,111 @@ it("exposes public puzzle options without the private order and rejects stale bi
   expect(projectPlayer(reconnected, alice.id, 2, NOW).self.playerId).toBe(alice.id);
   expect(() => projectPlayer(reconnected, kicked.id, 1, NOW)).toThrow("PLAYER_KICKED");
   expect(() => projectPlayer(reconnected, randomUUID(), 1, NOW)).toThrow("INVALID_SESSION_TOKEN");
+});
+
+describe("per-player reveal and podium pushes (TASK-185C)", () => {
+  type QuestionType =
+    "SINGLE_CHOICE" | "TRUE_FALSE" | "POLL" | "MULTIPLE_SELECT" | "TYPE_ANSWER" | "ORDER_PUZZLE";
+  /** A question of any type, built from the fixture's three shapes. */
+  function anyQuestion(type: QuestionType) {
+    if (type === "TYPE_ANSWER" || type === "ORDER_PUZZLE") return question(type, 0);
+    const base = question("SINGLE_CHOICE", 0);
+    return {
+      ...base,
+      type,
+      // A POLL is never scored (×0 by schema).
+      pointsMultiplier: type === "POLL" ? 0 : base.pointsMultiplier,
+      options: base.options.map((option, i) => ({
+        ...option,
+        isCorrect: type === "POLL" ? false : type === "MULTIPLE_SELECT" ? true : i === 1,
+      })),
+    };
+  }
+  /** What each player answered, in the stored (public index / text) form. */
+  function answerFor(type: QuestionType, right: boolean): unknown {
+    if (type === "TYPE_ANSWER") return right ? TYPED.toLowerCase() : "nope";
+    if (type === "ORDER_PUZZLE") return right ? [2, 1, 3, 0] : [0, 1, 2, 3];
+    if (type === "MULTIPLE_SELECT") return right ? [0, 1] : [0];
+    return right ? 0 : 1;
+  }
+  /** A room at `phase` whose only played question is `type`, answered by Alice and Bob. */
+  function played(type: QuestionType, phase: "ANSWER_REVEAL" | "PODIUM") {
+    const q = anyQuestion(type);
+    const stored = [alice, bob].map((who, i) => ({
+      playerId: who.id,
+      submissionId: randomUUID(),
+      questionIndex: 0,
+      questionId: q.id,
+      answer: answerFor(type, i === 0),
+      payloadHash: "a".repeat(64),
+      receivedAt: NOW + 1_000 + i,
+      responseTimeMs: 1_000 + i,
+    }));
+    const closedQuestion = {
+      ...closed,
+      questionIndex: 0,
+      answers: stored,
+    } as ClosedQuestion;
+    const scored = computeQuestionResult({
+      question: q as never,
+      questionIndex: 0,
+      players,
+      closed: closedQuestion,
+    });
+    const state = room(phase, "STREAMER");
+    if (state.finalization) state.finalization.sessionId = state.sessionId;
+    return {
+      ...state,
+      quiz: { ...quiz, questions: [q] } as QuizSnapshot,
+      questionIndex: 0,
+      answers: Object.fromEntries(stored.map((a) => [`0:${a.playerId}`, a])),
+      closedQuestions: { "0": closedQuestion },
+      results: { "0": scored },
+    } as ActiveRoomState;
+  }
+  const TYPES: QuestionType[] = [
+    "SINGLE_CHOICE",
+    "TRUE_FALSE",
+    "POLL",
+    "MULTIPLE_SELECT",
+    "TYPE_ANSWER",
+    "ORDER_PUZZLE",
+  ];
+
+  it.each(TYPES)("%s: the reveal push equals projectPlayer's reveal and own result", (type) => {
+    const state = played(type, "ANSWER_REVEAL");
+    const { reveal } = projectHost(state, state.hostId, NOW);
+    expect(reveal).not.toBeNull();
+    if (!reveal) return;
+    for (const who of [alice, bob, carol]) {
+      const view = projectPlayer(state, who.id, 1, NOW);
+      const data = projectPlayerReveal(state, who.id, reveal);
+      if (!view.self.result) expect(data).toBeNull();
+      else expect(data).toEqual({ reveal: view.reveal, result: view.self.result });
+    }
+    // Only the player's own result: nothing about the other player's answer or score.
+    const own = JSON.stringify(projectPlayerReveal(state, alice.id, reveal));
+    const bobsAnswer = state.answers[`0:${bob.id}`];
+    expect(own).not.toContain(bob.id);
+    expect(own).not.toContain(bobsAnswer?.submissionId);
+  });
+
+  it.each(TYPES)("%s: the podium push equals projectPlayer's podium and result", (type) => {
+    const state = played(type, "PODIUM");
+    const { podium } = projectHost(state, state.hostId, NOW);
+    for (const who of [alice, bob, carol]) {
+      const view = projectPlayer(state, who.id, 1, NOW);
+      expect(projectPlayerPodium(state, who.id, podium)).toEqual({
+        podium: view.podium,
+        result: view.self.result,
+      });
+    }
+  });
+
+  it("projects the host-only finalization status without the room", () => {
+    const state = room("PODIUM", "PROJECTOR");
+    if (state.finalization) state.finalization.sessionId = state.sessionId;
+    expect(projectFinalization(state)).toEqual(projectHost(state, state.hostId, NOW).finalization);
+    expect(projectFinalization(room("LOBBY", "PROJECTOR"))).toBeNull();
+  });
 });

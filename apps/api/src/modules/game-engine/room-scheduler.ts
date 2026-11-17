@@ -7,9 +7,11 @@
  * missed timers — correctness never depends on the lease, because every transition is a phase CAS
  * in GameService. Host presence is never consulted, so a disconnected host does not pause timers.
  *
- * Lifetime: hard expiry 8 h from creation (an ANSWERING question is closed with EXPIRED and the
- * game goes to PODIUM; any other phase cannot be frozen and is marked LOST — no invented report),
- * lobby idle 2 h (LOST), SQL heartbeat every 30 s, FINISHED retention 1 h after which a room whose
+ * Lifetime: hard expiry 8 h from creation. An ANSWERING question is closed with EXPIRED and the
+ * game goes to PODIUM; a started game in another pre-podium phase (countdown, preview, reveal,
+ * leaderboard) goes to PODIUM with endReason EXPIRED through `expireToPodium` (code review MJ-06),
+ * so the questions already played still produce a report. Only a LOBBY (nothing played) is marked
+ * LOST. Lobby idle 2 h (LOST), SQL heartbeat every 30 s, FINISHED retention 1 h after which a room whose
  * report is durable (finalization ready) is released and its allocation CLOSED. A frozen report that
  * is not yet durable is never evicted (the store refuses to release it). Missing state means LOST.
  * CLOSED/LOST allocations are released conditionally after 1 h, retried every scan.
@@ -18,7 +20,9 @@
  * game service to re-sync it with the durable queue at most every 5 s (re-enqueue after a database
  * outage, mirror a READY job whose state update was lost), so such rooms are eventually released.
  * A frozen report still not durable 24 h after the game ended raises one error-level alarm per
- * session (`finalization pending for more than 24 h`, session id only) and is still never evicted.
+ * session (`finalization pending for more than 24 h`, session id only), plus a counted, structured
+ * `finalization_pending_alarm` event from MetricsService (code review MJ-16), and is still never
+ * evicted.
  */
 import {
   Inject,
@@ -30,6 +34,7 @@ import {
 } from "@nestjs/common";
 import { RuntimeRepository, type Allocation } from "@kabuki-neko/database";
 import { ROOM_LIMITS } from "@kabuki-neko/shared/constants/limits";
+import { MetricsService } from "../../common/metrics.service";
 import { ConfigService } from "../../config/config.service";
 import {
   GAME_STATE_STORE,
@@ -39,7 +44,7 @@ import {
   type Lease,
   type RoomIdentity,
 } from "../../providers/state/game-state.interface";
-import { GAME_CLOCK, GameService } from "./game.service";
+import { GAME_CLOCK, GameService, type RoomEndReason } from "./game.service";
 import { RoomRegistryService } from "./room-registry.service";
 
 /** Minimum interval between finalization re-syncs of one room by its leader. */
@@ -84,6 +89,7 @@ export class RoomScheduler implements OnApplicationBootstrap, OnModuleDestroy {
     @Inject(GameService) private readonly game: GameService,
     @Inject(ConfigService) config: ConfigService,
     @Optional() @Inject(GAME_CLOCK) clock: (() => number) | null = null,
+    @Optional() @Inject(MetricsService) private readonly metrics: MetricsService | null = null,
   ) {
     this.owner = config.values.DEPLOYMENT_INSTANCE_ID;
     this.clock = clock ?? Date.now;
@@ -178,18 +184,22 @@ export class RoomScheduler implements OnApplicationBootstrap, OnModuleDestroy {
     this.timers.set(identity.sessionId, timer);
   }
 
-  /** Marks an allocation LOST (state missing or unrecoverable) and drops local scheduling. */
-  private async lose(row: Allocation, now: number) {
+  /**
+   * Marks an allocation LOST (state missing, idle or expired before any report could exist), drops
+   * local scheduling and tells connected clients why (`room:expired`, code review MJ-05).
+   */
+  private async lose(row: Allocation, now: number, reason: RoomEndReason) {
     if (row.status === "ACTIVE" || row.status === "FINALIZING")
       await this.runtime.transition(row.id, row.status, "LOST", now);
     this.forget(row.id);
+    await this.game.roomEnded({ pin: row.pin_code, sessionId: row.id }, reason);
   }
 
   /** Lifetime, timer and retention handling for one active allocation (leader only). */
   async visit(row: Allocation, now: number = this.clock()): Promise<void> {
     const identity = { pin: row.pin_code, sessionId: row.id };
     const state = await this.store.getPrivateSnapshot(identity);
-    if (!state) return this.lose(row, now);
+    if (!state) return this.lose(row, now, "ROOM_LOST");
     if (!(await this.lead(identity, now))) return;
     if (now - (this.heartbeats.get(row.id) ?? 0) >= ROOM_LIMITS.allocationHeartbeatMs) {
       await this.runtime.heartbeat(row.id, now);
@@ -209,9 +219,16 @@ export class RoomScheduler implements OnApplicationBootstrap, OnModuleDestroy {
           if (!(error instanceof StateDomainError)) throw error;
         }
         await this.game.settle(identity);
-      } else {
+      } else if (state.phase === "LOBBY") {
         await this.store.releaseRoom(identity);
-        await this.lose(row, now);
+        await this.lose(row, now, "ROOM_EXPIRED");
+      } else {
+        try {
+          await this.store.expireToPodium(identity, state.phaseVersion);
+        } catch (error) {
+          if (!(error instanceof StateDomainError)) throw error;
+        }
+        await this.game.finalize(identity);
       }
       return;
     }
@@ -220,7 +237,7 @@ export class RoomScheduler implements OnApplicationBootstrap, OnModuleDestroy {
       if (!(error instanceof StateDomainError && error.code === "ROOM_EXPIRED")) throw error;
     });
     const after = await this.store.getPrivateSnapshot(identity);
-    if (!after) return this.lose(row, now);
+    if (!after) return this.lose(row, now, "ROOM_LOST");
     if (FINAL.has(after.phase) && after.frozenReport && row.status === "ACTIVE")
       await this.runtime.transition(row.id, "ACTIVE", "FINALIZING", now);
     if (
@@ -242,6 +259,8 @@ export class RoomScheduler implements OnApplicationBootstrap, OnModuleDestroy {
     ) {
       this.alarmed.add(row.id);
       this.logger.error(`finalization pending for more than 24 h for session ${row.id}`);
+      // Structured, counted alarm for log-based alerting (code review MJ-16).
+      this.metrics?.finalizationPendingAlarm();
     }
     // FINISHED rooms are kept 1 h for recovery; a hard-expired room cannot transition any more and
     // is released as soon as its report is durable. Non-durable reports are never released.
@@ -256,6 +275,8 @@ export class RoomScheduler implements OnApplicationBootstrap, OnModuleDestroy {
     ) {
       await this.runtime.transition(row.id, "FINALIZING", "CLOSED", now);
       this.forget(row.id);
+      // Released after retention with a durable report: the gateway forgets it without a push.
+      await this.game.roomEnded(identity, null);
       return;
     }
     this.arm(identity, after);

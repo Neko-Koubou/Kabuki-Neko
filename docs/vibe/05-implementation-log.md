@@ -2337,3 +2337,404 @@
     - Images were built with `docker build` plus the sandbox proxy CA secret, then run with `--no-build`; Compose `--build` cannot pass that CA in this sandbox.
   - Every environment variable named in the guide/README is present in `.env.example`; all relative links and anchors resolve; secret scan of the new files finds no credential (only the runtime-generated throwaway smoke password)
   - Prettier check of the markdown/YAML → pass; `verify-release --report` → 0 errors, 12 known gaps
+
+## TASK-183: Hentikan full-state settle di setiap admission jawaban — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/modules/game-engine/game.service.ts`: `settle` is per-room single-flight and coalesced. A caller that arrives while a round runs shares one queued round that starts after it. The slot map is emptied as soon as no round is pending (no per-room leak, cf. MJ-05). The scoring body moved unchanged to `settleOnce`.
+  - `apps/api/src/modules/game-engine/game.service.spec.ts`: new case. 50 concurrent answers make ≤ 3 full-state reads (2 settle rounds + the `finalize` read after the commit) and exactly one COMMITTED. The closing answer is scored before the ACKs resolve, and a later `settle` starts a fresh round.
+- **Deviation from the task text**: the ACK still awaits its coalesced round instead of running settle in the background. The gateway publishes right after the ACK (`game.gateway.ts`, `player:submit_answer`), so a background settle would delay the closing answer's reveal to the next scheduler tick and break the task's own invariant.
+- **Verification**:
+  - New spec PASS; the same spec on the old `game.service.ts` FAIL (51 full-state reads).
+  - Docker daemon had stopped (container restart) and was started again before the API tests.
+  - `pnpm --filter @kabuki-neko/api lint` → pass.
+  - `pnpm --filter @kabuki-neko/api typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 37/37 suites, 254/254 tests.
+  - `pnpm test:integration --testPathPatterns='recovery|realtime-races|game-gateway|finalization-failures'` → 4/4 suites, 33/33 tests.
+  - `pnpm benchmark:game --clients 200 --transitions 100 --mode memory`:
+
+    | | Transport p95 | Admission p50 | Admission p95 | Rejected answers |
+    | --- | --- | --- | --- | --- |
+    | Before (2026-11-12 QA run) | 20.59 ms | 2,014.84 ms | 8,427.85 ms | 1 |
+    | After | 15.88 ms (PASS) | 2,127.99 ms | 9,437.25 ms | 13 of 5,000 (TIME_EXPIRED near the deadline) |
+
+- **Finding**:
+  - Admission latency did **not** improve, so full-state settle reads were not its bottleneck. `performance-results.md` Findings item 2 is disproven as the main cause.
+  - The ACK awaits `GameGateway.publish`, which runs one full `diff` per answer: a private-state read, the host projection, and the summary of every player.
+  - The diffs are serialized per room by `enqueue`, so the N-th answer of a burst waits for N diffs.
+  - This is in `game.gateway.ts`, outside this task's target files. Corrective task TASK-183A was added.
+
+## TASK-183A: Gabungkan publish gateway per room dan lepaskan ACK jawaban dari antrean publish — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/modules/game-engine/game.gateway.ts`:
+    - `publish` is coalesced per room (`pendingPublishes`): a call made while a publish of the room is queued but not started shares it, so at most one diff runs and one waits. `forget` keeps its place after the publishes queued before it, and both maps are empty when idle.
+    - `player:submit_answer` returns its ACK without awaiting the publish; the publish is still started, and a missed one is caught by the `room:version` heartbeat.
+  - `apps/api/src/modules/game-engine/game-gateway-publish.spec.ts` (new): three cases.
+    - 50 publishes during a running diff → 2 diffs, maps empty afterwards.
+    - `room:expired` after the queued publishes.
+    - The answer ACK resolves while the publish's state read is still held.
+- **Verification**:
+  - New spec 3/3 PASS; the same spec on the old gateway 3/3 FAIL.
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 38/38 suites, 257/257 tests.
+  - `pnpm test:integration --testPathPatterns='game-gateway|realtime-races|recovery|payload-privacy|room-retention'` → 5/5 suites, 40/40 tests.
+  - `pnpm test:e2e tests/e2e/player.spec.ts tests/e2e/host.spec.ts` → 9/9 (with first-run).
+  - `pnpm benchmark:game --clients 200 --transitions 100 --mode memory`:
+
+    | | Transport p95 | Admission p50 | Admission p95 | Rejected answers |
+    | --- | --- | --- | --- | --- |
+    | Before (TASK-183) | 15.88 ms | 2,127.99 ms | 9,437.25 ms | 13 |
+    | After | 13.37 ms (PASS) | 2,379.49 ms | 9,157.73 ms | 0 of 5,000 |
+
+- **Finding**:
+  - Admission latency is still unchanged. Neither the settle reads (TASK-183) nor the per-answer diff publishes are its bottleneck.
+  - Remaining candidates:
+    - the server event loop being busy elsewhere (scheduler ticks, Zod parsing per request, the heartbeat);
+    - the load generator, which runs 200 clients in the same 4-core host.
+  - Telling these apart needs the per-node event-loop and CPU diagnostics planned in TASK-184. TASK-185 then sets the root cause. No speculative change was made here.
+
+## TASK-184: Tambah diagnostik per node dan verdict jujur pada benchmark — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `scripts/lib/event-loop-probe.cjs` (new). The benchmark's own API children load it with `NODE_OPTIONS=--require`; production images never do. Once per second it writes a `KN_PROBE {json}` line:
+    - event-loop delay p50/p99/max from `monitorEventLoopDelay`, with the 10 ms sampling resolution subtracted so an idle loop reads ≈ 0;
+    - CPU as % of one core from `process.cpuUsage` deltas;
+    - heap in use.
+    The timer is unref'd.
+  - `scripts/benchmark-game.ts`:
+    - Local nodes start with the probe (`startApi` already passes the parent environment, so the test helpers are unchanged; `NODE_OPTIONS` is restored afterwards).
+    - The load generator samples itself the same way.
+    - Every dropped player connection records its node and Socket.io reason, plus clients per node and the first disconnect time.
+    - The record adds `diagnostics.nodes[]`: clients, measured flag, lag/CPU/heap and disconnects by reason. It also adds `diagnostics.loadGenerator` and `disconnectsFirstAtMs`.
+    - The Markdown adds a per-process table.
+    - `--api-urls a[,b]` (+ `--origin`, `KN_BENCH_HOST_EMAIL`/`_PASSWORD`) uses running nodes instead of a local harness, so the load generator can run on another machine. External nodes are marked "not measured".
+    - Verdict (MN-43): answers not admitted and a report that never became durable are FAIL reasons.
+  - `tests/performance/game-benchmark.spec.ts`: new cases for probe-line parsing and its window, per-process aggregation, disconnects per node/reason, `--api-urls` validation, and the MN-43 verdict reasons.
+- **Verification**:
+  - `pnpm test:performance -- tests/performance/game-benchmark.spec.ts` → 22/22.
+  - `pnpm exec eslint scripts tests/performance` → pass.
+  - `pnpm exec tsc --noEmit --strict --noUncheckedIndexedAccess --exactOptionalPropertyTypes --target es2023 --module commonjs --moduleResolution node --esModuleInterop --skipLibCheck --types node scripts/benchmark-game.ts tests/performance/game-benchmark.spec.ts` → pass. There is no workspace typecheck target for `scripts/`; this mirrors the strict base config.
+  - Prettier check of the three files → pass.
+  - Probe sanity: an idle process reads lag p99 ≈ 0.7 ms, and a 300 ms busy loop reads `lagMaxMs` 298.5.
+  - `pnpm benchmark:game --clients 20 --transitions 10 --mode redis --out test-results/benchmark/redis-short.json` → PASS, with the per-process table:
+    - API node A: lag p99 median 2.55 ms, CPU mean 8.5%;
+    - API node B: lag p99 median 0.96 ms;
+    - load generator: lag p99 median 0.62 ms, CPU 1%;
+    - 0 disconnects; admission p50 15.85 ms at 20 clients.
+  - Not run: a live `--api-urls` run against nodes on another machine (no second machine here). The path is covered by the unit validation only.
+
+## TASK-185: Ukur ulang topologi Redis dua node dan tetapkan akar masalah — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `docs/performance-results.md`: new section "Re-measurement and root cause".
+  - `docs/vibe/07-qa-report.md`: US-20 note.
+  - Scope extension, recorded because the DoD needs a redis record that the harness kept losing:
+    - `scripts/benchmark-game.ts`: a host command without an ACK is retried and recorded, and a failed step ends the run early with `abortReason`. A node that dies has its exit code and last output in the record. A run that cannot finish carries each node's last output in the error.
+    - `tests/performance/game-benchmark.spec.ts`: verdict case for `abortReason`.
+  - `docs/vibe/04-tasks.md`: corrective tasks TASK-185A (crash), TASK-185B–D (publish path, settle read) and TASK-185E (re-measure).
+- **Runs** (same 4-core host, loopback):
+  - **Memory, 200 clients, 100 transitions** → FAIL (10 answers not admitted).
+    - Transport p95 14.36 ms; admission p50 2,800 ms / p95 10,973 ms.
+    - API loop lag max 4,905 ms, with only 268 of ~459 probe samples (loop blocked).
+    - Load generator lag max 31 ms, CPU 1.5%.
+  - **Redis, 200 clients, 100 transitions** → FAIL.
+    - Transport p95 300.87 ms; delivery loss 28.9%; 2,469 answers not admitted.
+    - Node B lost all 100 players at 412 s. Its probe stopped at 389 samples.
+  - Two further redis runs did not finish: one host command got no ACK, and one REST call hit a node that was gone. This led to the harness changes above.
+  - **Redis, 200 clients, 60 transitions** (crash capture): node A exited with code 1 after an unhandled `Error: Command timed out` from ioredis.
+  - CPU profile (memory, 200 clients, 8 transitions): busy time is in the gateway `diff`:
+    - `structuredClone` in `getPrivateSnapshot` ≈2.4 s, including settle;
+    - `projectHost` grapheme/Zod ≈0.6 s;
+    - per-player `projectPlayer` at reveal/podium ≈0.6 s.
+- **Root cause** (server defects, conclusion (b)):
+  1. `@socket.io/redis-adapter` 8.3.0 calls `pubClient.publish` without catching it, and the pub client has `commandTimeout: 2000`. A stalled loop or a Redis outage therefore crashes the API node.
+  2. The publish path blocks the event loop for seconds, and the cost grows with the number of played questions.
+- **Verification**:
+  - `pnpm test:performance -- tests/performance/game-benchmark.spec.ts` → 22/22.
+  - `pnpm exec eslint scripts tests/performance` → pass; tsc (strict, commonjs) for the script → pass.
+  - `pnpm exec prettier --check docs/performance-results.md` → pass.
+  - Records `test-results/benchmark/memory.json` and `redis.json` are referenced from the doc (copies in the session scratchpad).
+
+## TASK-185A: Cegah crash node API saat publish adapter Redis gagal — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/providers/state/state.module.ts`:
+    - `guardPublish(client, onFailure)` wraps the adapter's pub client `publish`. A rejection (command timeout, closed connection) resolves to 0 receivers and is counted.
+    - `StateConnections.publishFailures` holds the count. The first failure and every 100th are logged with the error message only (no payload or secret).
+    - Commands on the command client are unchanged and still reject to their callers. There is no global `unhandledRejection` handler.
+  - `apps/api/src/providers/state/state.module.spec.ts` (new):
+    - a real, never-connected ioredis client with the guard: publish resolves 0, one failure counted, no unhandled rejection, and `get` still rejects;
+    - successful publishes pass their arguments and result through;
+    - timeouts and closed connections are both absorbed.
+- **Verification**:
+  - New spec 3/3 PASS. With `guardPublish` replaced by a no-op (old behavior), 2/3 FAIL: Jest fails on the unhandled rejection "Stream isn't writeable…".
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 39/39 suites, 260/260 tests.
+  - `pnpm test:contracts --testPathPatterns='state-parity|redis'` → 4/4 suites, 55/55 tests.
+  - `pnpm test:integration --testPathPatterns='realtime-races'` → 10/10.
+  - The end-to-end effect on the two-node benchmark is measured in TASK-185E.
+
+## TASK-185B: Sediakan pembacaan private state read-only tanpa salinan di kedua state store — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/providers/state/game-state.interface.ts`: `readPrivateSnapshot(identity): Promise<Readonly<ActiveRoomState> | null>`. Contract: the result may be the store's live state; callers must not mutate it or use it after their next `await`.
+  - `apps/api/src/providers/state/memory-state.store.ts`: returns the live state without `structuredClone`.
+  - `apps/api/src/providers/state/redis-state.store.ts`: the same parsed read as `getPrivateSnapshot`; the object already belongs to the caller.
+  - `apps/api/src/providers/state/memory-state.store.spec.ts`: new case.
+    - Unknown room → null.
+    - Repeated reads return the same object (no copy).
+    - A later admission is visible through the next read.
+    - `getPrivateSnapshot` stays an independent, equal copy.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 39/39 suites, 261/261 tests.
+  - `pnpm test:contracts --testPathPatterns=state-parity` → 26/26.
+  - No caller uses the new read yet; the gateway uses it in TASK-185C and settle in TASK-185D.
+
+## TASK-185C: Buat jalur publish gateway O(n) tanpa proyeksi penuh berulang — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/modules/game-engine/room-projector.ts`: new small allowlist projectors.
+    - `projectFinalization`: host-only finalization fields, validated by `finalizeStatusSchema`, shared with `projectHost` through `finalizationOf`.
+    - `projectPlayerReveal(state, playerId, reveal)`: the shared public reveal plus only the player's own personal result, validated by `playerRevealDataSchema`; null without a result.
+    - `projectPlayerPodium(state, playerId, podium)`: the shared podium plus the player's result of the last scored question, validated by `playerPodiumDataSchema`.
+  - `apps/api/src/modules/game-engine/game.gateway.ts`, in `diff`:
+    - reads with `readPrivateSnapshot` (no copy; nothing awaits after the read);
+    - builds `projectHost` lazily, only when a phase event needs it;
+    - `report:status_changed` uses `projectFinalization`;
+    - reveal and podium build per-player pushes with the new projectors, which is O(n) instead of a full validated room snapshot per player.
+    - `projectPlayer` is no longer used here.
+  - `apps/api/src/modules/game-engine/room-projector.spec.ts`: for all six question types (SINGLE_CHOICE, TRUE_FALSE, POLL, MULTIPLE_SELECT, TYPE_ANSWER, ORDER_PUZZLE), each player's reveal and podium push equals `{reveal, result}` / `{podium, result}` from `projectPlayer`. A player without a result gets null, and a push holds no other player's id or submission. The finalization projection equals the host view's.
+  - `apps/api/src/modules/game-engine/game-gateway-publish.spec.ts`: two cases.
+    - 50 answer-count publishes after the phase event run `projectHost` once, and the diff never calls the copying `getPrivateSnapshot`.
+    - A 200-player reveal calls `projectPlayerReveal` 200 times and `projectPlayer` never (201 reveal emits).
+    - The fake stores of the TASK-183A cases now serve `readPrivateSnapshot`.
+- **Verification**:
+  - New gateway cases FAIL on the old gateway (2/2) and PASS on the new one.
+  - Projector spec 30/30.
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 39/39 suites, 276/276 tests.
+  - `pnpm test:integration --testPathPatterns='payload-privacy|game-gateway|realtime-races|recovery'` → 4/4 suites, 22/22 tests. The payload-privacy suite runs across two nodes on PostgreSQL + Redis.
+  - `pnpm test:e2e tests/e2e/player.spec.ts tests/e2e/host.spec.ts` → 9/9.
+
+## TASK-185D: Pakai pembacaan read-only di settle — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/modules/game-engine/game.service.ts`: `settleOnce` reads with `readPrivateSnapshot`.
+    - Revision, closed-question hash and the computed result are all taken before the commit's `await`.
+    - The stores validate and copy the result (memory: `questionResultSchema.parse`; Redis: serialization), so nothing is shared with the state.
+    - CAS on revision + hash is unchanged.
+  - `apps/api/src/modules/game-engine/game.service.spec.ts`:
+    - New case: with the commit refused, a settle round reads the live state without the copying read and leaves it unchanged (deep-equal before/after). The next round commits exactly once.
+    - The TASK-183 case now counts both reads (≤ 3 per burst; 1 for a later round).
+- **Verification**:
+  - New case FAILS on the old `game.service.ts` (copying read) and PASSES now.
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 39/39 suites, 277/277 tests.
+  - `pnpm test:integration --testPathPatterns='recovery|realtime-races|finalization-failures'` → 3/3 suites, 30/30 tests.
+
+## TASK-185E: Ukur ulang setelah perbaikan jalur publish — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `docs/performance-results.md`: section "After the publish-path fixes".
+  - `docs/vibe/07-qa-report.md`: US-20 note.
+  - `docs/vibe/04-tasks.md`: next corrective tasks TASK-185F (light read-only Redis decode) and TASK-185G (re-measure).
+  - Scope extensions in the benchmark, recorded because the run could not finish or explain itself without them:
+    - `scripts/benchmark-game.ts`: min/max without spreading more than 100k samples (the first redis attempt threw "Maximum call stack size exceeded"). The record now holds answer rejection codes, also shown in the Markdown.
+    - `tests/performance/game-benchmark.spec.ts`: 500,000-sample summary case, which fails on the old code.
+- **Runs**:
+  - **Memory, 200 clients, 100 transitions** → **PASS**. Transport p95 12.44 ms; admission p50 1.10 ms / p95 35.87 ms; 0 rejected. API loop lag max 629.63 ms, CPU mean 10.6%.
+  - **Redis, 200 clients, 100 transitions** → FAIL. Transport p95 327 ms; 3,899 of 5,000 answers not admitted.
+    - 0 disconnects and 0% delivery loss (was 100 disconnects and 28.9%).
+    - Both nodes logged adapter publish timeouts and survived them (TASK-185A works).
+  - **Profiled redis run, 200 clients, 24 transitions**: rejections were STATE_UNAVAILABLE 339 and DEPENDENCY_UNAVAILABLE 188. The busier node spent 79 of 95 s of busy CPU in `decode` within `RedisStateStore.read` (full `activeRoomStateSchema` validation per read).
+- **Verification**:
+  - `pnpm test:performance -- tests/performance/game-benchmark.spec.ts` → 23/23.
+  - eslint/tsc for the script → pass.
+  - `pnpm exec prettier --check docs/performance-results.md` → pass.
+  - Records `test-results/benchmark/memory.json` and `redis.json` (copies in the scratchpad).
+
+## TASK-185F: Hentikan validasi Zod penuh pada pembacaan read-only Redis state — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/providers/state/redis-state.store.ts`, `readPrivateSnapshot`:
+    - Uses the same Lua read, then `JSON.parse`, an envelope check (schemaVersion 1, sessionId, pinCode), and `restoreArrays(activeRoomStateSchema, …)`.
+    - `restoreArrays` restores the cjson-encoded empty arrays by the schema's structure only: object, array, record and union nodes, through optional/nullable/default wrappers. A pipe is followed on its input side, or on its output side when the input is `unknown` (the accessibility size check). No validation, regex or grapheme check runs.
+    - A per-room cache keyed by the raw JSON returns the previous object for an unchanged state. It is capped at 256 rooms and dropped on release or a missing room.
+    - `getPrivateSnapshot`, the role snapshots and every mutation keep the full validation.
+  - `tests/contracts/state-parity.spec.ts`:
+    - Memory and Redis: through lobby, release, answering, frozen and scored states, the read-only state deep-equals the validated read. An unchanged state returns the same object, and a released or unknown room gives null.
+    - Redis only: a state with a 500-character nickname is still refused by the validated read.
+    - A cjson round-trip of four fixtures (lobby, answering, scored, podium with frozen report and finalization), with every empty array turned into `{}`, is restored exactly.
+    - The first contract run caught the accessibility pipe (captions `{}`), which was fixed in `baseOf`.
+- **Verification**:
+  - `pnpm exec eslint tests/contracts/state-parity.spec.ts` → pass.
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 39/39 suites, 277/277 tests.
+  - `pnpm test:contracts --testPathPatterns='state-parity|redis'` → 4/4 suites, 61/61 tests.
+  - `pnpm test:integration --testPathPatterns='payload-privacy|realtime-races'` → 2/2 suites, 11/11 tests.
+
+## TASK-185G: Ukur ulang mode Redis setelah TASK-185F — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `docs/performance-results.md`: section "After the read-only Redis decode".
+  - `docs/vibe/07-qa-report.md`: US-20.
+  - `docs/vibe/04-tasks.md`: TASK-185H and TASK-185I.
+- **Runs**:
+  - **Redis, 200 clients, 100 transitions** → FAIL.
+    - Transport p95 250.9 ms (was 327).
+    - 3,809 answers not admitted (STATE_UNAVAILABLE 2,366, DEPENDENCY_UNAVAILABLE 1,443).
+    - 0 disconnects, 0 loss.
+    - Node loop lag p99 median 12/22 ms (was 59/10).
+  - **Memory, 200 clients, 100 transitions** (regression) → PASS. Transport p95 15.17 ms; admission p95 25.26 ms; 0 rejected.
+  - **Redis diagnostic, 200 clients, 40 transitions**, with the Redis container's CPU sampled about every 3 s and SLOWLOG > 5 ms collected:
+    - CPU median 11%, p90 71%, max 100%.
+    - `read` script: 95 calls, mean 14.5 ms (`cjson.encode` of the raw state).
+    - `release-room.lua` lease operations: 28 calls, mean 25 ms (full state decode for a `sessionId` check).
+    - `close-question`/`mutate-room`: 57–117 ms (rare).
+    - `admit-answer`: under 5 ms.
+- **Conclusion**: the next bottleneck is server-side work inside Redis, which is a server defect, not a host limit. Corrective task TASK-185H was added.
+- **Verification**: `pnpm exec prettier --check docs/performance-results.md` → pass. Records `test-results/benchmark/redis.json`, `memory.json` (copies in the scratchpad).
+
+## TASK-185H: Kurangi kerja server Redis per pembacaan dan per operasi lease — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/providers/state/redis-state.store.ts`:
+    - The `read` script returns a multi-bulk reply `{state, expiresAt, now}` (empty when missing), so the stored string is no longer re-encoded by `cjson.encode` inside Redis or double-parsed in Node.
+    - `evaluate` (shared EVALSHA/EVAL with NOSCRIPT fallback) and `readRaw` (validated by `readReplySchema`) back both `read` and `readPrivateSnapshot`. `run` keeps the JSON reply contract for the other scripts.
+  - `apps/api/src/providers/state/lua/release-room.lua`:
+    - Room presence and session are checked with `HEXISTS state` + `HGET sessionId`; meta always sets both together (`mutate-room.lua`).
+    - The state is decoded only for `releaseRoom` (report durability). Lease acquire/renew/release never decode it.
+    - Results, errors and epochs are unchanged.
+  - `tests/contracts/state-parity.spec.ts`: new Redis case. With an undecodable `state` field, lease acquire/renew/release still work, an unknown session gets `ROOM_NOT_FOUND`, and only `releaseRoom` fails (STATE_UNAVAILABLE). It FAILS with the old `release-room.lua`.
+- **Verification**:
+  - `pnpm exec eslint tests/contracts/state-parity.spec.ts` → pass.
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 39/39 suites, 277/277 tests.
+  - `pnpm test:contracts --testPathPatterns='state-parity|redis'` → 4/4 suites (incl. Redis Cluster), 63/63 tests.
+  - `pnpm test:integration --testPathPatterns='realtime-races|room-retention'` → 2/2 suites, 28/28 tests.
+
+## TASK-185I: Ukur ulang mode Redis setelah TASK-185H — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `docs/performance-results.md`: section "After the Redis script fixes".
+  - `docs/vibe/07-qa-report.md`: US-20.
+  - `docs/vibe/04-tasks.md`: TASK-185J and TASK-185K.
+- **Run**: **Redis, 200 clients, 100 transitions** → FAIL.
+  - Transport p95 278.66 ms.
+  - 3,545 not admitted (STATE_UNAVAILABLE 2,653, DEPENDENCY_UNAVAILABLE 892).
+  - 0 disconnects, 0 loss.
+  - Redis CPU (235 samples): median 5.3%, p90 37.6%, max 99.1%.
+  - SLOWLOG > 5 ms:
+    - `read` 933 calls, mean 12.2 ms;
+    - `admit-answer` 58, mean 103.5 ms;
+    - `mutate-room` 18, mean 109.8 ms;
+    - `close-question` 10, mean 119.9 ms.
+- **Conclusion**: the remaining cost is the one-JSON-blob-per-room layout, which every script decodes and re-encodes. That is an architectural change: TASK-185K, which needs a design decision. A plain HMGET read (TASK-185J) is the smaller fix.
+- **Verification**: `pnpm exec prettier --check docs/performance-results.md` → pass. Record `test-results/benchmark/redis.json` (copy in the scratchpad), Redis CPU and SLOWLOG samples in the scratchpad.
+
+## TASK-185J: Baca state Redis dengan HMGET biasa tanpa skrip Lua — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/providers/state/redis-state.store.ts`: `readRaw` reads with two single commands, `HMGET meta sessionId state expiresAt` and `TIME`, in parallel. The `read` script and its registration were removed.
+    - Missing room or other session → null. Bad replies or any error → STATE_UNAVAILABLE.
+    - A pipeline was tried first. It failed the Redis Cluster AOF/restart contract: the pipeline kept failing after a master restarted, while single commands follow MOVED and failovers. So single commands are used.
+  - `tests/contracts/state-parity.spec.ts`: new Redis case. Per `INFO commandstats`, three reads (light, validated, unknown session) run no EVALSHA/EVAL and exactly three HMGETs. It FAILS on the Lua read.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 39/39 suites, 277/277 tests.
+  - `pnpm test:contracts --testPathPatterns='state-parity|redis'` → 65/65 twice in a row (incl. Redis Cluster failover and AOF restart).
+  - `pnpm test:integration --testPathPatterns='realtime-races|payload-privacy|room-retention'` → pass.
+  - The Redis benchmark effect is not measured here. The remaining layout bottleneck is TASK-185K, deferred by the user's decision (2026-11-12) until after TASK-186–189.
+
+## TASK-186: Buat injeksi gagal-hapus `system.spec` tidak bergantung pada uid — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `tests/integration/system.spec.ts`: the "cleans orphans with partial failures" case no longer makes the `covers` folder read-only with `chmod 0555`, which root ignores.
+    - The cover's stored file (path from its `publicUrl` basename under `LOCAL_STORAGE_PATH/covers`) is replaced by a directory. `LocalStorageAdapter.delete` refuses a non-regular file, so exactly that delete fails as `DELETE_FAILED`.
+    - The original bytes are restored in `finally`.
+    - All assertions are unchanged (scanned 2, deleted 1, failed 1 with the cover's id, freed bytes, the cover still listed, metrics, cleanup tier).
+    - No application code changed.
+- **Verification**:
+  - `pnpm exec eslint tests/integration/system.spec.ts` and Prettier → pass.
+  - `pnpm test:integration --testPathPatterns=system` as root (uid 0) → 3/3. Before this change it failed in this container with deleted 2 / failed 0.
+  - The same suite as a temporary non-root user (uid 30033, `node node_modules/jest/bin/jest.js --config tests/jest.integration.config.cjs --testPathPatterns=system`) → 3/3. The user was removed afterwards.
+
+## TASK-187: Bangun image MinIO uji di belakang proxy TLS dengan CA build opsional — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `tests/helpers/runtime.ts`: the MinIO fixture accepts `KABUKI_TEST_BUILD_CA=<PEM>`.
+    - The build stage joins the CA with the distro bundle into `/tmp/ca-bundle.pem`, used through `SSL_CERT_FILE`/`GIT_SSL_CAINFO` for `git fetch` + `go build` in one step, and deletes it in that step.
+    - The runtime stage copies the untouched distro bundle.
+    - The tag gets `-ca<sha256 prefix>`.
+    - `KABUKI_TEST_MINIO_IMAGE` still wins.
+    - Without the variable the Dockerfile is byte-identical to the previous one (checked by script).
+  - `docker/docker-compose.yml`: the inline MinIO build (scale profile) has an optional BuildKit secret `build_ca` (`RUN --mount=type=secret,id=build_ca,required=false`, the same temporary-bundle approach). The top-level `secrets.build_ca.file` defaults to `${KN_BUILD_CA_FILE:-/dev/null}`.
+  - `docs/driver-verification.md`: both ways (build CA, prebuilt image), which one wins, and the Compose secret.
+- **Verification**:
+  - Without any prebuilt image, `KABUKI_TEST_BUILD_CA=/root/.ccr/ca-bundle.crt pnpm test:contracts --testPathPatterns='storage.spec'` built `kabuki-neko/minio-test:9e49d5e7a648-go1.27.3-caacf32680` from source → 2/2 suites (3 passed, 3 cloud smoke skipped).
+  - `driver-matrix` with the same setting → 18/18.
+  - The first attempt ran out of session disk during the Go build. 5.5 GB of stopped test containers and old `:test` images were pruned, then it was re-run.
+  - CA not in the image:
+    - its `/etc/ssl/certs/ca-certificates.crt` equals the golang:1.27.3-bookworm distro bundle;
+    - 0 of the 15 proxy-only certificates are in it;
+    - `docker history` shows only the final COPY layers.
+  - `docker compose -f docker/docker-compose.yml config --quiet` → pass, also with `--profile scale`, with `-f docker/docker-compose.tls.yml` (KN_DOMAIN=localhost), and with `KN_BUILD_CA_FILE` set (secret rendered).
+  - `pnpm exec eslint tests/helpers/runtime.ts` → pass; Prettier for the three files → pass.
+
+## TASK-188: Terapkan kuota total penyimpanan media yang dapat diatur — DONE
+- **Date**: 2026-11-12 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/config/env.schema.ts`: `MEDIA_STORAGE_QUOTA_MIB`, a whole number 0–16,777,216; 0 = unlimited. Default **10240** (10 GiB, the recommended self-host default).
+  - `packages/database/src/repositories/media.repository.ts`: `totalStoredBytes(manager?)`, the SUM of `size_bytes` over READY and DELETING assets through the dialect-neutral query builder with bound parameters. UPLOADING reservations hold 0 bytes until they finish.
+  - `apps/api/src/modules/media/media.service.ts`: `checkQuota` runs inside the `operations.reserve` create callback, so only new uploads are checked and a retry of a finished upload replays its receipt.
+    - An upload that would pass the budget is refused with the existing `CAPACITY_REACHED` (HTTP 507), before any row, receipt or blob exists. The six locale catalogs are unchanged.
+    - The soft bound under concurrency (parallel uploads × per-file limit) is documented in the code.
+  - `apps/api/src/modules/media/media.service.spec.ts`: new case.
+    - An upload under the quota is accepted.
+    - Crossing it is refused with CAPACITY_REACHED / 507, and the refused key leaves no row and no receipt.
+    - The finished key still replays with the quota full.
+    - Quota 0 accepts; the default is 10240.
+    - Deleted and FAILED assets free the space.
+    - `-1`, `1.5` and `lots` are refused by the env schema.
+- **Verification**:
+  - The new case FAILS on the old `media.service.ts` and PASSES now.
+  - `pnpm --filter @kabuki-neko/database build`/`lint`/`typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 39/39 suites, 278/278 tests.
+  - `KABUKI_TEST_BUILD_CA=/root/.ccr/ca-bundle.crt pnpm test:integration --testPathPatterns='media'` → 2/2 suites, 15/15 tests (media + media-failures, including MinIO).
+
+## TASK-189: Atur ruang disk Docker: rotasi log, batas memori Redis, lokasi volume, dan rekomendasi — DONE
+- **Date**: 2026-11-14 (Asia/Jakarta)
+- **Files**:
+  - `docker/docker-compose.yml`:
+    - an `x-logging` anchor (json-file, `max-size ${KN_LOG_MAX_SIZE:-10m}`, `max-file ${KN_LOG_MAX_FILE:-3}`) on all 7 services;
+    - the API gets `MEDIA_STORAGE_QUOTA_MIB` (`${MEDIA_STORAGE_QUOTA_MIB:-10240}`, TASK-188);
+    - Redis (scale) runs with `--maxmemory ${KN_REDIS_MAXMEMORY:-1gb} --maxmemory-policy noeviction`, so game state is never evicted and writes fail explicitly;
+    - a header note that Docker cannot cap named volumes.
+    - Default chosen: 1 GB for Redis instead of the planned 256 MB. One large room (200 players, many questions) holds several MB of state, so 256 MB would bound active rooms too tightly.
+  - `docker/docker-compose.paths.yml` (new, optional override): maps `kabuki-data`, `kabuki-uploads` and the scale `kabuki-postgres`, `kabuki-redis`, `kabuki-minio` volumes to host folders.
+    - Folders come from `KN_DATA_PATH`/`KN_UPLOADS_PATH`/`KN_POSTGRES_PATH`/`KN_REDIS_PATH`/`KN_MINIO_PATH`, defaulting under `KN_STORAGE_ROOT`=/var/lib/kabuki-neko.
+    - Owners are documented from the images: api 10001, postgres 70, redis 999, minio 65532.
+    - Secrets stay a named volume.
+  - `.env.example`: a "Disk space" block with every new variable, its default and meaning.
+  - `docs/self-hosting.md` (ID + EN):
+    - new §6a "Ruang disk / Disk space": recommended space per profile (20 GB default, 30 GB scale), the settings table, the soft quota bound, Redis sizing, the paths override with exact commands, monitoring (`docker system df -v`, `du`, `docker builder prune`), and an honest note that a hard cap needs a disk or partition;
+    - §1 prerequisites point to it.
+- **Verification**:
+  - `docker compose … config --quiet` → pass for default; `--profile scale`; `-f docker-compose.paths.yml --profile scale`; `-f docker-compose.tls.yml` (KN_DOMAIN=localhost); and paths + TLS + scale.
+  - The rendered config follows defaults and overrides: with KN_LOG_MAX_SIZE=5m, KN_LOG_MAX_FILE=2, KN_REDIS_MAXMEMORY=256mb and MEDIA_STORAGE_QUOTA_MIB=2048, all 7 services get 5m/2, Redis gets 256mb, and the API gets 2048.
+  - Live, with the paths override and folders owned by uid 10001:
+    - the API became healthy, setup-status was 200, and the SQLite database and runtime secrets were written in the host folder;
+    - the container log config was json-file 10m/3, and the API env had MEDIA_STORAGE_QUOTA_MIB=10240.
+  - Live Redis (scale, paths, KN_REDIS_MAXMEMORY=512mb) → `CONFIG GET maxmemory` 536870912, policy noeviction, AOF written in the host folder. Torn down afterwards.
+  - API image rebuilt at the TASK-188 commit, then `bash scripts/selfhost-smoke.sh --no-build --purge` (default profile) → PASS (5 checks).
+  - Every KN_*/MEDIA_* variable named in the guide is present in `.env.example`.
+  - Prettier check of the guide and both Compose files → pass.
+
+## TASK-185K: Rancang ulang tata letak state room di Redis (jawaban dan hasil di luar blob) — IN PROGRESS
+- **Started**: 2026-11-17 (Asia/Jakarta)
+- **Plan**: `docs/vibe/03-system-analysis.md` (ADR), `docs/vibe/04-tasks.md` (implementation tasks); no application code
+- **Done so far**: none yet
+- **Verification**: pending

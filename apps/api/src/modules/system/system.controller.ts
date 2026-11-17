@@ -87,10 +87,21 @@ export class SystemController {
     });
   }
 
-  /** GET /system/health — 200 when every dependency is up, 503 with the same body otherwise. */
+  /**
+   * GET /system/health — 200 when every dependency is up, 503 with the same body otherwise.
+   * The PUBLIC limit still applies (429), but a limiter that is itself unavailable (Redis down:
+   * DEPENDENCY_UNAVAILABLE) must not hide the diagnosis: the check runs and reports the state
+   * store as down (SA §4.4, AC-16-02; code review MJ-10). SA §4.1 requires fail-closed limiting
+   * only for authentication and mutations.
+   */
   @Get("health")
   async getHealth(@Req() request: Request, @Res({ passthrough: true }) response: Response) {
-    await this.anonymous(request, response);
+    try {
+      await this.anonymous(request, response);
+    } catch (error) {
+      if (!(error instanceof ApiError && error.errorCode === "DEPENDENCY_UNAVAILABLE")) throw error;
+      empty.transform(request.query);
+    }
     const health = await this.health.check();
     response.status(health.status === "ok" ? 200 : 503);
     return health;

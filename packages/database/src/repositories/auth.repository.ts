@@ -176,6 +176,8 @@ export class AuthRepository {
     now: number,
   ) {
     // Return the reuse outcome from the transaction so family revocation commits before rejection.
+    // Reuse of an already consumed token is reported as TOKEN_REUSED (audited as
+    // `auth.refresh.reuse`, code review MJ-02); callers still answer TOKEN_REVOKED.
     const outcome = await writeTransaction(this.db, async (m) => {
       await lockParent(m, "users", next.user_id);
       const repo = m.getRepository<StoredToken>("refresh_tokens");
@@ -185,7 +187,7 @@ export class AuthRepository {
       await lockParent(m, "refresh_tokens", row.id);
       if (row.consumed_at !== null) {
         await revokeTokens(m, row.user_id, row.family_id, now);
-        return "TOKEN_REVOKED";
+        return "TOKEN_REUSED";
       }
       const user = await m.getRepository<UserRow>("users").findOneByOrFail({ id: row.user_id });
       if (!user.is_active || user.auth_version !== version || row.revoked_at !== null)

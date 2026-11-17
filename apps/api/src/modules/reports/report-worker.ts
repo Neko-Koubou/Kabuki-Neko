@@ -23,10 +23,16 @@ import {
   type OnApplicationBootstrap,
   type OnModuleDestroy,
 } from "@nestjs/common";
-import { JobsRepository, type FinalizationJob } from "@kabuki-neko/database";
+import {
+  JobsRepository,
+  finalizationPayloadHash,
+  type FinalizationJob,
+} from "@kabuki-neko/database";
+import { ZodError } from "zod";
 import { FINALIZATION_LIMITS } from "@kabuki-neko/shared/constants/limits";
 import type { ErrorCode } from "@kabuki-neko/shared/errors";
 import type { FinalizeStatus } from "@kabuki-neko/shared/schemas/game.schema";
+import { MetricsService } from "../../common/metrics.service";
 import { ConfigService } from "../../config/config.service";
 import {
   GAME_STATE_STORE,
@@ -43,6 +49,8 @@ import { ReportFinalizer } from "./report-finalizer";
 export const REPORT_POLL_MS = 1_000;
 /** Message used by the repositories for a payload hash mismatch (invariant violation). */
 const HASH_MISMATCH = "Finalization payload hash mismatch";
+/** Upper bound of memoized frozen-report hashes (one per final room awaiting a ready report). */
+const MAX_MEMOIZED_HASHES = 10_000;
 
 /** Called after a room's finalization status changed (host-only `report:status_changed`). */
 export type ReportStatusListener = (
@@ -93,6 +101,8 @@ export class ReportWorker implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly concurrency: number;
   private readonly inFlight = new Set<Promise<unknown>>();
   private listener: ReportStatusListener | null = null;
+  /** sessionId → payload hash of its frozen report (see `reportHash`). */
+  private readonly hashes = new Map<string, string>();
   private interval: ReturnType<typeof setInterval> | undefined;
   private stopped = true;
 
@@ -102,6 +112,7 @@ export class ReportWorker implements OnApplicationBootstrap, OnModuleDestroy {
     @Inject(GAME_STATE_STORE) private readonly store: IGameStateStore,
     @Inject(ConfigService) config: ConfigService,
     @Optional() @Inject(GAME_CLOCK) clock: (() => number) | null = null,
+    @Optional() @Inject(MetricsService) private readonly metrics: MetricsService | null = null,
   ) {
     this.clock = clock ?? Date.now;
     this.concurrency = config.values.FINALIZE_CONCURRENCY;
@@ -202,6 +213,8 @@ export class ReportWorker implements OnApplicationBootstrap, OnModuleDestroy {
       } catch {
         return "LEASE_LOST";
       }
+      // Operators see every failed attempt (counter) and a rate-limited structured alarm (MJ-16).
+      this.metrics?.reportJobFailed(code);
       await this.publish(identity, {
         sessionId: job.session_id,
         status: "failed",
@@ -233,43 +246,62 @@ export class ReportWorker implements OnApplicationBootstrap, OnModuleDestroy {
 
   /**
    * Scheduler recovery (`GameService.setFinalizationSync`): makes sure the frozen report has a
-   * durable job (idempotent enqueue) and mirrors that job's status into the room state. A database
-   * outage keeps the frozen report in the state store as failed/retryable.
+   * durable job and mirrors that job's status into the room state. A database outage keeps the
+   * frozen report in the state store as failed/retryable.
+   *
+   * Runs every few seconds per final room until the report is ready (code review MJ-13), so the
+   * common path is light: when the session already has a job, only its status row is read (no
+   * payload) and the frozen report is neither validated nor hashed again. That report is immutable
+   * in the state store and was checked against the job's hash when the job was enqueued. Only a
+   * session without a job pays for validation, canonical JSON and SHA-256 (idempotent enqueue).
    */
   async sync(
     identity: RoomIdentity,
     report: FrozenReport,
     current: ActiveRoomState["finalization"],
   ): Promise<FinalizeStatus> {
-    const parsed = frozenReportSchema.parse(report);
-    if (parsed.session.id !== identity.sessionId || parsed.session.pinCode !== identity.pin)
+    if (report.session.id !== identity.sessionId || report.session.pinCode !== identity.pin)
       throw new Error("INVALID_REFERENCE");
-    let job: FinalizationJob;
+    let job: Pick<FinalizationJob, "session_id" | "state" | "last_error_code"> | null;
     try {
-      job = await this.jobs.enqueue(
-        parsed.session.id,
-        parsed.session.hostId,
-        parsed as unknown as Record<string, unknown>,
-        this.clock(),
-      );
+      const existing = await this.jobs.statusOf(identity.sessionId);
+      if (existing && existing.host_id !== report.session.hostId)
+        throw new Error("INVALID_REFERENCE");
+      job = existing;
+      if (existing && existing.payload_hash !== this.reportHash(identity.sessionId, report))
+        throw new Error(HASH_MISMATCH);
     } catch (error) {
+      if (error instanceof Error && error.message === "INVALID_REFERENCE") throw error;
       if (error instanceof Error && error.message === HASH_MISMATCH) {
         this.logger.error(`finalization invariant violated for session ${identity.sessionId}`);
         throw error;
       }
-      const failed: FinalizeStatus = {
-        sessionId: identity.sessionId,
-        status: "failed",
-        reportId: null,
-        retryable: true,
-        errorCode: "REPORT_SAVE_FAILED",
-        updatedAt: this.clock(),
-      };
-      if (current?.status !== "failed") await this.publish(identity, failed);
-      return failed;
+      if (error instanceof ZodError) throw error;
+      return this.saveFailed(identity, current);
+    }
+    if (!job) {
+      const parsed = frozenReportSchema.parse(report);
+      try {
+        const created = await this.jobs.enqueue(
+          parsed.session.id,
+          parsed.session.hostId,
+          parsed as unknown as Record<string, unknown>,
+          this.clock(),
+        );
+        this.hashes.set(identity.sessionId, created.payload_hash);
+        job = created;
+      } catch (error) {
+        if (error instanceof Error && error.message === HASH_MISMATCH) {
+          this.logger.error(`finalization invariant violated for session ${identity.sessionId}`);
+          throw error;
+        }
+        return this.saveFailed(identity, current);
+      }
     }
     await this.store.acknowledgeDurableReport(identity);
     const status = statusFromJob(job, this.clock());
+    // A ready report is never synced again: drop its memoized hash.
+    if (status.status === "ready") this.hashes.delete(identity.sessionId);
     if (
       current?.status !== status.status ||
       current.errorCode !== status.errorCode ||
@@ -277,6 +309,44 @@ export class ReportWorker implements OnApplicationBootstrap, OnModuleDestroy {
     )
       await this.publish(identity, status);
     return status;
+  }
+
+  /**
+   * SHA-256 of a frozen report as stored in its job's `payload_hash`, computed once per session
+   * and process (validation + canonical JSON + hash of up to 64 MiB) and then reused by every
+   * later sync (code review MJ-13). The frozen report never changes once stored. The memo is
+   * dropped when the report is ready and is bounded.
+   */
+  private reportHash(sessionId: string, report: FrozenReport): string {
+    const known = this.hashes.get(sessionId);
+    if (known) return known;
+    const hash = finalizationPayloadHash(
+      frozenReportSchema.parse(report) as unknown as Record<string, unknown>,
+    );
+    if (this.hashes.size >= MAX_MEMOIZED_HASHES) this.hashes.clear();
+    this.hashes.set(sessionId, hash);
+    return hash;
+  }
+
+  /** Publishes (once) and returns the retryable REPORT_SAVE_FAILED status of a database outage. */
+  private async saveFailed(
+    identity: RoomIdentity,
+    current: ActiveRoomState["finalization"],
+  ): Promise<FinalizeStatus> {
+    const failed: FinalizeStatus = {
+      sessionId: identity.sessionId,
+      status: "failed",
+      reportId: null,
+      retryable: true,
+      errorCode: "REPORT_SAVE_FAILED",
+      updatedAt: this.clock(),
+    };
+    if (current?.status !== "failed") {
+      // The durable queue itself is unreachable: count it and raise the queue alarm once (MJ-16).
+      this.metrics?.reportJobFailed("REPORT_SAVE_FAILED");
+      await this.publish(identity, failed);
+    }
+    return failed;
   }
 
   /**

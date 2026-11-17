@@ -1,13 +1,23 @@
 #!/usr/bin/env node
 /**
- * `pnpm audio:optimize` — converts the supplied audio pack into the dual-format web audio set
- * (Audio revision 2026-10-31 §Optimization and output contract; TASK-114).
+ * `pnpm audio:optimize --source <pack>` — maintainer tool that converts a supplied audio pack into
+ * the dual-format web audio set (Audio revision 2026-10-31 §Optimization and output contract;
+ * TASK-114).
  *
- * Input: `audio-assets/kabuki-neko-audio/` (override `--source`) with the five phase folders
- * `01-lobby` … `05-sfx` holding MP3 files plus `CREDITS.md`. Output: `apps/web/public/audio/`
- * (override `--out`), a generated, git-ignored directory mirroring the subfolders with, for every
- * input, an Opus `.webm` (96 kbps VBR, first source) and an MP3 (LAME 128 kbps, second source),
- * a byte-identical `CREDITS.md` and the generated `audio-manifest.json`.
+ * The repository stores only the optimized result, in `audio-assets/kabuki-neko-audio/`, and the
+ * build (`pnpm build:assets`) copies that committed set into `apps/web/public/audio/` without
+ * encoding anything, so self-hosting and local tests never need ffmpeg for the audio. Run this
+ * tool only when the music changes:
+ *   1. `pnpm audio:optimize --source <dir with the supplied originals>` (the originals are not in
+ *      the repository; `--out` defaults to `audio-assets/kabuki-neko-audio`);
+ *   2. update docs/audio-provenance.json: `original` (SHA-256, bytes, duration of each supplied
+ *      file) and `outputFiles` (SHA-256 and bytes of each optimized file). `pnpm assets:package`
+ *      fails until the recorded hashes match the committed files.
+ *
+ * Input (`--source`, required): the five phase folders `01-lobby` … `05-sfx` holding MP3 files
+ * plus `CREDITS.md`. Output (`--out`): the same subfolders with, for every input, an Opus `.webm`
+ * (96 kbps VBR, first source) and an MP3 (LAME 128 kbps, second source), a byte-identical
+ * `CREDITS.md` and the generated `audio-manifest.json`.
  *
  * Rules:
  * - Lobby is dynamic (any number ≥ 1 of `bgm-lobby-<id>.mp3`); every thinking/leaderboard/podium
@@ -349,17 +359,29 @@ async function convert(entry, staging, tools) {
   };
 }
 
-/** Runs `worker` over `items` with at most `limit` in flight; rejects on the first failure. */
+/**
+ * Runs `worker` over `items` with at most `limit` in flight. After the first failure no new item
+ * starts, but the run waits for the items already in flight before rejecting with that first
+ * error: otherwise the caller would remove the staging directory while encoders still write into
+ * it (ENOTEMPTY), hiding the real error.
+ */
 async function pool(items, limit, worker) {
   const results = new Array(items.length);
   let next = 0;
+  /** @type {{ error: unknown } | null} */
+  let failure = null;
   const lanes = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
+    while (!failure && next < items.length) {
       const index = next++;
-      results[index] = await worker(items[index]);
+      try {
+        results[index] = await worker(items[index]);
+      } catch (error) {
+        failure ??= { error };
+      }
     }
   });
   await Promise.all(lanes);
+  if (failure) throw failure.error;
   return results;
 }
 
@@ -461,7 +483,7 @@ export async function optimizeAudio(options) {
   }
 }
 
-/** CLI entry: `node scripts/optimize-audio.mjs [--source dir] [--out dir] [--ffmpeg bin] [--ffprobe bin]`. */
+/** CLI entry: `node scripts/optimize-audio.mjs --source dir [--out dir] [--ffmpeg bin] [--ffprobe bin]`. */
 async function main() {
   const { values } = parseArgs({
     options: {
@@ -473,9 +495,13 @@ async function main() {
     },
     strict: true,
   });
+  if (!values.source)
+    throw new AudioPipelineError(
+      "--source <dir> is required: the supplied originals are not stored in the repository",
+    );
   const summary = await optimizeAudio({
-    source: path.resolve(values.source ?? path.join(ROOT, "audio-assets/kabuki-neko-audio")),
-    out: path.resolve(values.out ?? path.join(ROOT, "apps/web/public/audio")),
+    source: path.resolve(values.source),
+    out: path.resolve(values.out ?? path.join(ROOT, "audio-assets/kabuki-neko-audio")),
     ffmpeg: values.ffmpeg,
     ffprobe: values.ffprobe,
     concurrency: values.concurrency ? Number(values.concurrency) : undefined,

@@ -33,8 +33,23 @@
 
 name: kabuki-neko
 
+# Disk space (TASK-189; docs/self-hosting.md "Disk space"):
+# - Container logs rotate: KN_LOG_MAX_SIZE per file (default 10m), KN_LOG_MAX_FILE files per
+#   container (default 3), so logs never fill the disk.
+# - Uploaded media stop at MEDIA_STORAGE_QUOTA_MIB (default 10240 = 10 GiB; 0 = unlimited).
+# - Redis (scale) stops at KN_REDIS_MAXMEMORY (default 1gb) with noeviction: game state is never
+#   dropped silently, writes fail explicitly instead.
+# - Docker cannot cap a named volume's size. To put the data on a disk or partition of a chosen
+#   size, add the docker-compose.paths.yml override.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: ${KN_LOG_MAX_SIZE:-10m}
+    max-file: "${KN_LOG_MAX_FILE:-3}"
+
 x-api-environment: &api-environment
   NODE_ENV: production
+  MEDIA_STORAGE_QUOTA_MIB: ${MEDIA_STORAGE_QUOTA_MIB:-10240}
   DEPLOYMENT_PROFILE: ${DEPLOYMENT_PROFILE:-default}
   DEPLOYMENT_TOPOLOGY: single
   NEXT_PUBLIC_APP_URL: ${KN_PUBLIC_URL:-http://localhost:3000}
@@ -63,6 +78,7 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.api
     image: kabuki-neko-api:${KN_IMAGE_TAG:-local}
+    logging: *logging
     restart: unless-stopped
     environment: *api-environment
     volumes:
@@ -97,6 +113,7 @@ services:
         # Scale profile media (S3_PUBLIC_URL); harmless for the default profile.
         NEXT_PUBLIC_MEDIA_ORIGINS: ${KN_MEDIA_PUBLIC_URL:-http://localhost:9000/kabuki-neko-media}
     image: kabuki-neko-web:${KN_IMAGE_TAG:-local}
+    logging: *logging
     restart: unless-stopped
     environment:
       API_INTERNAL_URL: http://api:3001
@@ -110,10 +127,15 @@ services:
   # Scale profile: generates the credentials once (existing files are kept) with per-service
   # ownership: API files for uid 10001, MinIO files for uid 65532, the PostgreSQL password for
   # root (its entrypoint reads it before dropping privileges).
+  # KN_ROTATE_JWT_SECRETS=true replaces the JWT pair through an atomic rename, e.g. when a backup
+  # or its secrets may have leaked (code review MJ-19; docs/operations.md). Everyone signs in again.
   secrets-init:
     profiles: ["scale"]
     image: kabuki-neko-api:${KN_IMAGE_TAG:-local}
+    logging: *logging
     user: "0:0"
+    environment:
+      KN_ROTATE_JWT_SECRETS: ${KN_ROTATE_JWT_SECRETS:-false}
     entrypoint: ["node", "-e"]
     command:
       - |
@@ -121,11 +143,14 @@ services:
         const fs = require("node:fs");
         const dir = "/run/kabuki-secrets";
         const random = (bytes) => randomBytes(bytes).toString("hex");
-        const write = (name, value, uid) => {
+        const rotate = process.env.KN_ROTATE_JWT_SECRETS === "true";
+        const write = (name, value, uid, replace = false) => {
           const file = `$${dir}/$${name}`;
-          if (fs.existsSync(file)) return fs.readFileSync(file, "utf8");
-          fs.writeFileSync(file, value, { mode: 0o400 });
-          fs.chownSync(file, uid, uid);
+          if (fs.existsSync(file) && !replace) return fs.readFileSync(file, "utf8");
+          const staged = `$${file}.new`;
+          fs.writeFileSync(staged, value, { mode: 0o400 });
+          fs.chownSync(staged, uid, uid);
+          fs.renameSync(staged, file);
           return value;
         };
         const password = write("postgres_password", random(24), 0);
@@ -134,15 +159,16 @@ services:
         const secret = write("s3_secret_key", random(32), 10001);
         write("minio_root_user", access, 65532);
         write("minio_root_password", secret, 65532);
-        write("jwt_access_secret", random(64), 10001);
-        write("jwt_refresh_secret", random(64), 10001);
-        process.stdout.write("secrets ready\n");
+        write("jwt_access_secret", random(64), 10001, rotate);
+        write("jwt_refresh_secret", random(64), 10001, rotate);
+        process.stdout.write(rotate ? "secrets ready (JWT pair rotated)\n" : "secrets ready\n");
     volumes:
       - kabuki-secrets:/run/kabuki-secrets
 
   postgres:
     profiles: ["scale"]
     image: postgres:16-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
+    logging: *logging
     restart: unless-stopped
     environment:
       POSTGRES_USER: kabuki
@@ -163,8 +189,20 @@ services:
   redis:
     profiles: ["scale"]
     image: redis:7-alpine@sha256:7b1753b4c5ad8458906c272a8132b8c15f5557b000379eb115fb239706a384b7
+    logging: *logging
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--save", ""]
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --save
+      - ""
+      - --maxmemory
+      - ${KN_REDIS_MAXMEMORY:-1gb}
+      - --maxmemory-policy
+      - noeviction
     volumes:
       - kabuki-redis:/data
     healthcheck:
@@ -182,8 +220,17 @@ services:
         FROM golang:1.27.3-bookworm AS build
         ENV CGO_ENABLED=0 GOTOOLCHAIN=local
         WORKDIR /src
-        RUN git init . && git remote add origin https://github.com/minio/minio.git && git fetch --depth=1 origin 9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a && git checkout --detach FETCH_HEAD
-        RUN go build -trimpath -o /out/minio . && mkdir -p /out/data
+        # Optional build CA (a TLS-intercepting proxy's), trusted only for this step through a
+        # temporary bundle; the runtime stage copies the untouched distro bundle.
+        RUN --mount=type=secret,id=build_ca,required=false \
+          if [ -s /run/secrets/build_ca ]; then \
+            cat /etc/ssl/certs/ca-certificates.crt /run/secrets/build_ca > /tmp/ca-bundle.pem && \
+            export SSL_CERT_FILE=/tmp/ca-bundle.pem GIT_SSL_CAINFO=/tmp/ca-bundle.pem; \
+          fi && \
+          git init . && git remote add origin https://github.com/minio/minio.git && \
+          git fetch --depth=1 origin 9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a && \
+          git checkout --detach FETCH_HEAD && \
+          go build -trimpath -o /out/minio . && mkdir -p /out/data && rm -f /tmp/ca-bundle.pem
         FROM scratch
         COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
         COPY --from=build /out/minio /usr/bin/minio
@@ -193,7 +240,12 @@ services:
         WORKDIR /data
         EXPOSE 9000
         ENTRYPOINT ["/usr/bin/minio"]
+      # Behind a TLS-intercepting proxy: KN_BUILD_CA_FILE=/path/to/proxy-ca.pem. The secret is
+      # mounted for the fetch/build step only and never stored in a layer.
+      secrets:
+        - build_ca
     image: ${KN_MINIO_IMAGE:-kabuki-neko/minio:9e49d5e7a648}
+    logging: *logging
     restart: unless-stopped
     command: ["server", "/data"]
     environment:
@@ -213,6 +265,7 @@ services:
   minio-init:
     profiles: ["scale"]
     image: kabuki-neko-api:${KN_IMAGE_TAG:-local}
+    logging: *logging
     entrypoint: ["node", "-e"]
     working_dir: /app
     command:
@@ -248,6 +301,11 @@ services:
     depends_on:
       minio:
         condition: service_started
+
+# Build-time only (MinIO source build); /dev/null means no extra CA.
+secrets:
+  build_ca:
+    file: ${KN_BUILD_CA_FILE:-/dev/null}
 
 volumes:
   kabuki-data:

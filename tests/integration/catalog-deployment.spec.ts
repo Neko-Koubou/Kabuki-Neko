@@ -109,6 +109,22 @@ async function startApi(name: string, bundleDir?: string) {
 const remove = (name: string) => docker(["rm", "-f", "-v", name]).catch(() => "");
 
 const temporary: string[] = [];
+/**
+ * The production images must exist (code review MJ-20): CI builds them before the integration
+ * suites; locally, a clear instruction replaces Docker's "pull access denied".
+ */
+beforeAll(async () => {
+  for (const image of [`kabuki-neko-api:${TAG}`, `kabuki-neko-web:${TAG}`]) {
+    const present = await docker(["image", "inspect", image]).then(
+      () => true,
+      () => false,
+    );
+    if (!present)
+      throw new Error(
+        `${image} is missing: build the production images first (KN_IMAGE_TAG=${TAG} docker compose -f docker/docker-compose.yml build api web)`,
+      );
+  }
+});
 afterAll(async () => {
   const ids = await docker(["ps", "-aq", "--filter", `label=${LABEL}`]).catch(() => "");
   for (const id of ids.split("\n").filter(Boolean)) await remove(id);

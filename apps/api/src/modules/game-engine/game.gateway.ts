@@ -29,6 +29,7 @@ import {
   type OnGatewayInit,
 } from "@nestjs/websockets";
 import type { Namespace, Socket } from "socket.io";
+import type { HostRoomSync } from "@kabuki-neko/shared/schemas/game.schema";
 import { ZodError } from "zod";
 import { GAME_TIMING } from "@kabuki-neko/shared/constants/game";
 import { SOCKET_LIMITS } from "@kabuki-neko/shared/constants/limits";
@@ -54,9 +55,14 @@ import {
   type RoomIdentity,
 } from "../../providers/state/game-state.interface";
 import { StateConnections } from "../../providers/state/state.module";
-import { GameService, type PlayerBinding } from "./game.service";
+import { GameService, type PlayerBinding, type RoomEndReason } from "./game.service";
 import { RecoveryService, stateError } from "./recovery.service";
-import { projectHost, projectPlayer } from "./room-projector";
+import {
+  projectFinalization,
+  projectHost,
+  projectPlayerPodium,
+  projectPlayerReveal,
+} from "./room-projector";
 import { RoomRegistryService } from "./room-registry.service";
 
 /** Per-socket server-side binding (never trusted from client payloads). */
@@ -167,6 +173,8 @@ export class GameGateway
   @WebSocketServer() private server!: Namespace;
   private readonly summaries = new Map<string, Summary>();
   private readonly queues = new Map<string, Promise<void>>();
+  /** Publish per room queued but not started yet; later calls share it (see `publish`). */
+  private readonly pendingPublishes = new Map<string, Promise<void>>();
   private heartbeat: ReturnType<typeof setInterval> | undefined;
   private readonly trusted: (address: string) => boolean;
 
@@ -202,6 +210,14 @@ export class GameGateway
       this.game as GameService & { setNotifier?: (fn: (id: RoomIdentity) => Promise<void>) => void }
     ).setNotifier;
     notify?.call(this.game, (identity) => this.publish(identity));
+    const ended = (
+      this.game as GameService & {
+        setEndNotifier?: (
+          fn: (id: RoomIdentity, reason: RoomEndReason | null) => Promise<void>,
+        ) => void;
+      }
+    ).setEndNotifier;
+    ended?.call(this.game, (identity, reason) => this.forget(identity, reason));
     this.heartbeat = setInterval(() => this.beat(), SOCKET_LIMITS.heartbeatMs);
     this.heartbeat.unref();
   }
@@ -261,14 +277,37 @@ export class GameGateway
     await this.publish(binding).catch(() => undefined);
   }
 
-  /** Rate key for an event: user for hosts, player for bound players, IP or socket otherwise. */
+  /**
+   * Rejects, before any limiter key is created, a request whose tier needs a binding the socket
+   * does not have (code review MJ-15). These requests would fail in `execute` anyway (answers and
+   * avatars need a bound player; sync and time need a bound player or an authenticated host), so
+   * the client sees the same error, but an anonymous socket can no longer mint a limiter key per
+   * connection and fill the in-memory limiter.
+   */
+  private requireBinding(event: ClientEventName, socket: GameSocket): void {
+    const tier = TIERS[event];
+    if ((tier === "ANSWER" || tier === "AVATAR") && !socket.data.player)
+      throw new ApiError("INVALID_SESSION_TOKEN", 401);
+    if ((tier === "SYNC" || tier === "TIME") && !socket.data.player && !socket.data.host)
+      throw new ApiError("AUTH_REQUIRED", 401);
+  }
+  /**
+   * Rate key for an event (code review MJ-15). Keys never depend on the socket id, so the number of
+   * limiter keys grows with authenticated hosts, joined players and client IPs, not connections:
+   * - HOST: the host user, or the client IP when unauthenticated;
+   * - ANSWER/AVATAR: the bound player;
+   * - SYNC/TIME: the bound player, else the host user (unbound sockets are rejected earlier);
+   * - everything else (auth, PIN check, join, friendly name): the client IP.
+   */
   private rateKey(event: ClientEventName, socket: GameSocket): string {
     const tier = TIERS[event];
-    if (tier === "HOST") return `user:${socket.data.host?.user.id ?? socket.data.ip}`;
-    if (tier === "ANSWER" || tier === "AVATAR")
-      return `player:${socket.data.player?.playerId ?? socket.id}`;
-    if (tier === "SYNC" || tier === "TIME") return `socket:${socket.id}`;
-    return `ip:${socket.data.ip}`;
+    const { host, player, ip } = socket.data;
+    if (tier === "HOST") return host ? `user:${host.user.id}` : `ip:${ip}`;
+    if (tier === "ANSWER" || tier === "AVATAR" || tier === "SYNC" || tier === "TIME") {
+      if (player) return `player:${player.playerId}`;
+      if (host) return `user:${host.user.id}`;
+    }
+    return `ip:${ip}`;
   }
   /** Validates, rate-limits, executes and wraps one client request into its ACK envelope. */
   private async dispatch(event: ClientEventName, socket: GameSocket, payload: unknown) {
@@ -278,6 +317,7 @@ export class GameGateway
         : undefined;
     const requestId = typeof raw === "string" && UUID.test(raw) ? raw : randomUUID();
     try {
+      this.requireBinding(event, socket);
       await this.limiter.consume(TIERS[event], this.rateKey(event, socket));
       if (event === "host:create_room")
         await this.limiter.consume("CREATE", this.rateKey(event, socket));
@@ -301,10 +341,7 @@ export class GameGateway
     return socket.data.host;
   }
   /** Player binding for the addressed room or 401. */
-  private player(
-    socket: GameSocket,
-    request: Record<string, unknown>,
-  ): PlayerBinding {
+  private player(socket: GameSocket, request: Record<string, unknown>): PlayerBinding {
     const binding = socket.data.player;
     if (!binding || binding.sessionId !== request.sessionId || binding.pin !== request.pinCode)
       throw new ApiError("INVALID_SESSION_TOKEN", 401);
@@ -404,7 +441,10 @@ export class GameGateway
       case "player:submit_answer": {
         const binding = this.player(socket, request);
         const ack = await this.game.submitAnswer(binding, request as never);
-        await this.publish(binding);
+        // The ACK reports the admission; the room changes reach clients as pushes. Waiting for the
+        // room's publish queue here made the N-th answer of a burst wait for N diffs (TASK-183A).
+        // A missed publish is caught by the room:version heartbeat.
+        void this.publish(binding);
         return ack;
       }
       case "room:sync": {
@@ -459,17 +499,59 @@ export class GameGateway
       data,
     };
   }
-  /** Serializes publishes per room so diffs are computed against a consistent summary. */
-  publish(identity: RoomIdentity): Promise<void> {
-    const previous = this.queues.get(identity.sessionId) ?? Promise.resolve();
-    const next = previous.then(() => this.diff(identity)).catch(() => undefined);
-    this.queues.set(identity.sessionId, next);
+  /**
+   * Runs `step` after the room's queued publishes. The queue entry is removed once the last queued
+   * step settles, so the map holds only rooms with work in flight (code review MJ-05).
+   */
+  private enqueue(sessionId: string, step: () => Promise<void> | void): Promise<void> {
+    const previous = this.queues.get(sessionId) ?? Promise.resolve();
+    const next: Promise<void> = previous
+      .then(step)
+      .catch(() => undefined)
+      .finally(() => {
+        if (this.queues.get(sessionId) === next) this.queues.delete(sessionId);
+      });
+    this.queues.set(sessionId, next);
     return next;
+  }
+  /**
+   * Serializes publishes per room so diffs are computed against a consistent summary, and
+   * coalesces them: a call made while a publish of the room is queued but not started shares it.
+   * A diff reads the state when it starts and compares it with the last published summary, so the
+   * shared diff covers every change made before it. A burst of answers therefore runs at most one
+   * diff in flight plus one queued, instead of one full diff per answer (QA follow-up TASK-183A).
+   */
+  publish(identity: RoomIdentity): Promise<void> {
+    const key = identity.sessionId;
+    const pending = this.pendingPublishes.get(key);
+    if (pending) return pending;
+    const queued = this.enqueue(key, () => {
+      this.pendingPublishes.delete(key);
+      return this.diff(identity);
+    });
+    this.pendingPublishes.set(key, queued);
+    return queued;
+  }
+  /**
+   * Forgets a room the scheduler dropped (code review MJ-05): after the queued publishes, sends
+   * `room:expired` with `reason` to its host and players (null: released quietly after retention)
+   * and removes its summary, which also stops its heartbeat. With the Redis adapter the push
+   * reaches clients connected to every instance.
+   */
+  forget(identity: RoomIdentity, reason: RoomEndReason | null): Promise<void> {
+    return this.enqueue(identity.sessionId, () => {
+      if (reason)
+        this.server
+          .to([`host:${identity.sessionId}`, `players:${identity.sessionId}`])
+          .emit("room:expired", this.push(identity, null, { reason }));
+      this.summaries.delete(identity.sessionId);
+    });
   }
   /** Emits the role-safe events implied by the change since the last published summary. */
   private async diff(identity: RoomIdentity): Promise<void> {
     const before = this.summaries.get(identity.sessionId);
-    const state = await this.store.getPrivateSnapshot(identity);
+    // Copy-free read (TASK-185B): nothing below awaits, so the live state stays consistent.
+    const state = await this.store.readPrivateSnapshot(identity);
     const all = [`host:${identity.sessionId}`, `players:${identity.sessionId}`];
     if (!state) {
       if (before)
@@ -481,7 +563,10 @@ export class GameGateway
     }
     if (before && before.revision === state.revision) return;
     const now = Date.now();
-    const hostView = projectHost(state, state.hostId, now);
+    // The full host projection (validated snapshot of every player) is built only when a phase
+    // event needs it, not for every answer count or presence change (TASK-185C).
+    let projected: HostRoomSync | undefined;
+    const hostView = () => (projected ??= projectHost(state, state.hostId, now));
     const index = state.questionIndex;
     const answered =
       index === null
@@ -555,8 +640,10 @@ export class GameGateway
                 (id) => !state.requiredPlayerIds.includes(id) && state.answers[`${index}:${id}`],
               ).length,
       });
-    if (hostView.finalization && before?.finalization !== summary.finalization)
-      emit(`host:${identity.sessionId}`, "report:status_changed", hostView.finalization);
+    if (state.finalization && before?.finalization !== summary.finalization) {
+      const finalization = projectFinalization(state);
+      if (finalization) emit(`host:${identity.sessionId}`, "report:status_changed", finalization);
+    }
     if (before && before.phaseVersion === state.phaseVersion) return;
     const t = state.timing;
     switch (state.phase) {
@@ -571,7 +658,7 @@ export class GameGateway
         break;
       case "QUESTION_PREVIEW":
         emit(all, "game:question_preview", {
-          question: hostView.question,
+          question: hostView().question,
           previewDurationMs: GAME_TIMING.previewMs,
           phaseStartedAt: t.phaseStartedAt,
           phaseEndsAt: t.phaseEndsAt,
@@ -579,48 +666,47 @@ export class GameGateway
         break;
       case "QUESTION_ANSWERING":
         emit(all, "game:question_answering", {
-          question: hostView.question,
+          question: hostView().question,
           serverStartTime: t.questionStartedAt,
           inputClosesAt: t.inputClosesAt,
           acceptanceClosesAt: t.acceptanceClosesAt,
         });
         break;
-      case "ANSWER_REVEAL":
-        emit(`host:${identity.sessionId}`, "game:answer_reveal", { reveal: hostView.reveal });
-        for (const player of active) {
-          const view = projectPlayer(state, player.id, player.connectionGeneration, now);
-          if (view.reveal && view.self.result)
-            emit(`player:${player.id}`, "game:answer_reveal", {
-              reveal: view.reveal,
-              result: view.self.result,
-            });
-        }
+      case "ANSWER_REVEAL": {
+        const { reveal } = hostView();
+        emit(`host:${identity.sessionId}`, "game:answer_reveal", { reveal });
+        // One shared reveal plus each player's own result: O(n), not a room snapshot per player.
+        if (reveal)
+          for (const player of active) {
+            const data = projectPlayerReveal(state, player.id, reveal);
+            if (data) emit(`player:${player.id}`, "game:answer_reveal", data);
+          }
         break;
-      case "LEADERBOARD":
-        if (hostView.leaderboard) {
-          emit(`host:${identity.sessionId}`, "game:leaderboard", hostView.leaderboard);
+      }
+      case "LEADERBOARD": {
+        const { leaderboard } = hostView();
+        if (leaderboard) {
+          emit(`host:${identity.sessionId}`, "game:leaderboard", leaderboard);
           for (const player of active)
             emit(`player:${player.id}`, "game:leaderboard", {
-              ...hostView.leaderboard,
+              ...leaderboard,
               selfRank: player.rank,
             });
         }
         break;
-      case "PODIUM":
-        if (hostView.finalization)
+      }
+      case "PODIUM": {
+        const { podium, finalization } = hostView();
+        if (finalization)
           emit(`host:${identity.sessionId}`, "game:podium", {
-            podium: hostView.podium,
-            finalization: hostView.finalization,
-            reportId: hostView.finalization.reportId,
+            podium,
+            finalization,
+            reportId: finalization.reportId,
           });
-        for (const player of active) {
-          const view = projectPlayer(state, player.id, player.connectionGeneration, now);
-          emit(`player:${player.id}`, "game:podium", {
-            podium: view.podium,
-            result: view.self.result,
-          });
-        }
+        for (const player of active)
+          emit(`player:${player.id}`, "game:podium", projectPlayerPodium(state, player.id, podium));
         break;
+      }
       case "FINISHED":
         emit(all, "game:finished", { endReason: state.endReason ?? "COMPLETED" });
         break;

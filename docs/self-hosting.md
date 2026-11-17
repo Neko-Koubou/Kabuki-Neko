@@ -30,7 +30,7 @@ Detail teknis lanjutan / advanced technical details:
 | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Docker    | Docker Engine 24 atau lebih baru, dengan plugin **Compose v2.24 atau lebih baru** (`docker compose version`). Pengguna Anda boleh menjalankan `docker` (grup `docker`); tidak perlu `sudo` untuk perintah di panduan ini.               |
 | CPU / RAM | Profil default: 2 vCPU, 2 GB RAM (terukur saat idle: API ±110 MB + web ±50 MB). Profil scale: 2 vCPU, 4 GB RAM (PostgreSQL, Redis, MinIO ±100 MB lagi saat idle). Build image dari source butuh lebih banyak: sediakan 4 GB saat build. |
-| Disk      | 10 GB kosong: image API ±1,3 GB + web ±0,5 GB (+0,5 GB di profil scale), cache build, dan data Anda (database + media unggahan).                                                                                                        |
+| Disk      | Disarankan **20 GB** kosong (profil default) atau **30 GB** (profil scale), dengan batas bawaan. Rinciannya di §6a "Ruang disk".                                                                                                        |
 | Jaringan  | Untuk HTTPS: sebuah domain yang DNS-nya mengarah ke server, port 80 dan 443 terbuka dari internet.                                                                                                                                      |
 
 ### 2. Unduh
@@ -43,6 +43,10 @@ git checkout <tag-rilis>   # gunakan tag rilis, bukan cabang pengembangan
 
 Image dibangun di server Anda dari source ini (`--build`); proyek tidak menerbitkan image ke
 registry.
+
+Audio sudah disimpan dalam bentuk **teroptimasi** di `audio-assets/kabuki-neko-audio/` (WebM/Opus
+dan MP3 per cue, beserta manifest dan kredit). Build hanya menyalin dan memverifikasinya, jadi
+tidak ada langkah optimasi audio dan ffmpeg tidak diperlukan untuk audio saat self-host.
 
 ### 3. Konfigurasi
 
@@ -124,6 +128,59 @@ Data disimpan di **named volume** Docker (bukan folder di repo), dengan awalan n
 `docker compose down` **tidak** menghapus volume. Jangan pernah menjalankan `down -v` pada proyek
 produksi kecuali Anda memang ingin menghapus semua data.
 
+### 6a. Ruang disk
+
+Docker **tidak bisa membatasi ukuran named volume**. Karena itu Kabuki Neko membatasi bagian yang
+tumbuh, dengan nilai bawaan yang disarankan, dan Anda bisa menaruh data di disk atau partisi
+berukuran tertentu.
+
+**Kebutuhan ruang yang disarankan** (dengan nilai bawaan):
+
+| Bagian                    | Profil default                     | Profil scale                                 |
+| ------------------------- | ---------------------------------- | -------------------------------------------- |
+| Image                     | ±1,8 GB (+2–4 GB cache saat build) | ±2,3 GB (+2–4 GB cache saat build)           |
+| Database                  | SQLite, sediakan 2 GB              | PostgreSQL, sediakan 5 GB                    |
+| Media unggahan            | sampai kuota (10 GB)               | MinIO, sampai kuota (10 GB)                  |
+| Redis                     | —                                  | AOF, sediakan 2× `KN_REDIS_MAXMEMORY` (2 GB) |
+| Log container             | 2 × 3 × 10 MB ≈ 60 MB              | 7 × 3 × 10 MB ≈ 210 MB                       |
+| **Total yang disarankan** | **20 GB kosong**                   | **30 GB kosong**                             |
+
+**Pengaturan** (di `docker/.env`, lihat `.env.example`):
+
+| Variabel                  | Bawaan  | Arti                                                                                                     |
+| ------------------------- | ------- | -------------------------------------------------------------------------------------------------------- |
+| `MEDIA_STORAGE_QUOTA_MIB` | `10240` | Total media unggahan (MiB). API menolak unggahan yang melewatinya ("batas tercapai"); `0` = tanpa batas. |
+| `KN_LOG_MAX_SIZE`         | `10m`   | Ukuran satu file log container sebelum dirotasi.                                                         |
+| `KN_LOG_MAX_FILE`         | `3`     | Jumlah file log yang disimpan per container.                                                             |
+| `KN_REDIS_MAXMEMORY`      | `1gb`   | Batas memori Redis (profil scale). Saat penuh, tulisan gagal secara eksplisit; state game tidak dibuang. |
+
+Kuota media bersifat lunak saat ada unggahan bersamaan: total bisa melewati kuota paling banyak
+sebanyak (unggahan paralel × batas ukuran per file). Menghapus media, atau membersihkan media
+yatim di halaman admin, membebaskan kuota.
+
+Pemakaian Redis bergantung pada jumlah dan ukuran room aktif: room besar (200 pemain, banyak
+soal) memakan beberapa MB. Pantau dengan
+`docker compose -f docker/docker-compose.yml --profile scale exec redis redis-cli INFO memory`
+(`used_memory_human`), lalu naikkan `KN_REDIS_MAXMEMORY` bersama `MAX_ACTIVE_ROOMS` bila perlu.
+
+**Data di folder pilihan Anda (batas keras lewat disk/partisi).** Override
+`docker/docker-compose.paths.yml` memetakan volume data ke folder host. Taruh folder itu di disk
+atau partisi berukuran tertentu agar total ruang benar-benar dibatasi oleh filesystem:
+
+```bash
+sudo mkdir -p /srv/kabuki-neko/data /srv/kabuki-neko/uploads
+sudo chown 10001:10001 /srv/kabuki-neko/data /srv/kabuki-neko/uploads
+# profil scale juga: postgres (uid 70), redis (uid 999), minio (uid 65532)
+echo "KN_STORAGE_ROOT=/srv/kabuki-neko" >> docker/.env
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.paths.yml up -d
+```
+
+Folder harus ada sebelum start pertama dan dapat ditulis oleh uid tersebut. Memindahkan instance
+yang sudah berjalan ke folder host tidak memindahkan datanya: backup dulu lalu restore (§8).
+
+**Memantau pemakaian:** `docker system df -v` (image, volume, cache build), `du -sh /srv/kabuki-neko/*`
+(dengan override paths), dan `docker builder prune` untuk membersihkan cache build lama.
+
 ### 7. Upgrade
 
 ```bash
@@ -190,7 +247,7 @@ lalu memastikan data tetap ada. Volumenya hanya dihapus bila Anda menambahkan `-
 | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Docker    | Docker Engine 24 or newer with the **Compose v2.24 or newer** plugin (`docker compose version`). Your user may run `docker` (the `docker` group); no command in this guide needs `sudo`.                                         |
 | CPU / RAM | Default profile: 2 vCPU, 2 GB RAM (measured idle: API ~110 MB + web ~50 MB). Scale profile: 2 vCPU, 4 GB RAM (PostgreSQL, Redis, MinIO add ~100 MB idle). Building the images from source needs more: allow 4 GB while building. |
-| Disk      | 10 GB free: API image ~1.3 GB + web ~0.5 GB (+0.5 GB for the scale profile), build cache, and your data (database + uploaded media).                                                                                             |
+| Disk      | Recommended **20 GB** free (default profile) or **30 GB** (scale profile), with the default limits. Details in §6a "Disk space".                                                                                                 |
 | Network   | For HTTPS: a domain whose DNS points at the server, with ports 80 and 443 reachable from the internet.                                                                                                                           |
 
 ### 2. Download
@@ -282,6 +339,58 @@ name `kabuki-neko_`:
 
 `docker compose down` does **not** delete volumes. Never run `down -v` on a production project
 unless you really mean to delete all data.
+
+### 6a. Disk space
+
+Docker **cannot limit the size of a named volume**. Kabuki Neko therefore bounds what grows, with
+recommended defaults, and you can put the data on a disk or partition of a chosen size.
+
+**Recommended space** (with the defaults):
+
+| Part                  | Default profile               | Scale profile                             |
+| --------------------- | ----------------------------- | ----------------------------------------- |
+| Images                | ±1.8 GB (+2–4 GB build cache) | ±2.3 GB (+2–4 GB build cache)             |
+| Database              | SQLite, allow 2 GB            | PostgreSQL, allow 5 GB                    |
+| Uploaded media        | up to the quota (10 GB)       | MinIO, up to the quota (10 GB)            |
+| Redis                 | —                             | AOF, allow 2× `KN_REDIS_MAXMEMORY` (2 GB) |
+| Container logs        | 2 × 3 × 10 MB ≈ 60 MB         | 7 × 3 × 10 MB ≈ 210 MB                    |
+| **Recommended total** | **20 GB free**                | **30 GB free**                            |
+
+**Settings** (in `docker/.env`, see `.env.example`):
+
+| Variable                  | Default | Meaning                                                                                           |
+| ------------------------- | ------- | ------------------------------------------------------------------------------------------------- |
+| `MEDIA_STORAGE_QUOTA_MIB` | `10240` | Total uploaded media (MiB). The API refuses uploads past it ("limit reached"); `0` = unlimited.   |
+| `KN_LOG_MAX_SIZE`         | `10m`   | Size of one container log file before it rotates.                                                 |
+| `KN_LOG_MAX_FILE`         | `3`     | Log files kept per container.                                                                     |
+| `KN_REDIS_MAXMEMORY`      | `1gb`   | Redis memory cap (scale profile). When full, writes fail explicitly; game state is never dropped. |
+
+The media quota is soft under concurrent uploads: the total can pass it by at most (parallel
+uploads × the per-file limit). Deleting media, or cleaning orphaned media on the admin page, frees
+quota.
+
+Redis use depends on the number and size of active rooms: a large room (200 players, many
+questions) takes a few MB. Watch it with
+`docker compose -f docker/docker-compose.yml --profile scale exec redis redis-cli INFO memory`
+(`used_memory_human`) and raise `KN_REDIS_MAXMEMORY` together with `MAX_ACTIVE_ROOMS` if needed.
+
+**Data in folders you choose (hard limit through a disk or partition).** The
+`docker/docker-compose.paths.yml` override maps the data volumes to host folders. Put those
+folders on a disk or partition of a fixed size so the filesystem really caps the total:
+
+```bash
+sudo mkdir -p /srv/kabuki-neko/data /srv/kabuki-neko/uploads
+sudo chown 10001:10001 /srv/kabuki-neko/data /srv/kabuki-neko/uploads
+# scale profile too: postgres (uid 70), redis (uid 999), minio (uid 65532)
+echo "KN_STORAGE_ROOT=/srv/kabuki-neko" >> docker/.env
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.paths.yml up -d
+```
+
+The folders must exist before the first start and be writable by those uids. Moving a running
+instance to host folders does not move its data: back up first, then restore (§8).
+
+**Watching usage:** `docker system df -v` (images, volumes, build cache), `du -sh /srv/kabuki-neko/*`
+(with the paths override), and `docker builder prune` to clear an old build cache.
 
 ### 7. Upgrade
 

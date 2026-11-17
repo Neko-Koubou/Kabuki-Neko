@@ -17,11 +17,25 @@ const prefix = "kabuki-neko-test-";
 
 // Official MinIO images were withdrawn; build the security release from pinned upstream source.
 const minioCommit = "9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a";
-const minioDockerfile = `FROM golang:1.27.3-bookworm AS build
+const minioFetch = `git init . && git remote add origin https://github.com/minio/minio.git && git fetch --depth=1 origin ${minioCommit} && git checkout --detach FETCH_HEAD`;
+const minioBuild = "go build -trimpath -o /out/minio . && mkdir -p /out/data";
+/**
+ * The MinIO test image. With `buildCa` (TASK-187), the build stage trusts that extra CA, e.g. a
+ * TLS-intercepting proxy's, for `git fetch` and the Go module downloads only: it is joined with
+ * the distro bundle into a temporary file used through SSL_CERT_FILE/GIT_SSL_CAINFO and deleted in
+ * the same step. The runtime stage copies the build stage's untouched distro bundle, so the proxy
+ * CA never reaches the image. Without it the Dockerfile is the one used so far.
+ */
+function minioDockerfile(buildCa: boolean): string {
+  const steps = buildCa
+    ? `COPY build-ca.pem /tmp/build-ca.pem
+RUN cat /etc/ssl/certs/ca-certificates.crt /tmp/build-ca.pem > /tmp/ca-bundle.pem && export SSL_CERT_FILE=/tmp/ca-bundle.pem GIT_SSL_CAINFO=/tmp/ca-bundle.pem && ${minioFetch} && ${minioBuild} && rm -f /tmp/ca-bundle.pem /tmp/build-ca.pem`
+    : `RUN ${minioFetch}
+RUN ${minioBuild}`;
+  return `FROM golang:1.27.3-bookworm AS build
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local
 WORKDIR /src
-RUN git init . && git remote add origin https://github.com/minio/minio.git && git fetch --depth=1 origin ${minioCommit} && git checkout --detach FETCH_HEAD
-RUN go build -trimpath -o /out/minio . && mkdir -p /out/data
+${steps}
 FROM scratch
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /out/minio /usr/bin/minio
@@ -32,6 +46,7 @@ WORKDIR /data
 EXPOSE 9000
 ENTRYPOINT ["/usr/bin/minio"]
 `;
+}
 
 export async function removeTestDirectory(directory: string): Promise<void> {
   const parent = await realpath(tmpdir());
@@ -132,8 +147,8 @@ export async function createTestRuntime() {
       const accessKeyId = `test${randomBytes(8).toString("hex")}`;
       const secretAccessKey = randomBytes(32).toString("hex");
       const container = await start(async () => {
-        // A prebuilt image of the same pinned source (e.g. built where `docker build` needs an
-        // extra CA for a TLS-intercepting proxy) can be supplied instead of building here.
+        // A prebuilt image of the same pinned source can be supplied instead of building here;
+        // it wins over KABUKI_TEST_BUILD_CA.
         const prebuilt = process.env["KABUKI_TEST_MINIO_IMAGE"];
         if (prebuilt)
           return new GenericContainer(prebuilt)
@@ -143,10 +158,20 @@ export async function createTestRuntime() {
             .withWaitStrategy(Wait.forHttp("/minio/health/ready", 9000))
             .start();
         const context = await mkdtemp(path.join(directory, "minio-build-"));
-        await writeFile(path.join(context, "Dockerfile"), minioDockerfile);
+        // KABUKI_TEST_BUILD_CA: a PEM file (e.g. a TLS-intercepting proxy's CA) trusted only
+        // while building. The tag carries its digest so images built with and without it, or
+        // with another CA, never share a cache entry.
+        const caFile = process.env["KABUKI_TEST_BUILD_CA"];
+        let tagSuffix = "";
+        if (caFile) {
+          const ca = await readFile(caFile);
+          await writeFile(path.join(context, "build-ca.pem"), ca);
+          tagSuffix = `-ca${createHash("sha256").update(ca).digest("hex").slice(0, 8)}`;
+        }
+        await writeFile(path.join(context, "Dockerfile"), minioDockerfile(Boolean(caFile)));
         const image = await GenericContainer.fromDockerfile(context)
           .withCache(true)
-          .build(`kabuki-neko/minio-test:${minioCommit.slice(0, 12)}-go1.27.3`, {
+          .build(`kabuki-neko/minio-test:${minioCommit.slice(0, 12)}-go1.27.3${tagSuffix}`, {
             deleteOnExit: false,
           });
         return image

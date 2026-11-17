@@ -2,7 +2,8 @@
  * TASK-128 coverage for the socket lifecycle and session recovery against a fake `/game` server:
  * a lost submit ACK is resolved by sync (accepted → locked, no re-send) or by re-sending the
  * identical submission while acceptance is open; a page refresh after an accepted answer recovers
- * it without resubmitting; a kick or replacement clears the stored player token and never rejoins
+ * it without resubmitting; a kick or a dead token clears the stored player token (a replacement keeps
+ * it for the replacing tab) and never rejoins
  * automatically; an invalid recovery token ends the session; reconnects follow the backoff and
  * retry-after; a host recovers after refreshing its access token with `auth:update`; and locale
  * switches or re-renders never add duplicate socket listeners.
@@ -13,13 +14,14 @@ import { describe, expect, it, vi } from "vitest";
 import { GAME_TIMING } from "@kabuki-neko/shared/constants/game";
 import { hostRoomSyncSchema, playerRoomSyncSchema } from "@kabuki-neko/shared/schemas/game.schema";
 import { deserializeCatalog, type CatalogLoader } from "@/lib/i18n/catalog-loader";
-import type { SocketLike } from "@/lib/socket-client";
+import { ACK_TIMEOUT_MS, type SocketLike } from "@/lib/socket-client";
 import { LocaleProvider, createLocalePreferences, useLocale } from "@/providers/locale-provider";
 import { createGameStore, currentDraft, type GameState } from "@/stores/game.store";
 import { testInitialLocale } from "@/test/locale";
 import type { StoreApi } from "zustand";
 import { useGameSocket } from "./use-socket";
 import {
+  loadPlayerSession,
   PLAYER_KEY_PREFIX,
   PLAYER_PIN_PREFIX,
   savePlayerSession,
@@ -141,7 +143,12 @@ function hostSnapshot(revision: number) {
 function ok(requestId: string, data: unknown) {
   return { ok: true, requestId, serverTime: T0, data };
 }
-function fail(requestId: string, statusCode: number, errorCode: string) {
+function fail(
+  requestId: string,
+  statusCode: number,
+  errorCode: string,
+  params: Record<string, unknown> = {},
+) {
   return {
     ok: false,
     requestId,
@@ -150,7 +157,7 @@ function fail(requestId: string, statusCode: number, errorCode: string) {
       statusCode,
       errorCode,
       message: "x",
-      params: {},
+      params,
       details: [],
       correlationId: "0b8f2a8e-1c1b-4a8e-9d3f-2b6c8e1a5f41",
     },
@@ -246,7 +253,10 @@ function mount(options: {
   storage: ReturnType<typeof memoryStorage>;
   onAuthExpired?: () => Promise<string | null>;
 }) {
-  const api: { submit: (() => Promise<SubmitOutcome>) | null } = { submit: null };
+  const api: { submit: (() => Promise<SubmitOutcome>) | null; failed: boolean } = {
+    submit: null,
+    failed: false,
+  };
   function Game() {
     const socket = useGameSocket({
       url: "http://ws.test",
@@ -266,6 +276,7 @@ function mount(options: {
       ...(options.onAuthExpired ? { onAuthExpired: options.onAuthExpired } : {}),
     });
     api.submit = recovery.submit;
+    api.failed = recovery.recoveryFailed;
     return null;
   }
   const view = render(
@@ -276,7 +287,11 @@ function mount(options: {
       <Game />
     </LocaleProvider>,
   );
-  return { ...view, submit: () => api.submit?.() ?? Promise.resolve("invalid" as SubmitOutcome) };
+  return {
+    ...view,
+    submit: () => api.submit?.() ?? Promise.resolve("invalid" as SubmitOutcome),
+    failed: () => api.failed,
+  };
 }
 
 /** Lets microtasks and pending timers settle. */
@@ -468,7 +483,8 @@ describe("session recovery", () => {
     await settle(60_000);
     expect(store.getState().terminal).toBe("SESSION_REPLACED");
     expect(socket.connects).toBe(1);
-    expect(storage.data.size).toBe(0);
+    // The replacing tab shares this storage key and keeps using the credentials (MJ-28).
+    expect(loadPlayerSession(SESSION, storage)?.sessionToken).toBe(TOKEN);
 
     const storage2 = memoryStorage();
     savePlayerSession(
@@ -519,6 +535,101 @@ describe("session recovery", () => {
     expect(socket.connects).toBe(after);
     await settle(1);
     expect(socket.connects).toBe(after + 1);
+  });
+
+  it("does not send room:sync (and a second join) while a reconnected player is still unbound (MJ-27)", async () => {
+    vi.useFakeTimers();
+    const storage = memoryStorage();
+    savePlayerSession(
+      { sessionId: SESSION, playerId: PLAYER, sessionToken: TOKEN, pinCode: PIN },
+      storage,
+    );
+    let bound = false;
+    let dropNextJoin = false;
+    const socket = new FakeSocket((event, payload) => {
+      const requestId = String(payload.requestId);
+      if (event === "player:join_room") {
+        if (dropNextJoin) {
+          dropNextJoin = false;
+          return DROP; // lost ACK: the recovery retries later with the same requestId
+        }
+        bound = true;
+        return ok(requestId, {
+          playerId: PLAYER,
+          sessionId: SESSION,
+          sessionToken: TOKEN,
+          recovered: true,
+          snapshot: playerSnapshot(10),
+        });
+      }
+      if (event === "room:sync")
+        return bound
+          ? ok(requestId, { snapshot: playerSnapshot(10) })
+          : fail(requestId, 401, "AUTH_REQUIRED");
+      return DROP;
+    });
+    const store = createGameStore();
+    mount({ role: "player", socket, store, storage });
+    await settle();
+    expect(socket.count("player:join_room")).toBe(1);
+    act(() => {
+      bound = false;
+      dropNextJoin = true;
+      socket.drop();
+    });
+    await settle(1_500); // reconnected; the rejoin ACK is still outstanding
+    expect(socket.connected).toBe(true);
+    expect(socket.count("player:join_room")).toBe(2);
+    // A sync request in this window (missed heartbeat, newer heartbeat) must not run room:sync
+    // on the unbound socket, which would fail AUTH_REQUIRED and start a second recovery.
+    act(() => store.getState().requestSync());
+    await settle();
+    expect(socket.count("room:sync")).toBe(0);
+    expect(socket.count("player:join_room")).toBe(2);
+    await settle(ACK_TIMEOUT_MS + 2_000); // the lost ACK times out and the same request is retried
+    expect(socket.count("player:join_room")).toBe(3);
+    expect(store.getState().syncRequested).toBe(false);
+    expect(store.getState().terminal).toBeNull();
+  });
+
+  it("backs off non-terminal recovery errors, honours retryAfterMs and reports the failure (MJ-26)", async () => {
+    vi.useFakeTimers();
+    const storage = memoryStorage();
+    savePlayerSession(
+      { sessionId: SESSION, playerId: PLAYER, sessionToken: TOKEN, pinCode: PIN },
+      storage,
+    );
+    let limited = true;
+    const socket = new FakeSocket((event, payload) => {
+      const requestId = String(payload.requestId);
+      if (event !== "player:join_room") return DROP;
+      if (limited) {
+        limited = false;
+        return fail(requestId, 429, "RATE_LIMITED", { retryAfterMs: 9_000 });
+      }
+      return ok(requestId, {
+        playerId: PLAYER,
+        sessionId: SESSION,
+        sessionToken: TOKEN,
+        recovered: true,
+        snapshot: playerSnapshot(10),
+      });
+    });
+    const store = createGameStore();
+    const view = mount({ role: "player", socket, store, storage });
+    await settle();
+    expect(socket.count("player:join_room")).toBe(1);
+    expect(view.failed()).toBe(true);
+    expect(store.getState().terminal).toBeNull();
+    await settle(8_900);
+    expect(socket.count("player:join_room")).toBe(1); // never sooner than retryAfterMs
+    await settle(2_000);
+    expect(socket.count("player:join_room")).toBe(2);
+    expect(view.failed()).toBe(false);
+    expect(store.getState().snapshot?.sessionId).toBe(SESSION);
+    view.unmount();
+    await settle(60_000);
+    expect(socket.count("player:join_room")).toBe(2); // no timers survive the unmount
   });
 
   it("refreshes the host token with auth:update and recovers the room", async () => {

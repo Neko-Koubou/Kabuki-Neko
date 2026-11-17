@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 83 task selesai, 125 task Pending** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 236 task selesai, 1 task Pending (Phase 7 tindak lanjut QA, 2026-11-12)** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -20,6 +20,7 @@ Status Legend: `- [ ]` Pending | `- [~]` In Progress | `- [x]` Completed | `- [!
 | 4. Frontend Design Tokens, Base UI & State Layer | TASK-087–TASK-131 | 45 | Fondasi M5–M6; source katalog M1 dituntaskan sebelum UI |
 | 5. Feature Screens, API Integration & 5 UI States | TASK-132–TASK-163 | 32 | M5 → M6 |
 | 6. Hardening, Edge Cases & Polish | TASK-164–TASK-182 | 19 | M7 + release evidence + paket self-host Docker |
+| 7. Tindak lanjut QA | TASK-183–TASK-189 (+ TASK-183A, TASK-185A–K) | 19 | Temuan terbuka [07-qa-report.md](07-qa-report.md): benchmark Redis dua node (US-20), fixture uji root/proxy; ruang disk Docker yang dapat diatur (TASK-188–189, permintaan pengguna 2026-11-12) |
 
 **Urutan:** ambil task Pending bernomor terkecil yang semua Depends On-nya Completed. Dependensi per-task adalah DAG operasional; phase merangkum milestone, bukan izin mengerjakan seluruh phase dalam satu `/vibe-code`. API/DB/adapter selesai sebelum integrasi UI; catalog tools/contracts lebih awal dan enam katalog lengkap tersedia sebelum provider UI. Tidak ada delegasi atau eksekusi agen paralel yang diperlukan oleh plan ini.
 
@@ -2920,6 +2921,426 @@ flowchart LR
 - **Definition of Done (Verification)**:
   - `docker compose -f docker/docker-compose.yml -f docker/docker-compose.tls.yml config --quiet` dan Caddyfile `caddy validate` via container; `bash scripts/selfhost-smoke.sh` lulus dari checkout bersih pada profil default (dan scale bila Docker tersedia); setiap env var yang disebut panduan ada di `.env.example`, tautan dokumen valid, dan tidak ada secret/credential contoh yang di-commit.
 
+### Phase 7 — Tindak lanjut QA (2026-11-12)
+
+Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 (US-20) dan §4, atas permintaan pengguna 2026-11-12. Pemeriksaan manual (screen reader, kamera, perangkat iOS/Android, jaringan nyata, deploy non-root) sengaja **tidak** dijadikan task karena diperiksa langsung di perangkat. Smoke test cloud `tests/contracts/cloud-storage.spec.ts` juga tidak dijadikan task: kodenya sudah ada dan hanya menunggu kredensial `KABUKI_CLOUD_*` dari operator.
+
+### - [x] TASK-183: Hentikan full-state settle di setiap admission jawaban
+- **Traceability**: `US-10`, `US-20`, NFR-01, [SA §5](03-system-analysis.md), [07-qa-report.md §2 US-20](07-qa-report.md), `docs/performance-results.md` Findings butir 2.
+- **Depends On**: `TASK-084`, `TASK-179`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/modules/game-engine/game.service.ts`
+  - `MODIFY` `apps/api/src/modules/game-engine/game.service.spec.ts`
+- **Implementation Specs**:
+  - Masalah:
+    - `submitAnswer` menunggu `settle()` setelah setiap admission;
+    - `settle()` selalu membaca seluruh private state (`getPrivateSnapshot`): deep copy di memory, fetch + parse di Redis;
+    - pada burst 200 jawaban, admission ter-serialisasi pada salinan state penuh (ACK p50 2 s memory, 6,7 s Redis).
+  - Perbaikan:
+    - `settle` per room dibuat **single-flight dan coalesced** (kunci `sessionId`). Selama satu `settle` berjalan, panggilan lain hanya menandai "jalankan sekali lagi", lalu tepat satu putaran tambahan dijalankan setelahnya.
+    - ACK `player:submit_answer` tidak lagi menunggu `settle`. Panggilan dijalankan di latar dengan `.catch`, dan kegagalan tetap dipulihkan oleh scheduler tick seperti sekarang.
+    - Jangan ubah antarmuka state store, skrip Lua, atau aturan skor/grace.
+  - Invarian yang wajib dipertahankan:
+    - jawaban terakhir yang menutup soal tetap memicu reveal tanpa menunggu tick berikutnya;
+    - CAS `commitQuestionResult` tetap menjamin commit paling banyak sekali;
+    - `completeDelayed` (skip/end) tetap berfungsi.
+- **Definition of Done (Verification)**:
+  - Spec baru di `game.service.spec.ts`:
+    - 50 admission konkuren di satu room memanggil `getPrivateSnapshot` jauh lebih sedikit dari 50 (≤ 2 putaran per gelombang);
+    - ACK kembali sebelum `settle` selesai;
+    - admission terakhir tetap menghasilkan tepat satu commit.
+  - Spec yang sama gagal pada kode lama.
+  - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
+  - Regresi: `pnpm test:integration --testPathPatterns='recovery|realtime-races|game-gateway|finalization-failures'` lulus.
+  - `pnpm benchmark:game --clients 200 --transitions 100 --mode memory` dijalankan ulang. Admission p50/p95 sebelum dan sesudah dicatat di log, tanpa mengklaim target Redis.
+
+### - [x] TASK-183A: Gabungkan publish gateway per room dan lepaskan ACK jawaban dari antrean publish
+- **Traceability**: `US-10`, `US-20`, NFR-01, [07-qa-report.md §2 US-20](07-qa-report.md), temuan benchmark TASK-183 di [05-implementation-log.md](05-implementation-log.md).
+- **Depends On**: `TASK-183`, `TASK-082`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/modules/game-engine/game.gateway.ts`
+  - `CREATE` `apps/api/src/modules/game-engine/game-gateway-publish.spec.ts`
+- **Implementation Specs**:
+  - Masalah (diukur di TASK-183):
+    - ACK `player:submit_answer` menunggu `publish(binding)`;
+    - `publish` mengantrekan satu `diff` penuh per pemanggilan (baca private state, proyeksi host, ringkasan semua pemain), di-serialisasi per room oleh `enqueue`;
+    - jawaban ke-N dalam satu burst menunggu N diff, sehingga admission p50 ±2 s dan p95 ±9 s pada 200 pemain.
+  - `publish` per room dibuat **coalesced**: selama satu `diff` berjalan, panggilan berikutnya berbagi satu `diff` antrean yang mulai sesudahnya. Ini aman karena `diff` membandingkan state terhadap ringkasan terakhir, bukan memutar ulang event. Urutan `forget` (`room:expired`) setelah publish yang sudah antre tetap terjaga, dan peta antrean tetap kosong saat tidak ada kerja (MJ-05).
+  - Status ACK tetap berasal dari hasil admission. Untuk menghapus keterlambatan admission, ACK jawaban tidak lagi menunggu antrean publish (publish tetap dipicu, kegagalan di-`catch`). Ini aman karena klien menerima reveal/count lewat push, dan perubahan publish yang terlewat tertangkap oleh heartbeat `room:version`.
+  - Perilaku event lain (perintah host, join, avatar) tetap seperti sekarang kecuali ikut coalescing.
+- **Definition of Done (Verification)**:
+  - Spec baru:
+    - burst 50 panggilan `publish` di satu room menjalankan ≤ 2 `diff`;
+    - `forget` tetap berjalan setelah publish yang antre;
+    - ACK jawaban kembali tanpa menunggu `diff` yang lambat (diff dibuat lambat dengan store palsu).
+  - Spec tersebut gagal pada kode lama.
+  - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
+  - `pnpm test:integration --testPathPatterns='game-gateway|realtime-races|recovery|payload-privacy|room-retention'` lulus.
+  - E2E `tests/e2e/player.spec.ts` dan `host.spec.ts` lulus.
+  - `pnpm benchmark:game --clients 200 --transitions 100 --mode memory`: admission p50/p95 sebelum dan sesudah dicatat.
+
+### - [x] TASK-184: Tambah diagnostik per node dan verdict jujur pada benchmark
+- **Traceability**: `US-16`, `US-20`, NFR-01, [07-qa-report.md §2 US-20](07-qa-report.md), `docs/performance-results.md` Findings butir 3, review MN-43.
+- **Depends On**: `TASK-179`
+- **Target Files**:
+  - `MODIFY` `scripts/benchmark-game.ts`
+  - `CREATE` `scripts/lib/event-loop-probe.cjs`
+  - `MODIFY` `tests/performance/game-benchmark.spec.ts`
+- **Implementation Specs**:
+  - Diagnostik per node (`node-a`, `node-b`):
+    - `scripts/lib/event-loop-probe.cjs` dimuat lewat `--require` hanya pada node API yang di-spawn benchmark, tidak pernah di image produksi;
+    - probe memakai `perf_hooks.monitorEventLoopDelay` dan mencetak satu baris JSON berprefiks per 1 s (p50/p99/max lag, heap, CPU user/system dari `process.cpuUsage`);
+    - benchmark mem-parse baris tersebut ke record per node.
+  - Klien mencatat alasan disconnect dan waktunya per node (`transport close`, `ping timeout`, …), plus jumlah klien per node.
+  - Record JSON/Markdown menambah:
+    - tabel per node: lag p99/max, CPU rata-rata, disconnect per alasan;
+    - CPU load generator (proses benchmark sendiri).
+  - Opsi `--api-urls <a,b>` memakai node yang sudah berjalan di mesin lain, alih-alih men-spawn lokal, agar load generator bisa dipisah dari server. Diagnostik probe hanya tersedia untuk node lokal; record menandai node eksternal "not measured".
+  - Verdict (MN-43): jawaban ditolak > 0 atau laporan yang tidak durable membuat verdict FAIL dengan alasan eksplisit, sama seperti disconnect.
+- **Definition of Done (Verification)**:
+  - `pnpm test:performance -- tests/performance/game-benchmark.spec.ts` lulus, termasuk spec baru untuk:
+    - parsing baris probe;
+    - agregasi per node;
+    - pemetaan alasan disconnect;
+    - verdict FAIL untuk jawaban ditolak dan laporan tidak durable.
+  - `pnpm exec eslint scripts tests/performance` dan `pnpm exec tsc --noEmit` untuk script lulus.
+  - Run singkat `pnpm benchmark:game --clients 20 --transitions 10 --mode redis` menghasilkan tabel per node.
+
+### - [x] TASK-185: Ukur ulang topologi Redis dua node dan tetapkan akar masalah
+- **Traceability**: `US-16`, `US-20`, NFR-01, [07-qa-report.md §2 US-20](07-qa-report.md)
+- **Depends On**: `TASK-183`, `TASK-183A`, `TASK-184`
+- **Target Files**:
+  - `MODIFY` `docs/performance-results.md`
+  - `MODIFY` `docs/vibe/07-qa-report.md`
+- **Implementation Specs**:
+  - Jalankan `pnpm benchmark:game --clients 200 --transitions 100` mode memory dan mode Redis:
+    - di host yang sama (baseline yang dapat dibandingkan dengan 2026-11-11 dan 2026-11-12);
+    - bila tersedia, dengan `--api-urls` pada node dan load generator di mesin terpisah.
+  - Tetapkan akar masalah pemutusan node B dari data per node, dengan salah satu kesimpulan:
+    - (a) batas harness/host, misalnya event loop lag tinggi karena CPU dibagi;
+    - (b) cacat server, misalnya fan-out `@socket.io/redis-adapter` atau jalur state Redis.
+  - Catat hasil apa adanya (FAIL tetap FAIL) beserta lingkungan, versi, dan durasi.
+  - Bila hasilnya (b), buat task korektif baru 1–4 file dengan target file konkret. Jangan memperbaiki kode di task ini.
+  - Perbarui baris US-20 dan catatan Redis di `07-qa-report.md` (dokumen QA, dibuat oleh `/vibe-test` di luar plan).
+- **Definition of Done (Verification)**:
+  - Dua record JSON baru di `test-results/benchmark/` dirujuk dari `docs/performance-results.md`, dengan verdict dan akar masalah tertulis.
+  - `07-qa-report.md` US-20 berstatus PASS atau tetap FAIL dengan akar masalah dan task lanjutan.
+  - `pnpm exec prettier --check docs/performance-results.md` lulus.
+
+### - [x] TASK-185A: Cegah crash node API saat publish adapter Redis gagal
+- **Traceability**: `US-16`, `US-17`, `US-20`, NFR-06 (reliability), akar masalah TASK-185 (log node yang mati di [05-implementation-log.md](05-implementation-log.md)).
+- **Depends On**: `TASK-185`, `TASK-076`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/providers/state/state.module.ts`
+  - `CREATE` `apps/api/src/providers/state/state.module.spec.ts`
+- **Implementation Specs**:
+  - Masalah (terkonfirmasi TASK-185):
+    - `@socket.io/redis-adapter` 8.3.0 memanggil `pubClient.publish(...)` tanpa `await`/`catch`;
+    - klien pub dibuat dengan `commandTimeout: 2000`;
+    - publish yang timeout (event loop tersendat) atau gagal (Redis putus) menjadi unhandled rejection, sehingga proses API keluar dengan `Error: Command timed out` dan semua pemain di node itu terputus.
+  - Bungkus `publish`/`spublish` klien pub milik adapter, sehingga rejection ditangkap, dihitung, dan dicatat tanpa secret. Pesan yang gagal sama nasibnya dengan pesan fan-out yang hilang: klien memulihkannya lewat heartbeat `room:version`/`room:sync`.
+  - Perintah state (klien command) tetap memakai timeout dan tetap ditolak secara eksplisit ke pemanggil. Tidak ada handler `unhandledRejection` global yang menelan error lain.
+  - Kontrak startup gate (STATE_UNAVAILABLE) tidak berubah.
+- **Definition of Done (Verification)**:
+  - Spec dengan klien palsu yang `publish`-nya menolak (timeout dan koneksi tertutup):
+    - tidak ada unhandled rejection;
+    - kegagalan dihitung;
+    - klien command tetap meneruskan error.
+  - Spec gagal pada kode lama (rejection tidak tertangani).
+  - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
+  - `pnpm test:contracts --testPathPatterns='state-parity|redis'` dan integration `realtime-races` lulus.
+
+### - [x] TASK-185B: Sediakan pembacaan private state read-only tanpa salinan di kedua state store
+- **Traceability**: `US-16`, `US-20`, NFR-01, akar masalah TASK-185 (CPU profile di [05-implementation-log.md](05-implementation-log.md)), [SA §5](03-system-analysis.md).
+- **Depends On**: `TASK-185A`, `TASK-082A`, `TASK-047`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/providers/state/game-state.interface.ts`
+  - `MODIFY` `apps/api/src/providers/state/memory-state.store.ts`
+  - `MODIFY` `apps/api/src/providers/state/redis-state.store.ts`
+  - `MODIFY` `apps/api/src/providers/state/memory-state.store.spec.ts`
+- **Implementation Specs**:
+  - Masalah (profil TASK-185):
+    - `getPrivateSnapshot` di memory store melakukan `structuredClone` seluruh state di setiap panggilan;
+    - state membesar tiap soal (semua jawaban dan hasil per pemain);
+    - jalur publish dan settle membacanya berulang kali, sehingga event loop terblokir sampai detik.
+  - Tambah `readPrivateSnapshot(identity): Promise<Readonly<ActiveRoomState> | null>` pada `IGameStateStore`. Kontraknya: hasil boleh berupa state hidup milik store, tidak boleh dimutasi, dan tidak boleh dipakai setelah `await` berikutnya dari pemanggil.
+  - Memory store mengembalikan referensi tanpa salinan. Redis store sama dengan `getPrivateSnapshot` (hasil fetch + parse sudah milik pemanggil).
+  - `getPrivateSnapshot` tetap mengembalikan salinan untuk pemanggil yang memutasi atau menyimpan hasilnya. Tidak ada perubahan Lua, skema, atau aturan atomisitas.
+- **Definition of Done (Verification)**:
+  - Spec memory store membuktikan `readPrivateSnapshot`:
+    - tidak menyalin (identitas objek sama antar panggilan tanpa mutasi);
+    - mencerminkan mutasi store berikutnya;
+    - `getPrivateSnapshot` tetap memberi salinan independen.
+  - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
+  - `pnpm test:contracts --testPathPatterns=state-parity` lulus.
+
+### - [x] TASK-185C: Buat jalur publish gateway O(n) tanpa proyeksi penuh berulang
+- **Traceability**: `US-09`, `US-10`, `US-13`, `US-20`, NFR-01, ADR-04 (allowlist per role), akar masalah TASK-185.
+- **Depends On**: `TASK-185B`, `TASK-183A`, `TASK-076`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/modules/game-engine/room-projector.ts`
+  - `MODIFY` `apps/api/src/modules/game-engine/room-projector.spec.ts`
+  - `MODIFY` `apps/api/src/modules/game-engine/game.gateway.ts`
+  - `MODIFY` `apps/api/src/modules/game-engine/game-gateway-publish.spec.ts`
+- **Implementation Specs**:
+  - Masalah (profil TASK-185):
+    - setiap `diff` membaca salinan state penuh dan menjalankan `projectHost`, termasuk validasi Zod dengan cek grapheme untuk setiap nickname, walau yang berubah hanya jumlah jawaban;
+    - saat ANSWER_REVEAL dan PODIUM, `projectPlayer` dipanggil per pemain, dan masing-masing memvalidasi snapshot berisi semua pemain. Ini O(n²).
+  - `diff` memakai `readPrivateSnapshot` (tanpa `await` setelah pembacaan).
+  - `projectHost` hanya dijalankan bila `phaseVersion` berubah (event fase butuh view host). Status finalisasi untuk `report:status_changed` dibangun lewat proyektor kecil `projectFinalization`, divalidasi `finalizeStatusSchema`.
+  - Proyektor per pemain yang kecil:
+    - `projectPlayerReveal(state, playerId, reveal)` → `playerRevealDataSchema`;
+    - `projectPlayerPodium(state, playerId, podium)` → `playerPodiumDataSchema`.
+    - Allowlist sama dengan `projectPlayer`: reveal publik bersama, hanya `personal` milik pemain itu, tidak ada kunci, dan tidak ada hasil pemain lain.
+  - Isi push identik dengan perilaku sebelumnya untuk setiap pemain.
+- **Definition of Done (Verification)**:
+  - Spec proyektor: payload reveal/podium per pemain sama persis dengan bagian yang sama dari `projectPlayer` untuk 6 tipe soal, dan tidak memuat hasil pemain lain.
+  - Spec gateway:
+    - diff yang hanya mengubah jumlah jawaban tidak memanggil `projectHost`;
+    - reveal 200 pemain tidak memanggil `projectPlayer`.
+  - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
+  - Integration `payload-privacy|game-gateway|realtime-races|recovery` lulus.
+  - E2E `player.spec.ts`, `host.spec.ts` lulus.
+
+### - [x] TASK-185D: Pakai pembacaan read-only di settle
+- **Traceability**: `US-10`, `US-20`, NFR-01, akar masalah TASK-185.
+- **Depends On**: `TASK-185B`, `TASK-183`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/modules/game-engine/game.service.ts`
+  - `MODIFY` `apps/api/src/modules/game-engine/game.service.spec.ts`
+- **Implementation Specs**:
+  - `settleOnce` memakai `readPrivateSnapshot`. Seluruh pembacaan dan `computeQuestionResult` selesai sebelum `await commitQuestionResult`. Argumen commit (revision, hash, result) dibentuk dari nilai, bukan referensi hidup yang bisa berubah. Pastikan `result` tidak berbagi objek dengan state store.
+  - CAS revision + hash tetap menjamin commit paling banyak sekali.
+- **Definition of Done (Verification)**:
+  - Spec TASK-183 (50 jawaban, 1 commit) tetap lulus, ditambah spec yang memastikan state store tidak berubah oleh `settle` di luar commit.
+  - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
+  - Integration `recovery|realtime-races|finalization-failures` lulus.
+
+### - [x] TASK-185E: Ukur ulang setelah perbaikan jalur publish
+- **Traceability**: `US-16`, `US-20`, NFR-01, [07-qa-report.md §2 US-20](07-qa-report.md)
+- **Depends On**: `TASK-185A`, `TASK-185C`, `TASK-185D`, `TASK-184`
+- **Target Files**:
+  - `MODIFY` `docs/performance-results.md`
+  - `MODIFY` `docs/vibe/07-qa-report.md`
+- **Implementation Specs**:
+  - Ulangi `pnpm benchmark:game --clients 200 --transitions 100` mode memory dan Redis dengan diagnostik per node.
+  - Catat hasil apa adanya, bandingkan dengan pengukuran TASK-185, dan perbarui US-20 di laporan QA.
+  - Bila masih FAIL, tetapkan bottleneck berikutnya dari tabel per node atau CPU profile, lalu buat task korektif baru.
+- **Definition of Done (Verification)**:
+  - Dua record JSON baru dirujuk dari `docs/performance-results.md` dengan verdict.
+  - `07-qa-report.md` US-20 diperbarui.
+  - `pnpm exec prettier --check docs/performance-results.md` lulus.
+
+### - [x] TASK-185F: Hentikan validasi Zod penuh pada pembacaan read-only Redis state
+- **Traceability**: `US-16`, `US-20`, NFR-01, temuan TASK-185E (CPU profile mode Redis di [docs/performance-results.md](../performance-results.md)).
+- **Depends On**: `TASK-185E`, `TASK-185B`, `TASK-050`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/providers/state/redis-state.store.ts`
+  - `MODIFY` `tests/contracts/state-parity.spec.ts`
+- **Implementation Specs**:
+  - Masalah (TASK-185E):
+    - 83% CPU sibuk node Redis ada di `decode(activeRoomStateSchema, …)` di `RedisStateStore.read`, sehingga setiap pembacaan memvalidasi seluruh state;
+    - event loop sibuk membuat perintah Redis timeout, sehingga jawaban ditolak `STATE_UNAVAILABLE`/`DEPENDENCY_UNAVAILABLE`.
+  - `readPrivateSnapshot` di Redis memakai jalur ringan: JSON.parse plus cek envelope (sessionId, pinCode, schemaVersion, phase), dengan **cache per room berdasarkan string mentah**. Bila string state sama dengan bacaan sebelumnya, objek parse sebelumnya dipakai ulang. Ini aman karena kontrak read-only melarang mutasi.
+  - Validasi skema penuh tetap berlaku untuk `getPrivateSnapshot`, mutasi, recovery, dan semua jalur yang menulis.
+  - State di Redis hanya ditulis oleh store ini (input tervalidasi plus skrip Lua milik sendiri). Kerusakan data tetap terdeteksi oleh pembacaan penuh berikutnya.
+  - Cache dibatasi per room dan dibuang saat room dilepas atau kedaluwarsa (tidak bocor, MJ-05).
+- **Definition of Done (Verification)**:
+  - Contract state-parity (Redis):
+    - `readPrivateSnapshot` mengembalikan state yang sama dengan `getPrivateSnapshot`;
+    - mencerminkan perubahan sesudahnya;
+    - memakai ulang objek bila state tidak berubah;
+    - mengembalikan null untuk room yang dilepas;
+    - state rusak tetap ditolak oleh `getPrivateSnapshot`.
+  - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
+  - `pnpm test:contracts --testPathPatterns='state-parity|redis'` dan integration `payload-privacy|realtime-races` lulus.
+
+### - [x] TASK-185G: Ukur ulang mode Redis setelah TASK-185F
+- **Traceability**: `US-16`, `US-20`, NFR-01, [07-qa-report.md §2 US-20](07-qa-report.md)
+- **Depends On**: `TASK-185F`
+- **Target Files**:
+  - `MODIFY` `docs/performance-results.md`
+  - `MODIFY` `docs/vibe/07-qa-report.md`
+- **Implementation Specs**:
+  - Jalankan `pnpm benchmark:game --clients 200 --transitions 100 --mode redis` (dan memory sebagai regresi).
+  - Catat hasil apa adanya beserta kode penolakan dan tabel per node.
+  - Bila masih FAIL, tetapkan bottleneck berikutnya dari profil dan buat task korektif. Bedakan juga batas host 4 core bersama (dua node + PostgreSQL + Redis + load generator) dari cacat server.
+- **Definition of Done (Verification)**:
+  - Record JSON baru dirujuk dari `docs/performance-results.md`.
+  - US-20 di `07-qa-report.md` diperbarui.
+  - `pnpm exec prettier --check docs/performance-results.md` lulus.
+
+### - [x] TASK-185H: Kurangi kerja server Redis per pembacaan dan per operasi lease
+- **Traceability**: `US-16`, `US-20`, NFR-01, temuan TASK-185G (CPU dan `SLOWLOG` Redis di [docs/performance-results.md](../performance-results.md)).
+- **Depends On**: `TASK-185G`, `TASK-185F`, `TASK-050`, `TASK-048`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/providers/state/redis-state.store.ts`
+  - `MODIFY` `apps/api/src/providers/state/lua/release-room.lua`
+  - `MODIFY` `tests/contracts/state-parity.spec.ts`
+- **Implementation Specs**:
+  - Masalah (TASK-185G): Redis single-thread mencapai CPU 100% saat burst, sehingga perintah klien melewati timeout 2 s dan jawaban ditolak. Dua sumber terbesar:
+    - skrip `read` mengembalikan `cjson.encode({state=raw,…})`, yang meng-escape ulang seluruh string state (MB) di setiap pembacaan;
+    - operasi lease (`acquireLease`/`renewLease`/`releaseLease`) di `release-room.lua` men-`cjson.decode` seluruh state hanya untuk cek `sessionId` yang sudah dicek lewat `HGET`.
+  - Skrip `read` mengembalikan array reply `{raw, expiresAt, now}` (bulk string tanpa encode ulang). Kedua jalur baca di store (`read` dan `readPrivateSnapshot`) menyesuaikan.
+  - `release-room.lua` hanya men-decode state untuk `releaseRoom` (butuh `frozenReport`/`finalization`). Operasi lease memakai `HEXISTS`/`HGET` untuk keberadaan room dan `sessionId`. Semantik (hasil, error, epoch) tidak berubah.
+  - SHA skrip berubah otomatis (dihitung dari source). Tidak ada perubahan format data tersimpan.
+- **Definition of Done (Verification)**:
+  - Contract state-parity Redis tetap lulus seluruhnya (termasuk lease, release, read-only, dan cluster).
+  - Spec baru: lease acquire/renew/release pada room yang state-nya besar (≥ 1 MB) tidak membaca field `state`. Dibuktikan lewat `SLOWLOG`/durasi, atau lewat state rusak yang tidak menggagalkan operasi lease.
+  - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
+  - `pnpm test:contracts --testPathPatterns='state-parity|redis'` dan integration `realtime-races|room-retention` lulus.
+
+### - [x] TASK-185I: Ukur ulang mode Redis setelah TASK-185H
+- **Traceability**: `US-16`, `US-20`, NFR-01, [07-qa-report.md §2 US-20](07-qa-report.md)
+- **Depends On**: `TASK-185H`
+- **Target Files**:
+  - `MODIFY` `docs/performance-results.md`
+  - `MODIFY` `docs/vibe/07-qa-report.md`
+- **Implementation Specs**:
+  - Jalankan `pnpm benchmark:game --clients 200 --transitions 100 --mode redis` dengan pemantauan CPU dan `SLOWLOG` container Redis.
+  - Catat hasil apa adanya.
+  - Bila masih FAIL, tetapkan bottleneck berikutnya dan buat task korektif. Kandidat: `admit-answer.lua`/`close-question.lua` men-decode dan meng-encode seluruh state per jawaban; batas host 4 core bersama.
+- **Definition of Done (Verification)**:
+  - Record JSON baru dirujuk dari `docs/performance-results.md`.
+  - US-20 di `07-qa-report.md` diperbarui.
+  - `pnpm exec prettier --check docs/performance-results.md` lulus.
+
+### - [x] TASK-185J: Baca state Redis dengan HMGET biasa tanpa skrip Lua
+- **Traceability**: `US-16`, `US-20`, NFR-01, temuan TASK-185I.
+- **Depends On**: `TASK-185I`, `TASK-185H`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/providers/state/redis-state.store.ts`
+  - `MODIFY` `tests/contracts/state-parity.spec.ts`
+- **Implementation Specs**:
+  - Skrip `read` masih rata-rata 12 ms karena string state ber-MB disalin melalui Lua.
+  - Ganti dengan `HMGET meta sessionId state expiresAt` plus `TIME` (dalam satu pipeline). Ini tetap satu slot untuk Redis Cluster, dan `TIME` dikirim ke node yang sama.
+  - Semantik `null` untuk room hilang atau session lain tetap sama. Validasi balasan memakai `readReplySchema`.
+- **Definition of Done (Verification)**:
+  - Contract state-parity (Redis dan Cluster) lulus.
+  - Spec: pembacaan tidak memakai EVALSHA, dibuktikan dengan `SCRIPT FLUSH` sebelum baca.
+  - `pnpm --filter @kabuki-neko/api lint`, `typecheck`, `test` lulus.
+
+### - [~] TASK-185K: Rancang ulang tata letak state room di Redis (jawaban dan hasil di luar blob)
+- **Traceability**: `US-10`, `US-16`, `US-20`, NFR-01, ADR-03 (atomisitas Lua same-slot), temuan TASK-185I.
+- **Depends On**: `TASK-185J`
+- **Target Files**:
+  - `MODIFY` `docs/vibe/03-system-analysis.md`
+  - `MODIFY` `docs/vibe/04-tasks.md`
+- **Implementation Specs**:
+  - **Butuh keputusan pengguna sebelum dikerjakan.** Ini perubahan arsitektur, bukan perbaikan skrip. Keputusan pengguna 2026-11-12: tunda sampai TASK-186–189 selesai; kerjakan di sesi terpisah setelah desain disetujui.
+  - Masalah: seluruh state room adalah satu string JSON. Setiap jawaban men-decode dan meng-encode ulang seluruh blob di Redis (±100 ms di akhir game 25 soal × 200 pemain), sehingga Redis jenuh dan perintah kedua node timeout.
+  - Rancang ADR baru:
+    - jawaban per soal di hash terpisah (`…:answers:{q}` field playerId), hasil per soal dan blob inti yang kecil, semua tetap dalam satu hash slot `{pin}`;
+    - skrip Lua hanya menyentuh bagian yang berubah;
+    - proyeksi dan laporan membaca bagian yang diperlukan.
+  - Pecah implementasinya menjadi task atomik 1–4 file: skema dan migrasi state, setiap skrip Lua, store, contract parity memory/Redis, dan benchmark ulang.
+- **Definition of Done (Verification)**:
+  - ADR tercatat di SA.
+  - Task implementasi tercantum dengan dependensi yang benar.
+  - Tidak ada kode aplikasi diubah di task ini.
+
+### - [x] TASK-186: Buat injeksi gagal-hapus `system.spec` tidak bergantung pada uid
+- **Traceability**: `US-15` (AC-15-01, AC-15-02), [07-qa-report.md §4](07-qa-report.md), `00-project-context.md` §6.3 butir 6.
+- **Depends On**: `TASK-074`
+- **Target Files**:
+  - `MODIFY` `tests/integration/system.spec.ts`
+- **Implementation Specs**:
+  - Masalah: kasus "cleans orphans with partial failures …" memakai `chmod 0555` pada direktori `covers` untuk memaksa satu delete gagal. Root mengabaikan permission, sehingga di container root hasilnya `deletedCount 2 / failedCount 0`, bukan `1 / 1`.
+  - Ganti injeksi dengan cara yang juga gagal untuk root:
+    - path file orphan yang harus gagal (dari storage key media itu) diganti sementara oleh direktori;
+    - `LocalStorageAdapter.delete` sudah menolak path non-regular (`lstat().isFile()`), sehingga delete itu menghasilkan `DELETE_FAILED`;
+    - file asli dipulihkan di `finally`.
+  - Asersi yang ada tetap sama: scanned/deleted/failed/freed, record media yang gagal tetap ada, metrik, dan tier cleanup.
+  - Tidak ada perubahan pada kode aplikasi.
+- **Definition of Done (Verification)**:
+  - `pnpm test:integration --testPathPatterns=system` lulus sebagai root di container cloud dan sebagai user non-root (CI).
+  - `pnpm exec eslint tests/integration/system.spec.ts` dan Prettier check lulus.
+
+### - [x] TASK-187: Bangun image MinIO uji di belakang proxy TLS dengan CA build opsional
+- **Traceability**: `US-06`, `US-16`, `US-17`, [07-qa-report.md §4](07-qa-report.md)
+- **Depends On**: `TASK-167`, `TASK-170`, `TASK-176`
+- **Target Files**:
+  - `MODIFY` `tests/helpers/runtime.ts`
+  - `MODIFY` `docker/docker-compose.yml`
+  - `MODIFY` `docs/driver-verification.md`
+- **Implementation Specs**:
+  - Masalah:
+    - fixture MinIO membangun MinIO dari commit yang dipin (`git fetch` + `go build`);
+    - di balik proxy TLS-intercepting, stage build tidak mengenal CA proxy sehingga build gagal ("Failed to build image");
+    - suite `driver-matrix`/`storage` dan `media` MinIO hanya lulus dengan `KABUKI_TEST_MINIO_IMAGE` prabangun manual.
+  - `tests/helpers/runtime.ts`:
+    - env opsional `KABUKI_TEST_BUILD_CA=<path PEM>`; bila diisi, PEM disalin ke context build sementara;
+    - Dockerfile inline memasangnya **hanya di stage build** (`update-ca-certificates`) sebelum `git fetch`/`go build`;
+    - stage runtime tetap menyalin bundle CA distro yang diambil **sebelum** CA proxy ditambahkan, sehingga CA proxy tidak ikut ke image akhir;
+    - tag image memasukkan penanda CA agar cache tidak tertukar;
+    - `KABUKI_TEST_MINIO_IMAGE` tetap didukung dan diprioritaskan.
+  - `docker/docker-compose.yml`: build inline MinIO profile `scale` menerima secret BuildKit opsional `build_ca` (pola yang sama dengan `Dockerfile.api`), dipasang hanya untuk langkah fetch/build, tidak disimpan di layer.
+  - `docs/driver-verification.md`: dokumentasikan kedua cara (CA build dan image prabangun) beserta kapan memakainya.
+- **Definition of Done (Verification)**:
+  - Di container cloud tanpa image prabangun, `KABUKI_TEST_BUILD_CA=/root/.ccr/ca-bundle.crt pnpm test:contracts --testPathPatterns='driver-matrix|storage'` lulus.
+  - `docker image inspect`/`docker run … cat` membuktikan image akhir tidak memuat CA proxy.
+  - Tanpa env, perilaku lama tetap sama.
+  - `docker compose -f docker/docker-compose.yml --profile scale config --quiet` lulus.
+  - `pnpm exec eslint tests/helpers/runtime.ts` dan Prettier check lulus.
+
+### - [x] TASK-188: Terapkan kuota total penyimpanan media yang dapat diatur
+- **Traceability**: `US-06`, `US-15`, `US-17`, BR-15–16; permintaan pengguna 2026-11-12: "user mengatur sendiri space volume yang akan mereka pakai … default nya recommended space untuk running project ini dengan docker" (pendekatan dipilih: kuota aplikasi + lokasi).
+- **Depends On**: `TASK-024`, `TASK-067`, `TASK-067A`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/config/env.schema.ts`
+  - `MODIFY` `packages/database/src/repositories/media.repository.ts`
+  - `MODIFY` `apps/api/src/modules/media/media.service.ts`
+  - `MODIFY` `apps/api/src/modules/media/media.service.spec.ts`
+- **Implementation Specs**:
+  - Konteks: Docker named volume tidak bisa diberi batas ukuran secara portabel. Pertumbuhan utama data ada di media upload, jadi batasnya ditegakkan aplikasi.
+  - Env `MEDIA_STORAGE_QUOTA_MIB`:
+    - integer ≥ 0; `0` = tanpa batas;
+    - default **10240** (10 GiB), yaitu default yang direkomendasikan untuk self-host.
+  - Repository: `totalStoredBytes()` menjumlahkan `size_bytes` media yang tersimpan (belum dihapus) dengan query terparameterisasi, setara di SQLite/PostgreSQL/MySQL.
+  - Upload ditolak sebelum blob ditulis bila `total + ukuran baru > kuota`:
+    - kode error yang sudah ada `CAPACITY_REACHED` (HTTP 507), sehingga katalog 6 bahasa tidak berubah;
+    - tidak ada record, receipt sukses, atau blob yang tertinggal.
+  - Kuota bersifat lunak terhadap upload konkuren: kelebihan maksimum = jumlah upload paralel × batas ukuran file. Ini didokumentasikan, bukan disembunyikan.
+  - Penghapusan media (dan GC orphan) membebaskan kuota.
+- **Definition of Done (Verification)**:
+  - Spec media service:
+    - upload di bawah kuota diterima;
+    - upload yang melewati kuota ditolak `CAPACITY_REACHED` 507 tanpa record/blob;
+    - kuota `0` tanpa batas;
+    - hapus media membuka kembali ruang.
+  - Validasi env:
+    - default 10240;
+    - nilai negatif atau non-integer ditolak.
+  - `pnpm --filter @kabuki-neko/database build` dan `pnpm --filter @kabuki-neko/api lint`/`typecheck`/`test` lulus.
+  - `pnpm test:integration --testPathPatterns='media'` lulus.
+
+### - [x] TASK-189: Atur ruang disk Docker: rotasi log, batas memori Redis, lokasi volume, dan rekomendasi
+- **Traceability**: `US-17`, `US-19`, permintaan pengguna 2026-11-12 (lihat TASK-188).
+- **Depends On**: `TASK-188`, `TASK-187`, `TASK-182`
+- **Target Files**:
+  - `MODIFY` `docker/docker-compose.yml`
+  - `CREATE` `docker/docker-compose.paths.yml`
+  - `MODIFY` `.env.example`
+  - `MODIFY` `docs/self-hosting.md`
+- **Implementation Specs**:
+  - `docker-compose.yml`:
+    - semua service memakai anchor logging `json-file` dengan `max-size` `${KN_LOG_MAX_SIZE:-10m}` dan `max-file` `${KN_LOG_MAX_FILE:-3}`, agar log tidak memenuhi disk;
+    - API menerima `MEDIA_STORAGE_QUOTA_MIB` (`${MEDIA_STORAGE_QUOTA_MIB:-10240}`);
+    - Redis profile `scale` memakai `--maxmemory ${KN_REDIS_MAXMEMORY:-256mb}` dengan `--maxmemory-policy noeviction`, supaya state game tidak pernah dibuang diam-diam; tulisan gagal secara eksplisit saat penuh.
+  - `docker/docker-compose.paths.yml` (override opsional): named volume `kabuki-data`, `kabuki-uploads`, dan untuk profile scale `kabuki-postgres`, `kabuki-redis`, `kabuki-minio` dipetakan ke folder host pilihan operator lewat `KN_DATA_PATH`, `KN_UPLOADS_PATH`, `KN_POSTGRES_PATH`, `KN_REDIS_PATH`, `KN_MINIO_PATH`. Dengan begitu operator dapat menaruh data di disk/partisi berukuran tertentu. Volume secrets tetap named volume.
+  - `.env.example`: semua variabel baru dengan default rekomendasi dan komentar.
+  - `docs/self-hosting.md` (ID + EN), tabel kebutuhan ruang yang direkomendasikan per profil (image, data/SQLite, uploads sesuai kuota, log, PostgreSQL/Redis/MinIO). Tambahkan juga:
+    - cara memakai override paths;
+    - cara memantau pemakaian (`docker system df -v`, `du`);
+    - penjelasan jujur bahwa Docker tidak membatasi ukuran named volume dan batas keras butuh partisi/disk terpisah.
+- **Definition of Done (Verification)**:
+  - `docker compose -f docker/docker-compose.yml config --quiet` dan versi `--profile scale` lulus.
+  - Kombinasi dengan `-f docker/docker-compose.paths.yml` (dengan path contoh) dan dengan `docker-compose.tls.yml` lulus.
+  - Config yang dirender menunjukkan logging/maxmemory/kuota sesuai default dan override env.
+  - `bash scripts/selfhost-smoke.sh` profil default lulus bila image tersedia.
+  - Setiap variabel yang disebut panduan ada di `.env.example`.
+  - Prettier check YAML/Markdown lulus.
+
 ## 3. Blueprint coverage
 
 Coverage berikut adalah pemetaan rencana, **bukan status acceptance lulus**. Shared contracts dan middleware global berlaku untuk seluruh endpoint; tabel menyebut owner implementasi utama.
@@ -2947,7 +3368,7 @@ Coverage berikut adalah pemetaan rencana, **bukan status acceptance lulus**. Sha
 | US-17 | `TASK-025`, `TASK-175`, `TASK-176` | `TASK-177`, `TASK-178` | AC-17-01–02 |
 | US-18 | `TASK-087`, `TASK-118`, `TASK-122`, `TASK-157` | `TASK-173` | AC-18-01–02 |
 | US-19 | `TASK-013`, `TASK-115`, `TASK-149`, `TASK-174` | `TASK-174`, `TASK-181` | AC-19-01–02 |
-| US-20 | `TASK-053`, `TASK-179`, `TASK-180` | `TASK-179`, `TASK-180`, `TASK-181` | AC-20-01–02 |
+| US-20 | `TASK-053`, `TASK-179`, `TASK-180`, `TASK-183`, `TASK-184` | `TASK-179`, `TASK-180`, `TASK-181`, `TASK-185` | AC-20-01–02 |
 | US-21 | `TASK-023`, `TASK-071`, `TASK-112`, `TASK-117`, `TASK-149` | `TASK-172`, `TASK-173` | AC-21-01–04 |
 
 ### 3.2. Screens, dialogs dan components
@@ -3150,7 +3571,7 @@ Namespace `/game`, Engine.IO `/socket.io`. Semua typed schemas/ACK di `TASK-022`
 | BR-18 (histori idempotent) | `TASK-083`, `TASK-084`, `TASK-169` |
 | BR-19 (ephemeral state/driver restart) | `TASK-081`, `TASK-177`, `TASK-178` |
 | BR-20 (CSV/import safety) | `TASK-064`, `TASK-085`, `TASK-166` |
-| NFR-01 / NFR-02 (latency/mobile budgets) | `TASK-179`, `TASK-180` |
+| NFR-01 / NFR-02 (latency/mobile budgets) | `TASK-179`, `TASK-180`, `TASK-183`–`TASK-185` |
 | NFR-03 / NFR-05 (security/audit) | `TASK-057`, `TASK-053`, `TASK-164`, `TASK-165` |
 | NFR-04 (accessibility) | `TASK-118`, `TASK-129`, `TASK-122`, `TASK-173` |
 | NFR-06 (reliability) | `TASK-168`, `TASK-169`, `TASK-177` |
@@ -3163,4 +3584,6 @@ Catatan akhir Stage 4: tidak ada application code, dependency install, migration
 
 Update Stage 5, 2026-10-30: TASK-001 selesai; bukti install, kompatibilitas dan temuan audit dependency tercatat di [05-implementation-log.md](05-implementation-log.md). `.gitignore` disiapkan atas permintaan tambahan pengguna; TASK-002 tetap Pending karena konfigurasi Turbo/ESLint/Prettier belum dibuat.
 
-**Next Step**: Lanjutkan `TASK-065`; verifikasi dan commit setiap task sesuai instruksi pengguna.
+Update QA 2026-11-12: `/vibe-test` menyisakan temuan terbuka yang dijadikan Phase 7 (`TASK-183`–`TASK-187`); pemeriksaan manual di perangkat tidak dijadikan task.
+
+**Next Step**: Jalankan `/vibe-code` untuk `TASK-183`; verifikasi dan commit setiap task sesuai instruksi pengguna.

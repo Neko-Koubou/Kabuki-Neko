@@ -36,17 +36,23 @@ modified; extra blobs uploaded afterwards are harmless orphans that the next cle
 Never copy a live SQLite file and its `-wal` side file by hand. Use SQLite's online backup API,
 which produces a consistent copy while the API keeps running:
 
+The copy is written to the container's `/tmp`, copied out and deleted, so no backup file stays in
+the data volume:
+
 ```bash
-$C exec -T api node -e 'const {createRequire}=require("node:module");const Database=createRequire(require.resolve("@kabuki-neko/database"))("better-sqlite3");new Database(process.env.SQLITE_PATH,{readonly:true}).backup(process.argv[1]).then(()=>console.log("sqlite backup complete"))' /app/data/backup.sqlite
-$C cp api:/app/data/backup.sqlite ./backup/kabuki-neko.sqlite
+$C exec -T api node -e 'const {createRequire}=require("node:module");const Database=createRequire(require.resolve("@kabuki-neko/database"))("better-sqlite3");new Database(process.env.SQLITE_PATH,{readonly:true}).backup(process.argv[1]).then(()=>console.log("sqlite backup complete"))' /tmp/kabuki-backup.sqlite
+$C cp api:/tmp/kabuki-backup.sqlite ./backup/kabuki-neko.sqlite
+$C exec -T api rm -f /tmp/kabuki-backup.sqlite
 ```
 
-Restore with the API stopped: replace the database and delete the old WAL side files.
+Restore with the API stopped. The restore runs **inside the API image as its own user (uid 10001)** and reads the backup through a read-only mount. Then the restored database belongs to the
+API user and is writable. A `docker compose cp` into the volume would leave a root-owned file that
+the API can only open read-only. The old database and its WAL side files are removed first. The
+backup file must be readable by uid 10001, for example `chmod 0644 ./backup/kabuki-neko.sqlite`.
 
 ```bash
 $C stop api
-$C cp ./backup/kabuki-neko.sqlite api:/app/data/kabuki-neko.sqlite
-$C run --rm --no-deps --entrypoint sh api -c 'rm -f /app/data/kabuki-neko.sqlite-wal /app/data/kabuki-neko.sqlite-shm'
+$C run --rm --no-deps -v "$PWD/backup:/backup:ro" --entrypoint sh api -c 'rm -f /app/data/kabuki-neko.sqlite /app/data/kabuki-neko.sqlite-wal /app/data/kabuki-neko.sqlite-shm && cp /backup/kabuki-neko.sqlite /app/data/kabuki-neko.sqlite'
 $C start api
 ```
 
@@ -112,9 +118,28 @@ What happens to sign-ins:
 - Refresh sessions created **after** the backup point do not exist in the restored database, so
   those browsers are asked to sign in again. Sessions revoked after the backup point are active
   again until they expire. If that matters, or the backup or its secrets may have leaked, also
-  rotate the secrets:
-  - default profile: delete `runtime-secrets.json` before starting;
-  - scale profile, or explicit secrets: set new `JWT_ACCESS_SECRET`/`JWT_REFRESH_SECRET`.
+  rotate the JWT secrets. The API reads them only at start, so restart it afterwards:
+  - default profile: the pair lives only in `kabuki-data/runtime-secrets.json`; with the API
+    stopped, delete that file (the API generates a new pair on start):
+
+    ```bash
+    $C run --rm --no-deps --entrypoint rm api -f /app/data/runtime-secrets.json
+    $C start api
+    ```
+
+  - scale profile: the pair lives in the `kabuki-secrets` volume, which the API mounts read-only.
+    Compose does not pass `JWT_*` variables to the API, so setting them in your shell changes
+    nothing. Let `secrets-init` replace the pair, then restart the API:
+
+    ```bash
+    KN_ROTATE_JWT_SECRETS=true DEPLOYMENT_PROFILE=scale $C --profile scale run --rm --no-deps secrets-init
+    DEPLOYMENT_PROFILE=scale $C --profile scale restart api
+    ```
+
+    The other generated credentials (database, MinIO) are kept.
+
+  - explicit secrets (`JWT_*` or `JWT_*_FILE` added to the API in your own Compose override or
+    orchestrator): replace those values and restart.
 
   Everyone then signs in again.
 
@@ -142,6 +167,13 @@ What happens to sign-ins:
 /api/v1/reports/:id/retry-finalize`).
   - A report still not durable 24 hours after its game logs one error-level line, `finalization
 pending for more than 24 h for session <id>`, and the room is kept until the report is saved.
+  - Alert on these structured stdout events (one JSON object per line, no IDs or personal data):
+    - `{"level":"error","event":"report_queue_failed","errorCode":…}`: a report write attempt
+      failed or the queue database was unreachable (at most one line per minute; every failure
+      is counted in the `report_queue_failures` metric);
+    - `{"level":"error","event":"finalization_pending_alarm","errorCode":"FINALIZATION_PENDING"}`:
+      a report is still not durable 24 hours after its game (counted in
+      `finalization_pending_alarms`; the session ID is in the line above).
 - **Storage origins.** If uploads moved (new path, bucket or public URL), list the previous origin
   in a JSON array file named by `STORAGE_LOCATIONS_FILE`:
   - local entries: `{ "id", "driver": "local", "path", "publicUrl" }`;

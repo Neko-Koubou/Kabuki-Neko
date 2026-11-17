@@ -58,6 +58,11 @@ export interface SubmitRequest {
 }
 
 type Timing = ActiveRoomState["timing"];
+/** Settle rounds of one room: the round in flight and the one round queued behind it. */
+interface SettleSlot {
+  running: Promise<boolean> | null;
+  queued: Promise<boolean> | null;
+}
 type FrozenAnswer = FrozenReport["answers"][number];
 /** Phases that freeze a report on entry. */
 const FINAL = new Set<ActiveRoomState["phase"]>(["PODIUM", "FINISHED"]);
@@ -108,7 +113,10 @@ export function buildFrozenReport(state: Readonly<ActiveRoomState>, endedAt: num
           true,
         );
       const outcome = personal.result === "NOT_ELIGIBLE" ? "UNANSWERED" : personal.result;
-      if (outcome === "UNANSWERED") unanswered.set(playerId, (unanswered.get(playerId) ?? 0) + 1);
+      // Unanswered counts only scored opportunities: POLL and ×0 questions never count (SA §4.5;
+      // code review MJ-07).
+      if (outcome === "UNANSWERED" && snapshot.type !== "POLL" && snapshot.pointsMultiplier > 0)
+        unanswered.set(playerId, (unanswered.get(playerId) ?? 0) + 1);
       answers.push({
         playerId,
         questionIndex,
@@ -183,11 +191,16 @@ export function buildFrozenReport(state: Readonly<ActiveRoomState>, endedAt: num
   };
 }
 
+/** Why a room's state was dropped, as sent to clients in `room:expired`. */
+export type RoomEndReason = "ROOM_EXPIRED" | "ROOM_LOST";
+
 @Injectable()
 export class GameService {
   private hook: ReportHook | null = null;
   private sync: FinalizationSync | null = null;
   private readonly clock: () => number;
+  /** Per-room settle rounds (keyed by sessionId); see `settle`. Empty while no room settles. */
+  private readonly settling = new Map<string, SettleSlot>();
 
   constructor(
     @Inject(GAME_STATE_STORE) private readonly store: IGameStateStore,
@@ -249,6 +262,8 @@ export class GameService {
         });
         if (delayed) await this.completeDelayed(identity, run);
         const result = await run;
+        if (command.event === "host:kick_player")
+          await this.closeIfAllAnswered(identity).catch(() => false);
         await this.settle(identity).catch(() => false);
         await this.finalize(identity).catch(() => null);
         return result.ack;
@@ -267,6 +282,44 @@ export class GameService {
     }
   }
 
+  /**
+   * Closes the open question with ALL_ANSWERED when every remaining required player has answered
+   * (code review MJ-03). A kick removes an unanswered player from the required set; the memory
+   * store freezes in the same step, the Redis script does not, so the close is driven here for
+   * both (the store re-validates atomically; ALREADY_CLOSED or a lost race is harmless). Also
+   * called from `tick`, so a crash between the kick and the close cannot leave everyone waiting
+   * for the timer. Returns true when this call froze the question.
+   */
+  async closeIfAllAnswered(identity: RoomIdentity): Promise<boolean> {
+    const state = await this.store.getPrivateSnapshot(identity);
+    const index = state?.questionIndex ?? null;
+    if (!state || index === null || state.phase !== "QUESTION_ANSWERING" || !state.accepting)
+      return false;
+    const required = state.requiredPlayerIds;
+    if (required.length === 0 || !required.every((id) => state.answers[`${index}:${id}`]))
+      return false;
+    try {
+      const closed = await this.store.closeQuestion({
+        ...identity,
+        expectedPhaseVersion: state.phaseVersion,
+        reason: "ALL_ANSWERED",
+      });
+      return closed !== "ALREADY_CLOSED";
+    } catch (error) {
+      if (error instanceof StateDomainError) return false;
+      throw error;
+    }
+  }
+
+  /**
+   * Called by the scheduler when a room's state is dropped (code review MJ-05): `reason` tells
+   * connected clients why (`room:expired`), null when the room is released quietly after its
+   * retention. The base service has no transport; NotifyingGameService forwards to the gateway.
+   */
+  async roomEnded(_identity: RoomIdentity, _reason: RoomEndReason | null): Promise<void> {
+    // No transport attached.
+  }
+
   /** Commits the frozen question while a skip/end command waits for it (bounded ~5 s). */
   private async completeDelayed(identity: RoomIdentity, run: Promise<unknown>) {
     let done = false;
@@ -280,7 +333,10 @@ export class GameService {
     }
   }
 
-  /** `player:submit_answer` — atomic admission, then scoring if this answer closed the question. */
+  /**
+   * `player:submit_answer` — atomic admission, then scoring if this answer closed the question.
+   * The settle is coalesced with the room's other admissions (see `settle`).
+   */
   async submitAnswer(binding: PlayerBinding, request: SubmitRequest) {
     try {
       const stored = await this.store.admitAnswer({
@@ -306,11 +362,53 @@ export class GameService {
   }
 
   /**
-   * Scores and commits a frozen-but-unscored question. Returns true when this call committed.
-   * Safe to call from any worker at any time; CAS makes concurrent calls commit at most once.
+   * Scores and commits a frozen-but-unscored question. Returns true when the round this caller
+   * waited for committed. Safe to call from any worker at any time; CAS makes concurrent calls
+   * commit at most once.
+   *
+   * Calls for one room are single-flight and coalesced: while a round runs, every new caller
+   * shares one queued round that starts after it. A burst of N admitted answers therefore reads
+   * the full private state at most twice per wave instead of N times (each read is a deep copy in
+   * memory mode, a fetch and parse in Redis mode), and each caller still waits for a round that
+   * started after its own admission, so the answer that closes the question is scored before its
+   * ACK and the gateway publishes the reveal at once (QA follow-up TASK-183).
    */
-  async settle(identity: RoomIdentity): Promise<boolean> {
-    const state = await this.store.getPrivateSnapshot(identity);
+  settle(identity: RoomIdentity): Promise<boolean> {
+    const key = identity.sessionId;
+    let slot = this.settling.get(key);
+    if (!slot) {
+      slot = { running: null, queued: null };
+      this.settling.set(key, slot);
+    }
+    if (slot.queued) return slot.queued;
+    if (!slot.running) return this.settleRound(key, slot, identity);
+    const current = slot;
+    const queued = slot.running
+      .catch(() => false)
+      .then(() => {
+        current.queued = null;
+        return this.settleRound(key, current, identity);
+      });
+    current.queued = queued;
+    return queued;
+  }
+
+  /** Runs one settle round for a room and forgets the room's slot once nothing is pending. */
+  private settleRound(key: string, slot: SettleSlot, identity: RoomIdentity): Promise<boolean> {
+    const running = this.settleOnce(identity).finally(() => {
+      slot.running = null;
+      if (!slot.queued && this.settling.get(key) === slot) this.settling.delete(key);
+    });
+    slot.running = running;
+    return running;
+  }
+
+  /** One settle round: scores and commits the frozen question if it is still unscored. */
+  private async settleOnce(identity: RoomIdentity): Promise<boolean> {
+    // Copy-free read (TASK-185D): everything taken from the live state (revision, hash and the
+    // computed result) is read before the commit's await; the store validates and copies the
+    // result, so it shares nothing with the state.
+    const state = await this.store.readPrivateSnapshot(identity);
     const index = state?.questionIndex ?? null;
     if (!state || index === null || state.phase !== "QUESTION_ANSWERING" || state.accepting)
       return false;
@@ -412,6 +510,7 @@ export class GameService {
         if (due) await this.transition(identity, state, "QUESTION_ANSWERING", state.questionIndex);
         return;
       case "QUESTION_ANSWERING": {
+        await this.closeIfAllAnswered(identity);
         const closes = state.timing.acceptanceClosesAt;
         if (state.accepting && closes !== null && now > closes) {
           try {

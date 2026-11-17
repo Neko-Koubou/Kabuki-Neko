@@ -433,6 +433,155 @@ describe("transport and lifecycle", () => {
     expect(store.getState().terminal).toBeNull();
   });
 
+  it("advances publicRevision with applied room-wide events so heartbeats stay quiet (MJ-25)", () => {
+    const store = createGameStore();
+    store.getState().applySync(playerSnapshot({ revision: 5 }));
+    const player = store.getState().snapshot?.players[0];
+    expect(player).toBeDefined();
+    if (!player) return;
+    store
+      .getState()
+      .applyEvent("room:player_joined", push({ player: { ...player, nickname: "Bima" } }, 6, 3));
+    expect(store.getState().snapshot?.publicRevision).toBe(6);
+    store.getState().applyEvent("room:version", push({ publicRevision: 6 }, 6, 3));
+    expect(store.getState().syncRequested).toBe(false);
+    store.getState().applyEvent("room:version", push({ publicRevision: 7 }, 7, 3));
+    expect(store.getState().syncRequested).toBe(true);
+
+    const host = createGameStore();
+    host.getState().applySync(hostSnapshot(5));
+    host
+      .getState()
+      .applyEvent(
+        "game:answer_count_updated",
+        push({ answeredCount: 1, totalPlayers: 1, optionalAnswerCount: 0 }, 7, 3),
+      );
+    expect(host.getState().snapshot?.publicRevision).toBe(5);
+    host.getState().applyEvent("room:version", push({ publicRevision: 5 }, 7, 3));
+    expect(host.getState().syncRequested).toBe(false);
+  });
+
+  it("derives host capabilities from applied pushes without a full room:sync (QA regression of MJ-25)", () => {
+    const host = createGameStore();
+    const lobby = hostSnapshot(5, 1);
+    host.getState().applySync(
+      hostRoomSyncSchema.parse({
+        ...lobby,
+        ...room(SESSION_A, 5, 1, false),
+        players: [],
+        eligibleCount: 0,
+        capabilities: {
+          canStart: false,
+          canLock: true,
+          canKick: true,
+          canSkip: false,
+          canNext: false,
+          canEnd: true,
+        },
+      }),
+    );
+    const caps = () => {
+      const snapshot = host.getState().snapshot;
+      return snapshot?.role === "host" ? snapshot.capabilities : null;
+    };
+    const player = lobby.players[0];
+    expect(player).toBeDefined();
+    if (!player) return;
+
+    // The first join enables Start, and the matching heartbeat asks for no snapshot.
+    host.getState().applyEvent("room:player_joined", push({ player }, 6, 1));
+    expect(caps()).toMatchObject({ canStart: true, canLock: true, canEnd: true });
+    host.getState().applyEvent("room:version", push({ publicRevision: 6 }, 6, 1));
+    expect(host.getState().syncRequested).toBe(false);
+    // Only connected players count, as on the server.
+    host
+      .getState()
+      .applyEvent("room:presence_changed", push({ playerId: PLAYER, connected: false }, 7, 1));
+    expect(caps()?.canStart).toBe(false);
+    host
+      .getState()
+      .applyEvent("room:presence_changed", push({ playerId: PLAYER, connected: true }, 8, 1));
+    expect(caps()?.canStart).toBe(true);
+
+    host
+      .getState()
+      .applyEvent("game:countdown", push({ phaseStartedAt: T0, phaseEndsAt: T0 + 3_000 }, 9, 2));
+    expect(caps()).toEqual({
+      canStart: false,
+      canLock: false,
+      canKick: true,
+      canSkip: false,
+      canNext: false,
+      canEnd: true,
+    });
+    const answering = room(SESSION_A, 10, 3, true);
+    host.getState().applyEvent(
+      "game:question_answering",
+      push(
+        {
+          question: answering.question,
+          serverStartTime: T0,
+          inputClosesAt: T0 + 20_000,
+          acceptanceClosesAt: T0 + 20_000 + GAME_TIMING.graceMs,
+        },
+        10,
+        3,
+      ),
+    );
+    expect(caps()).toMatchObject({ canSkip: true, canNext: false, canStart: false });
+    // The host-only count push at answering start carries the eligible total ("0 of 1 answered").
+    host
+      .getState()
+      .applyEvent(
+        "game:answer_count_updated",
+        push({ answeredCount: 0, totalPlayers: 1, optionalAnswerCount: 0 }, 10, 3),
+      );
+    const counts = () => {
+      const snapshot = host.getState().snapshot;
+      return snapshot?.role === "host"
+        ? { answered: snapshot.answeredCount, eligible: snapshot.eligibleCount }
+        : null;
+    };
+    expect(counts()).toEqual({ answered: 0, eligible: 1 });
+    host.getState().applyEvent("game:answer_reveal", push({ reveal }, 11, 4));
+    expect(caps()).toMatchObject({ canSkip: false, canNext: true, canEnd: true });
+    host
+      .getState()
+      .applyEvent("game:podium", push({ podium: [], finalization: null, reportId: null }, 12, 5));
+    expect(caps()).toEqual({
+      canStart: false,
+      canLock: false,
+      canKick: false,
+      canSkip: false,
+      canNext: false,
+      canEnd: false,
+    });
+  });
+
+  it("applies room:expired despite the server's revision 1 / phaseVersion 1 (MJ-29)", () => {
+    const store = createGameStore();
+    store.getState().applySync(playerSnapshot({ revision: 10 }));
+    const expired = push({ reason: "ROOM_LOST" }, 1, 1);
+    expect(store.getState().applyEvent("room:expired", expired)).toEqual({ applied: true });
+    expect(store.getState().terminal).toBe("ROOM_LOST");
+    // Event-id dedup and the session check still apply.
+    expect(store.getState().applyEvent("room:expired", expired)).toEqual({
+      applied: false,
+      reason: "duplicate",
+    });
+    const other = createGameStore();
+    other.getState().applySync(playerSnapshot({ revision: 10 }));
+    expect(
+      other
+        .getState()
+        .applyEvent(
+          "room:expired",
+          push({ reason: "ROOM_EXPIRED" }, 1, 1, { sessionId: SESSION_B }),
+        ),
+    ).toEqual({ applied: false, reason: "other-session" });
+    expect(other.getState().terminal).toBeNull();
+  });
+
   it("survives remounts inside the locale provider (locale/theme never reset it)", () => {
     const store = createGameStore();
     store.getState().applySync(playerSnapshot());

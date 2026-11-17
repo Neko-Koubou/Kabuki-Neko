@@ -116,6 +116,261 @@ Report queue age: 830 ms.
 4. **Report finalization keeps up.** Writing 5,000 answers became durable within about one
    second of the game's end in both topologies.
 
+## Re-measurement and root cause (2026-11-12, TASK-185)
+
+Same host and harness as above. The commit includes TASK-183/183A:
+
+- settles are coalesced per room;
+- gateway publishes are coalesced per room;
+- answer ACKs no longer wait for the publish.
+
+The benchmark now records a per-process table (TASK-184): event-loop delay above the 10 ms
+sampling resolution, CPU as % of one core, heap, disconnects per node, and the exit code and last
+output of a node that dies mid-run. The verdict also fails on answers not admitted, a report that
+is not durable, or a run that aborted.
+
+### Memory mode, 200 clients: **FAIL** (10 answers not admitted)
+
+Record `test-results/benchmark/memory.json`. 102 transitions in 459 s; delivery loss 0/20,400;
+transport p95 **14.36 ms**; report durable after 1,239 ms.
+
+| Measure (ms)                 | n      | p50      | p95       | p99       | max       |
+| ---------------------------- | ------ | -------- | --------- | --------- | --------- |
+| Transport (commit → receipt) | 53,286 | 4.34     | 14.36     | 37.18     | 43.65     |
+| Admission (answer ACK RTT)   | 4,990  | 2,800.06 | 10,973.34 | 13,139.65 | 14,926.40 |
+| State commit (host ACK RTT)  | 52     | 73.22    | 172.07    | 1,063.82  | 1,063.82  |
+
+| Process        | Loop lag p99 per 1 s, median / p95 / max (ms) | CPU mean / max (% of one core) |
+| -------------- | --------------------------------------------- | ------------------------------ |
+| API node       | 0.68 / 925.85 / 4,905.72                      | 32.3 / 112                     |
+| Load generator | 0.84 / 2.21 / 4.30                            | 1.5 / 9.1                      |
+
+The API node's probe wrote only 268 one-second samples in 459 s: its event loop was blocked for
+the rest. The load generator stayed idle. **The admission latency is caused by the server
+blocking its own event loop, not by the harness or by CPU saturation** (mean 32% of one core).
+
+### Redis mode, two nodes, 200 clients: **FAIL**
+
+Record `test-results/benchmark/redis.json`. 102 transitions in 1,061 s.
+
+- Transport p95 **300.87 ms**.
+- Delivery loss 5,900/20,400 (28.9%).
+- 2,469 answers not admitted.
+- **Node B lost all 100 players** (`transport close`) 412 s after start.
+
+| Measure (ms)                 | n       | p50      | p95      | p99      | max      |
+| ---------------------------- | ------- | -------- | -------- | -------- | -------- |
+| Transport (commit → receipt) | 102,066 | 11.17    | 300.87   | 693.44   | 2,187.57 |
+| Admission (answer ACK RTT)   | 1,131   | 4,232.18 | 5,506.54 | 5,814.11 | 6,019.19 |
+| State commit (host ACK RTT)  | 52      | 928.79   | 1,852.78 | 4,826.66 | 4,826.66 |
+
+| Process        | Loop lag p99 per 1 s, median / p95 / max (ms) | CPU mean / max (% of one core) | Probe samples |
+| -------------- | --------------------------------------------- | ------------------------------ | ------------- |
+| API node A     | 161.31 / 320.30 / 1,027.04                    | 66.9 / 163                     | 1,016         |
+| API node B     | 43.38 / 242.05 / 909.60                       | 42.4 / 133.4                   | 389           |
+| Load generator | 1.67 / 4.57 / 10.53                           | 1.0 / 10.4                     | 1,060         |
+
+Node B's probe stopped after 389 samples, shortly before its players disconnected. Two other
+Redis runs on this commit did not finish: one aborted on a host command without an ACK, one on a
+REST call to a node that was gone. A shorter run (60 transitions) that kept the dead node's output
+showed why.
+
+### Root cause
+
+1. **A node crashes on a failed Redis publish (server defect).** `@socket.io/redis-adapter`
+   8.3.0 calls `pubClient.publish(...)` without awaiting or catching it. The pub client is
+   created with `commandTimeout: 2000` (`apps/api/src/providers/state/state.module.ts`). When the
+   event loop stalls past 2 s, a publish times out, the rejection is unhandled, and Node exits:
+
+   ```text
+   Error: Command timed out
+       at Timeout.<anonymous> (ioredis/built/Command.js:195:33)
+   ```
+
+   A Redis outage would do the same. Every player on that node is disconnected, which is
+   finding 3 above. That finding had attributed it only to a starved event loop.
+
+2. **The publish path blocks the event loop for seconds (server defect).** A CPU profile of the
+   API node (memory mode, 200 clients) puts almost all busy time in the gateway's `diff`:
+   - `structuredClone` of the whole private room state in `getPrivateSnapshot` on every diff and
+     every settle round (≈2.4 s of a 33 s profile). The state grows with every played question,
+     because it keeps all answers and per-player results, so the cost rises during the game.
+   - `projectHost` on every diff, even when only the answer count changed, with Zod validation
+     that checks the grapheme length of all 200 nicknames (≈0.6 s).
+   - At reveal and podium, `projectPlayer` once per player, each validating a snapshot that
+     lists all 200 players: O(n²) (≈0.6 s).
+3. Finding 2 above (the full-state settle on every admission) was not the main cause. Coalescing
+   it (TASK-183) and the publishes (TASK-183A) changed admission latency very little.
+
+These are server defects, not harness limits. Fixes are planned in TASK-185A (crash), TASK-185B–D
+(read-only state reads, an O(n) publish path, the settle read) and TASK-185E (re-measure).
+
+## After the publish-path fixes (2026-11-12, TASK-185E)
+
+The commit includes TASK-185A–D:
+
+- a failed Redis adapter publish no longer crashes a node;
+- private state is read without a copy;
+- the gateway publish path is O(n);
+- settle uses the copy-free read.
+
+Same host and harness.
+
+### Memory mode, 200 clients: **PASS**
+
+Record `test-results/benchmark/memory.json`. 102 transitions in 253 s (459 s before).
+
+- Delivery loss 0/20,400.
+- All 5,000 answers admitted.
+- Report durable after 806 ms.
+
+| Measure (ms)                 | n      | p50   | p95   | p99   | max    | Before (p50 / p95) |
+| ---------------------------- | ------ | ----- | ----- | ----- | ------ | ------------------ |
+| Transport (commit → receipt) | 49,387 | 3.39  | 12.44 | 14.00 | 20.39  | 4.34 / 14.36       |
+| Admission (answer ACK RTT)   | 5,000  | 1.10  | 35.87 | 90.69 | 169.35 | 2,800 / 10,973     |
+| State commit (host ACK RTT)  | 52     | 27.73 | 55.86 | 413.7 | 413.7  | 73 / 172           |
+
+API node:
+
+- loop lag p99 per second, median 1.44 ms, max 629.63 ms (was 4,905 ms);
+- CPU mean 10.6% of one core (was 32.3%).
+
+### Redis mode, two nodes, 200 clients: **FAIL**
+
+Record `test-results/benchmark/redis.json`. 102 transitions in 1,052 s.
+
+- No player disconnects (100 before).
+- Delivery loss 0/20,400 (28.9% before).
+- Transport p95 **327 ms**.
+- 3,899 of 5,000 answers not admitted.
+
+Both nodes logged Redis adapter publish timeouts and survived them (TASK-185A). A first attempt of
+this run ended without a record because the benchmark spread more than 100,000 samples into
+`Math.max`. That was fixed in the benchmark, with a spec.
+
+| Measure (ms)                 | n       | p50      | p95      | p99      | max      |
+| ---------------------------- | ------- | -------- | -------- | -------- | -------- |
+| Transport (commit → receipt) | 152,226 | 15.28    | 327.00   | 940.06   | 2,303.90 |
+| Admission (answer ACK RTT)   | 1,101   | 4,325.33 | 5,837.29 | 6,028.27 | 6,401.26 |
+| State commit (host ACK RTT)  | 52      | 785.19   | 2,280.82 | 5,341.54 | 5,341.54 |
+
+| Process        | Loop lag p99 per 1 s, median / max (ms) | CPU mean / max (% of one core) |
+| -------------- | --------------------------------------- | ------------------------------ |
+| API node A     | 59.47 / 563.05                          | 54.0 / 134.6                   |
+| API node B     | 9.91 / 503.80                           | 47.7 / 142.9                   |
+| Load generator | 2.21 / 11.23                            | 1.2 / 10.1                     |
+
+### Next bottleneck (Redis mode)
+
+A shorter profiled run (200 clients, 24 transitions) rejected 527 answers:
+
+- 339 `STATE_UNAVAILABLE`;
+- 188 `DEPENDENCY_UNAVAILABLE`.
+
+These are Redis commands timing out while the node's event loop is busy. The benchmark now records
+these codes. In the CPU profile of the busier node, **83% of the busy time (79 of 95 s) is `decode`
+in `RedisStateStore.read`**: every read validates the whole private room state with
+`activeRoomStateSchema`. That includes grapheme-length checks of every nickname and UUID patterns,
+and the state grows with every played question. This is the Redis-mode counterpart of the memory
+clone removed by TASK-185B. The fix is planned in TASK-185F, with a re-measure in TASK-185G.
+
+## After the read-only Redis decode (2026-11-12, TASK-185G)
+
+The commit includes TASK-185F: the read-only Redis read uses no full schema validation.
+
+### Redis mode, two nodes, 200 clients: **FAIL**
+
+Record `test-results/benchmark/redis.json`. 102 transitions.
+
+- No disconnects; delivery loss 0/20,400.
+- Transport p95 **250.9 ms** (327 ms before).
+- 3,809 answers not admitted: 2,366 `STATE_UNAVAILABLE`, 1,443 `DEPENDENCY_UNAVAILABLE`.
+
+| Measure (ms)                 | n       | p50      | p95      | p99      | max      |
+| ---------------------------- | ------- | -------- | -------- | -------- | -------- |
+| Transport (commit → receipt) | 149,342 | 10.72    | 250.90   | 810.93   | 3,857.69 |
+| Admission (answer ACK RTT)   | 1,191   | 3,847.47 | 5,417.37 | 5,808.63 | 6,078.40 |
+| State commit (host ACK RTT)  | 52      | 487.23   | 1,246.53 | 3,173.70 | 3,173.70 |
+
+| Process        | Loop lag p99 per 1 s, median / max (ms) | CPU mean / max (% of one core) |
+| -------------- | --------------------------------------- | ------------------------------ |
+| API node A     | 12.12 / 502.75                          | 43.9 / 118.2                   |
+| API node B     | 22.29 / 380.07                          | 45.4 / 127.8                   |
+| Load generator | 1.98 / 15.72                            | 1.3 / 10.0                     |
+
+The memory run on the same commit (regression check) passed:
+
+- transport p95 15.17 ms;
+- admission p50 1.1 ms / p95 25.26 ms;
+- 0 rejected answers.
+
+### Next bottleneck: the Redis server
+
+The nodes' event loops are now mostly free (median p99 lag 12–22 ms), yet the rejections barely
+changed. A diagnostic run (200 clients, 40 transitions) sampled the Redis container every ~3 s
+and kept its `SLOWLOG` (commands over 5 ms):
+
+- **Redis CPU**: median 11%, p90 71%, max 100%. Redis saturates during answer bursts, so client
+  commands wait past their 2 s timeout.
+- **`read` script** (`e1dcbecf2d4e`): 95 slow calls, mean 14.5 ms. It returns
+  `cjson.encode({state=raw, …})`, which re-escapes the whole multi-megabyte state string on every
+  read.
+- **`release-room.lua`** (`b3d091d9136a`): 28 slow calls, mean 25 ms. The scheduler's lease
+  operations (acquire/renew/release) decode the whole state with `cjson.decode` only to compare
+  its `sessionId`, which the script has already checked with `HGET`.
+- `close-question.lua` and `mutate-room.lua`: a few calls at 57–117 ms (once per question).
+- `admit-answer.lua` stayed under 5 ms.
+
+Fixes are planned in TASK-185H (read reply without re-encoding; lease operations without the
+state decode), with a re-measure in TASK-185I.
+
+## After the Redis script fixes (2026-11-12, TASK-185I)
+
+The commit includes TASK-185H:
+
+- the read script returns the state as a bulk reply;
+- lease operations no longer decode the state.
+
+### Redis mode, two nodes, 200 clients: **FAIL**
+
+Record `test-results/benchmark/redis.json`.
+
+- No disconnects; delivery loss 0/20,400.
+- Transport p95 **278.66 ms**.
+- 3,545 answers not admitted: 2,653 `STATE_UNAVAILABLE`, 892 `DEPENDENCY_UNAVAILABLE`.
+
+| Measure (ms)                 | n       | p50      | p95      | p99      | max      |
+| ---------------------------- | ------- | -------- | -------- | -------- | -------- |
+| Transport (commit → receipt) | 150,023 | 11.66    | 278.66   | 488.33   | 1,263.58 |
+| Admission (answer ACK RTT)   | 1,455   | 3,988.46 | 5,332.13 | 5,536.73 | 5,920.61 |
+| State commit (host ACK RTT)  | 52      | 373.60   | 1,107.02 | 4,005.42 | 4,005.42 |
+
+Redis container CPU, 235 samples: median 5.3%, p90 37.6%, max 99.1% (was 11% / 71% / 100%).
+
+SLOWLOG (commands over 5 ms, last 1,024 kept):
+
+| Script               | Slow calls | Mean (ms) | Max (ms) |
+| -------------------- | ---------- | --------- | -------- |
+| `read` (multi-bulk)  | 933        | 12.2      | 41.0     |
+| `admit-answer.lua`   | 58         | 103.5     | 137.9    |
+| `mutate-room.lua`    | 18         | 109.8     | 190.0    |
+| `close-question.lua` | 10         | 119.9     | 240.7    |
+
+### Remaining bottleneck: one JSON blob per room
+
+The whole room state is one JSON string in Redis: quiz, players, every answer of every question,
+every result. Every gameplay script decodes it with `cjson.decode` and re-encodes it with
+`cjson.encode` for a single change, and every read copies it through Lua. The string grows with
+each played question, so late in a 25-question, 200-player game:
+
+- one `admit-answer` costs about 100 ms of single-threaded Redis time;
+- a burst of 200 answers needs about 20 s of Redis time.
+
+Commands from both nodes then queue past their 2 s timeout. The multi-node target cannot be met
+without storing answers and results outside the per-room blob. That is an architectural change
+of the Redis state layout (TASK-185K), beyond a script fix. A smaller fix, a plain `HMGET` read
+instead of a Lua read, is TASK-185J.
+
 ## Not covered
 
 - More than 200 clients: needs a separate harness and run. The CLI refuses `--clients` above 200.

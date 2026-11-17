@@ -11,7 +11,12 @@ import {
 import { ConfigService } from "../../config/config.service";
 import { parseEnvironment } from "../../config/env.schema";
 import { AuthService, PasswordHasher, PasswordWorkQueue } from "./auth.service";
-import { RefreshService, refreshCookieOptions, type IssuedSession } from "./refresh.service";
+import {
+  RefreshReuseError,
+  RefreshService,
+  refreshCookieOptions,
+  type IssuedSession,
+} from "./refresh.service";
 
 const password = "Correct-password-123!";
 const db = createDataSource({ driver: "sqlite", sqlitePath: ":memory:" }, domainSchemas("sqlite"));
@@ -112,12 +117,14 @@ it("rotates once, preserves absolute expiry and revokes the family on consumed-t
   expect(next.refreshToken).not.toBe(original.refreshToken);
   expect(next.refreshExpiresAt).toBe(original.refreshExpiresAt);
   expect(next.record.family_id).toBe(original.record.family_id);
-  await expect(refresh.rotate(original.refreshToken)).rejects.toMatchObject({
-    errorCode: "TOKEN_REVOKED",
-  });
-  await expect(refresh.rotate(next.refreshToken)).rejects.toMatchObject({
-    errorCode: "TOKEN_REVOKED",
-  });
+  // Reuse of the consumed token is reported distinctly so it can be audited (MJ-02).
+  const reuse = refresh.rotate(original.refreshToken);
+  await expect(reuse).rejects.toBeInstanceOf(RefreshReuseError);
+  await expect(reuse).rejects.toMatchObject({ errorCode: "TOKEN_REVOKED", userId });
+  // The successor was revoked with the family: a plain revocation, not a reuse.
+  const revoked = refresh.rotate(next.refreshToken);
+  await expect(revoked).rejects.toMatchObject({ errorCode: "TOKEN_REVOKED" });
+  await expect(revoked).rejects.not.toBeInstanceOf(RefreshReuseError);
 });
 
 it("serializes simultaneous refresh and commits family revocation on reuse", async () => {

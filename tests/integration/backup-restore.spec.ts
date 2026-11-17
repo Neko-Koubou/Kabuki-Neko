@@ -135,6 +135,13 @@ it("documents every command this test runs, verbatim", async () => {
     mysqlRestore("kabuki", "kabuki"),
   ])
     expect({ command, documented: guide.includes(command) }).toEqual({ command, documented: true });
+  // Code review MJ-18: the SQLite backup never stays in the data volume, and the restore runs as
+  // the image user from a read-only mount (a `compose cp` into the volume left a root-owned,
+  // read-only database).
+  expect(guide).toContain("/tmp/kabuki-backup.sqlite");
+  expect(guide).not.toContain("/app/data/backup.sqlite");
+  expect(guide).not.toMatch(/\$C cp \S+ api:\/app\/data\//u);
+  expect(guide).toContain('$C run --rm --no-deps -v "$PWD/backup:/backup:ro" --entrypoint sh api');
 });
 
 describe.each(["sqlite", "postgres", "mysql"] as const)("backup and restore on %s", (driver) => {

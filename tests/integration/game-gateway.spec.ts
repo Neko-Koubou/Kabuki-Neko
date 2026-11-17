@@ -513,20 +513,30 @@ it("serves every client event with contract ACKs through a complete game", async
 }, 120_000);
 
 it("disconnects oversize events and enforces per-socket rate limits", async () => {
-  const flood = connect();
-  await ready(flood);
-  const responses = [];
-  for (let i = 0; i < 13; i++)
-    responses.push(
-      code(
-        await call(flood, "room:time", {
-          sessionId: randomUUID(),
-          pinCode: "123456",
-          clientSentAt: Date.now(),
-        }),
-      ),
-    );
-  expect(responses.slice(0, 12).every((value) => value === "AUTH_REQUIRED")).toBe(true);
+  /** Thirteen room:time requests for an unknown room, one after the other. */
+  const flood = async (socket: Socket) => {
+    const responses = [];
+    for (let i = 0; i < 13; i++)
+      responses.push(
+        code(
+          await call(socket, "room:time", {
+            sessionId: randomUUID(),
+            pinCode: "123456",
+            clientSentAt: Date.now(),
+          }),
+        ),
+      );
+    return responses;
+  };
+  // An unbound socket is refused before the limiter, so it never mints a limiter key (MJ-15).
+  const anonymous = connect();
+  await ready(anonymous);
+  expect(new Set(await flood(anonymous))).toEqual(new Set(["AUTH_REQUIRED"]));
+  // A signed-in host gets the TIME tier: 12 requests per minute, then RATE_LIMITED.
+  const host = connect({ protocolVersion: 1, accessToken: outsider.accessToken });
+  await ready(host);
+  const responses = await flood(host);
+  expect(responses.slice(0, 12)).not.toContain("RATE_LIMITED");
   expect(responses[12]).toBe("RATE_LIMITED");
   const big = connect();
   await ready(big);

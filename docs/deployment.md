@@ -26,8 +26,10 @@ DEPLOYMENT_PROFILE=scale docker compose -f docker/docker-compose.yml --profile s
 
 - `DEPLOYMENT_PROFILE=scale` makes the API choose the postgres/redis/s3 drivers.
 - `--profile scale` starts the services those drivers need.
-- The variable without the flag never falls back to SQLite: the API's startup gate waits for
-  PostgreSQL (`KN_STARTUP_WAIT_SEC`, default 60 s) and then exits with an error.
+- The variable without the flag never falls back to SQLite: the API's startup gate derives the
+  drivers from `DEPLOYMENT_PROFILE` (PostgreSQL and Redis for `scale`, even without
+  `DB_DRIVER`/`STATE_DRIVER`), waits for them (`KN_STARTUP_WAIT_SEC`, integer 1–3600, default
+  60 s) and then exits with an error, so the container restarts instead of hanging.
 - Validate without starting: `pnpm deploy:scale config --quiet`.
 - Stop: `pnpm deploy:scale down`.
 - The default profile through the wrapper: `pnpm exec tsx scripts/start-profile.ts default`.
@@ -81,7 +83,13 @@ games are not copied to PostgreSQL, S3 or Redis, nor back. Migrate deliberately 
 - No credential is in the Compose file, an image or `.env.example`, and nothing uses the
   `minioadmin` sample. To supply your own secrets, set `<NAME>_FILE` (Docker secrets) or the
   variable itself for `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `DATABASE_URL`, `REDIS_URL`,
-  `S3_ACCESS_KEY` and `S3_SECRET_KEY`.
+  `S3_ACCESS_KEY` and `S3_SECRET_KEY` **in the API's own environment**. The bundled Compose file
+  does not forward these from your shell; add them under `services.api.environment` (and mount
+  the files) in a Compose override file.
+- Rotating the JWT pair (for example after a leaked backup) is described in
+  [operations.md](operations.md#restore-checklist-and-session-policy): delete
+  `runtime-secrets.json` in the default profile, or run `secrets-init` with
+  `KN_ROTATE_JWT_SECRETS=true` in the scale profile, then restart the API.
 - Several API nodes (`DEPLOYMENT_TOPOLOGY=multi`) need the same JWT pair. The entrypoint refuses
   to start a multi-node API without it.
 

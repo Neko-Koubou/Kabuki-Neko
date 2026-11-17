@@ -59,25 +59,52 @@ interface Asset {
 function capabilities(owner: boolean) {
   return { canEdit: owner, canDelete: owner, canDuplicate: true, canExport: true, canHost: true };
 }
-async function visibleRow(m: EntityManager, id: string, actor: string, mutate: boolean) {
+/**
+ * The quiz row if `actor` may see it (owner, or PUBLIC); NOT_FOUND otherwise, FORBIDDEN when
+ * `mutate` and not the owner. `lock` takes a row write lock (inside a caller's write transaction);
+ * plain reads never lock, so a viewer cannot block the owner's save (code review MJ-08).
+ */
+async function visibleRow(
+  m: EntityManager,
+  id: string,
+  actor: string,
+  mutate: boolean,
+  lock = true,
+) {
   const query = m
     .getRepository<QuizRow>("quizzes")
     .createQueryBuilder("q")
     .where("q.id=:id", { id });
-  if (m.connection.options.type !== "better-sqlite3") query.setLock("pessimistic_write");
+  if (lock && m.connection.options.type !== "better-sqlite3") query.setLock("pessimistic_write");
   const row = await query.getOne();
   if (!row || (row.creator_id !== actor && row.visibility === "PRIVATE"))
     throw new Error("NOT_FOUND");
   if (mutate && row.creator_id !== actor) throw new Error("FORBIDDEN");
   return row;
 }
+/** The editable content of one quiz row. */
 async function content(m: EntityManager, row: QuizRow): Promise<QuizWrite> {
-  const questions = await m
-    .getRepository<QuestionRow>("questions")
-    .find({ where: { quiz_id: row.id }, order: { order_index: "ASC" } });
-  const options = questions.length
+  const quiz = (await contents(m, [row])).get(row.id);
+  if (!quiz) throw new Error("NOT_FOUND");
+  return quiz;
+}
+/**
+ * The editable content of several quiz rows with two queries in total (questions, then options),
+ * keyed by quiz ID (code review MJ-08: no per-quiz round trips when listing).
+ */
+async function contents(
+  m: EntityManager,
+  rows: readonly QuizRow[],
+): Promise<Map<string, QuizWrite>> {
+  const result = new Map<string, QuizWrite>();
+  if (rows.length === 0) return result;
+  const allQuestions = await m.getRepository<QuestionRow>("questions").find({
+    where: { quiz_id: In(rows.map((row) => row.id)) },
+    order: { order_index: "ASC" },
+  });
+  const options = allQuestions.length
     ? await m.getRepository<OptionRow>("question_options").find({
-        where: { question_id: In(questions.map((q) => q.id)) },
+        where: { question_id: In(allQuestions.map((q) => q.id)) },
         order: { option_index: "ASC" },
       })
     : [];
@@ -94,6 +121,18 @@ async function content(m: EntityManager, row: QuizRow): Promise<QuizWrite> {
     });
     groups.set(opt.question_id, group);
   }
+  for (const row of rows) {
+    const questions = allQuestions.filter((q) => q.quiz_id === row.id);
+    result.set(row.id, quizFromRows(row, questions, groups));
+  }
+  return result;
+}
+/** Validated QuizWrite from a quiz row, its ordered questions and their option groups. */
+function quizFromRows(
+  row: QuizRow,
+  questions: readonly QuestionRow[],
+  groups: ReadonlyMap<string, Option[]>,
+): QuizWrite {
   return quizWriteSchema.parse({
     title: row.title,
     description: row.description,
@@ -237,6 +276,15 @@ export class QuizzesRepository {
       throw new Error("INVALID_REFERENCE");
     return work(manager);
   }
+  /**
+   * Runs a read-only unit with a consistent view and no row locks (code review MJ-08). PostgreSQL
+   * and MySQL use a REPEATABLE READ transaction (snapshot reads, nothing locked); SQLite has one
+   * connection, so the read joins the write queue to stay isolated from open write transactions.
+   */
+  private snapshot<T>(work: (manager: EntityManager) => Promise<T>): Promise<T> {
+    if (this.db.options.type === "better-sqlite3") return writeTransaction(this.db, work);
+    return this.db.transaction("REPEATABLE READ", work);
+  }
   media(ids: readonly string[], manager = this.db.manager) {
     if (manager.connection !== this.db) throw new Error("INVALID_REFERENCE");
     return manager
@@ -271,9 +319,14 @@ export class QuizzesRepository {
         meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
       }));
   }
+  /**
+   * One quiz with its content, creator name, referenced media and the actor's capabilities. With
+   * a caller's write transaction (`manager`) the row is locked for that transaction; otherwise the
+   * read takes no lock (code review MJ-08).
+   */
   read(actor: string, id: string, manager?: EntityManager) {
-    return this.transaction(manager, async (m) => {
-      const row = await visibleRow(m, id, actor, false);
+    const work = async (m: EntityManager) => {
+      const row = await visibleRow(m, id, actor, false, manager !== undefined);
       const quiz = await content(m, row);
       const creator = await m
         .getRepository<UserRow>("users")
@@ -285,6 +338,57 @@ export class QuizzesRepository {
         media: await this.media([...refs(quiz)], m),
         capabilities: capabilities(row.creator_id === actor),
       };
+    };
+    return manager ? this.transaction(manager, work) : this.snapshot(work);
+  }
+  /**
+   * Batch form of `read` for list pages (code review MJ-08): one lock-free snapshot and a fixed
+   * number of queries for any number of IDs. IDs that no longer exist, or that the actor may not
+   * see, are simply absent from the result, so a quiz deleted while a page is built does not fail
+   * the whole page.
+   */
+  readMany(actor: string, ids: readonly string[]) {
+    return this.snapshot(async (m) => {
+      const unique = [...new Set(ids)];
+      const rows = unique.length
+        ? (await m.getRepository<QuizRow>("quizzes").find({ where: { id: In(unique) } })).filter(
+            (row) => row.creator_id === actor || row.visibility !== "PRIVATE",
+          )
+        : [];
+      const quizzes = await contents(m, rows);
+      const creators = new Map(
+        (rows.length
+          ? await m
+              .getRepository<UserRow>("users")
+              .find({ where: { id: In([...new Set(rows.map((row) => row.creator_id))]) } })
+          : []
+        ).map((user) => [user.id, user.name]),
+      );
+      const media = new Map(
+        (
+          await this.media(
+            [...quizzes.values()].flatMap((quiz) => [...refs(quiz)]),
+            m,
+          )
+        ).map((asset) => [asset.id, asset]),
+      );
+      const result = new Map<string, Awaited<ReturnType<QuizzesRepository["read"]>>>();
+      for (const row of rows) {
+        const quiz = quizzes.get(row.id);
+        const creatorName = creators.get(row.creator_id);
+        if (!quiz || creatorName === undefined) continue;
+        result.set(row.id, {
+          row,
+          content: quiz,
+          creatorName,
+          media: [...refs(quiz)].flatMap((id) => {
+            const asset = media.get(id);
+            return asset ? [asset] : [];
+          }),
+          capabilities: capabilities(row.creator_id === actor),
+        });
+      }
+      return result;
     });
   }
   create(actor: string, input: unknown, now: number, manager?: EntityManager) {

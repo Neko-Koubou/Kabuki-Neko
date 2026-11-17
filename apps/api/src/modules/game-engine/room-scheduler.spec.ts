@@ -19,6 +19,7 @@ import {
 } from "@kabuki-neko/database";
 import { ROOM_LIMITS } from "@kabuki-neko/shared/constants/limits";
 import { quizWriteSchema } from "@kabuki-neko/shared/schemas/quiz.schema";
+import { MetricsService } from "../../common/metrics.service";
 import { ConfigService } from "../../config/config.service";
 import { parseEnvironment } from "../../config/env.schema";
 import { JwtGuard, type VerifiedPrincipal } from "../../common/guards/jwt.guard";
@@ -207,15 +208,19 @@ it("lets exactly one instance lead a room and hands over after the lease expires
 
 it("marks rooms LOST on missing state, idle lobbies and non-answering hard expiry, then releases them", async () => {
   const worker = scheduler();
+  // Connected clients learn why their room ended (code review MJ-05).
+  const ended = jest.spyOn(game, "roomEnded");
   const missing = await room(0);
   await store.releaseRoom(missing);
   await worker.scan(now);
   expect(await status(missing)).toBe("LOST");
+  expect(ended).toHaveBeenCalledWith(missing, "ROOM_LOST");
   const idle = await room(0);
   // Allocations are stamped with the real clock, slightly after the fake clock's start.
   now += 2 * 3_600_000 + 1_000;
   await worker.scan(now);
   expect(await status(idle)).toBe("LOST");
+  expect(ended).toHaveBeenCalledWith(idle, "ROOM_EXPIRED");
   expect(await phase(idle)).toBeNull();
   now += 3_600_001;
   await worker.scan(now);
@@ -260,11 +265,57 @@ it("expires an answering question as EXPIRED at the hard lifetime and keeps a pe
   expect(await status(identity)).toBe("CLOSED");
 });
 
+it("ends a hard-expired game outside ANSWERING at PODIUM with a report instead of LOST", async () => {
+  // Code review MJ-06: question 0 was played; the room expires while its answer is revealed.
+  const identity = await room();
+  const worker = scheduler();
+  const ended = jest.spyOn(game, "roomEnded");
+  await command(identity, "host:start_game");
+  now += 3_000;
+  await worker.scan(now);
+  now += 4_000;
+  await worker.scan(now);
+  now += 21_501;
+  await worker.scan(now);
+  expect(await phase(identity)).toBe("ANSWER_REVEAL");
+  const state = await store.getPrivateSnapshot(identity);
+  now = (state?.hardExpiresAt ?? now) + 1;
+  await worker.scan(now);
+  const podium = await store.getPrivateSnapshot(identity);
+  expect(podium).toMatchObject({ phase: "PODIUM", endReason: "EXPIRED" });
+  expect(podium?.finalization?.status).toBe("pending");
+  expect(podium?.frozenReport?.session.endReason).toBe("EXPIRED");
+  expect(podium?.frozenReport?.questions[0]?.status).toBe("PLAYED");
+  expect(ended).not.toHaveBeenCalled();
+  await worker.scan(now);
+  expect(await status(identity)).toBe("FINALIZING");
+});
+
+it("still marks a hard-expired LOBBY as LOST: nothing was played", async () => {
+  const identity = await room();
+  const worker = scheduler();
+  const state = await store.getPrivateSnapshot(identity);
+  now = (state?.hardExpiresAt ?? now) + 1;
+  await worker.scan(now);
+  expect(await status(identity)).toBe("LOST");
+  expect(await phase(identity)).toBeNull();
+});
+
 it("raises one alarm when a frozen report is still not durable 24 h after the game, never evicting it", async () => {
   const errors = jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
   try {
     const identity = await room();
-    const worker = scheduler();
+    const lines: string[] = [];
+    const metrics = new MetricsService((line) => lines.push(line), clock);
+    const worker = new RoomScheduler(
+      runtime,
+      rooms,
+      store,
+      game,
+      configFor(randomUUID()),
+      clock,
+      metrics,
+    );
     await command(identity, "host:start_game");
     now += 3_000;
     await worker.scan(now);
@@ -283,6 +334,14 @@ it("raises one alarm when a frozen report is still not durable 24 h after the ga
     now += 60_000;
     await worker.scan(now);
     expect(errors).toHaveBeenCalledTimes(1);
+    // MJ-16: also one counted, structured alarm event (no IDs in the metric dimension).
+    expect(metrics.snapshot().counters["finalization_pending_alarms"]).toBe(1);
+    expect(lines.map((line) => JSON.parse(line) as { event: string })).toEqual([
+      expect.objectContaining({
+        event: "finalization_pending_alarm",
+        errorCode: "FINALIZATION_PENDING",
+      }),
+    ]);
     expect(String(errors.mock.calls[0]?.[0])).toBe(
       `finalization pending for more than 24 h for session ${identity.sessionId}`,
     );

@@ -1,13 +1,23 @@
 {
   "schemaVersion": 1,
-  "description": "Provenance of the 20 supplied audio inputs and their 40 generated web outputs (TASK-114A). Evidence only: no attribution is guessed, and nothing here grants or confirms distribution rights.",
+  "description": "Provenance of the 20 supplied audio inputs and of the 40 optimized WebM/MP3 files committed in audio-assets/kabuki-neko-audio (TASK-114A). The supplied originals are no longer stored in the repository; their SHA-256, size and duration are kept under `original` as evidence. Evidence only: no attribution is guessed, and nothing here grants or confirms distribution rights.",
   "checkedAt": "2026-11-08",
-  "sourceDirectory": "audio-assets/kabuki-neko-audio",
-  "generatedOutputDirectory": "apps/web/public/audio",
+  "audioDirectory": "audio-assets/kabuki-neko-audio",
+  "publishedDirectory": "apps/web/public/audio",
+  "optimization": {
+    "tool": "scripts/optimize-audio.mjs (maintainer tool; not part of the build)",
+    "optimizedAt": "2026-11-12",
+    "webm": "Opus 96 kbps VBR, 48 kHz",
+    "mp3": "LAME 128 kbps, 44.1 kHz",
+    "bgmLoudness": "loudnorm=I=-16:TP=-1.5:LRA=11 (both encodings)",
+    "sfx": "no loudness normalization",
+    "originalsInRepository": false,
+    "publishRule": "pnpm build:assets copies the committed set byte-for-byte to apps/web/public/audio; no encoder runs"
+  },
   "credits": {
     "file": "audio-assets/kabuki-neko-audio/CREDITS.md",
     "publicCopy": "/audio/CREDITS.md",
-    "copyRule": "byte-identical (pnpm audio:optimize)"
+    "copyRule": "byte-identical (pnpm assets:package --publish-audio)"
   },
   "codeLicense": {
     "name": "Apache License 2.0 with Commons Clause v1.0",
@@ -38,10 +48,24 @@
   "files": [
     {
       "path": "01-lobby/bgm-lobby-kabuki.mp3",
-      "sha256": "84e242467b76ab0dc5af06aec3feb313c6ab6e474d4892bbbda37346c3e205cd",
-      "bytes": 3030732,
-      "durationSeconds": 151.537,
+      "original": {
+        "sha256": "84e242467b76ab0dc5af06aec3feb313c6ab6e474d4892bbbda37346c3e205cd",
+        "bytes": 3030732,
+        "durationSeconds": 151.537
+      },
       "outputs": ["/audio/01-lobby/bgm-lobby-kabuki.webm", "/audio/01-lobby/bgm-lobby-kabuki.mp3"],
+      "outputFiles": [
+        {
+          "url": "/audio/01-lobby/bgm-lobby-kabuki.webm",
+          "sha256": "a6f4b5421b90476d985e1ccd63e2c6bd86d3e528c9460dddcf83af301841fa57",
+          "bytes": 2105827
+        },
+        {
+          "url": "/audio/01-lobby/bgm-lobby-kabuki.mp3",
+          "sha256": "2b84e671aa52b86e5b8dad2bbec41392e392c2d7a5b21196fce4a6182b980ac1",
+          "bytes": 2427551
+        }
+      ],
       "phase": "lobby",
       "cue": "kabuki",
       "kind": "bgm",
@@ -66,10 +90,24 @@
     },
     {
       "path": "01-lobby/bgm-lobby-matcha.mp3",
-      "sha256": "20646812638e795c609a2574c745418be512f5189d46f5f5d2e7896bff3f3842",
-      "bytes": 7679660,
-      "durationSeconds": 191.887,
+      "original": {
+        "sha256": "20646812638e795c609a2574c745418be512f5189d46f5f5d2e7896bff3f3842",
+        "bytes": 7679660,
+        "durationSeconds": 191.887
+      },
       "outputs": ["/audio/01-lobby/bgm-lobby-matcha.webm", "/audio/01-lobby/bgm-lobby-matcha.mp3"],
+      "outputFiles": [
+        {
+          "url": "/audio/01-lobby/bgm-lobby-matcha.webm",
+          "sha256": "b6a7b082671ca2e0911a56df1b94bcef975fe2798b7e2514abf0c7383031623c",
+          "bytes": 2715028
+        },
+        {
+          "url": "/audio/01-lobby/bgm-lobby-matcha.mp3",
+          "sha256": "e5f9c2a99e4d973eb19e4f7121ffcc52dad0887373c9e56243493d8b5d7764af",
+          "bytes": 3073715
+        }
+      ],
       "phase": "lobby",
       "cue": "matcha",
       "kind": "bgm",
@@ -97,12 +135,26 @@
     },
     {
       "path": "01-lobby/bgm-lobby-neko8bit.mp3",
-      "sha256": "a13fb4cde21bce4fe3c32ecbb388742e5ef416da612b6f1e6b529e0a4c4874c3",
-      "bytes": 4748608,
-      "durationSeconds": 144.072,
+      "original": {
+        "sha256": "a13fb4cde21bce4fe3c32ecbb388742e5ef416da612b6f1e6b529e0a4c4874c3",
+        "bytes": 4748608,
+        "durationSeconds": 144.072
+      },
       "outputs": [
         "/audio/01-lobby/bgm-lobby-neko8bit.webm",
         "/audio/01-lobby/bgm-lobby-neko8bit.mp3"
+      ],
+      "outputFiles": [
+        {
+          "url": "/audio/01-lobby/bgm-lobby-neko8bit.webm",
+          "sha256": "84c1cf2b7df907e7687b0e65955971fba624f1fd7df9fd5d31e6a1f841f9c73e",
+          "bytes": 1820009
+        },
+        {
+          "url": "/audio/01-lobby/bgm-lobby-neko8bit.mp3",
+          "sha256": "6d54c23cb2517c6da146bd947d94d45ede66507a0bf9b1cf124b0f774ee52060",
+          "bytes": 2305924
+        }
       ],
       "phase": "lobby",
       "cue": "neko8bit",
@@ -130,12 +182,26 @@
     },
     {
       "path": "01-lobby/bgm-lobby-showtime.mp3",
-      "sha256": "3fbf55e57777abd7801912ea9938e53c03befd55dd0f2720b021a7270874be22",
-      "bytes": 1183968,
-      "durationSeconds": 29.571,
+      "original": {
+        "sha256": "3fbf55e57777abd7801912ea9938e53c03befd55dd0f2720b021a7270874be22",
+        "bytes": 1183968,
+        "durationSeconds": 29.571
+      },
       "outputs": [
         "/audio/01-lobby/bgm-lobby-showtime.webm",
         "/audio/01-lobby/bgm-lobby-showtime.mp3"
+      ],
+      "outputFiles": [
+        {
+          "url": "/audio/01-lobby/bgm-lobby-showtime.webm",
+          "sha256": "3b53609febf0803aaf940011ea33ef071afd50c61c347af94195ae5a8d32b32d",
+          "bytes": 352411
+        },
+        {
+          "url": "/audio/01-lobby/bgm-lobby-showtime.mp3",
+          "sha256": "bc63762d2935cee15e38845f3e93b8b0ab2be3e5ba700a5280b2475a4d964344",
+          "bytes": 473591
+        }
       ],
       "phase": "lobby",
       "cue": "showtime",
@@ -161,12 +227,26 @@
     },
     {
       "path": "02-thinking/bgm-think-puzzle.mp3",
-      "sha256": "59083d3365281346e20fad655157000f5e745eca8bff23b01c11d12c4eae3a26",
-      "bytes": 1099331,
-      "durationSeconds": 27.455,
+      "original": {
+        "sha256": "59083d3365281346e20fad655157000f5e745eca8bff23b01c11d12c4eae3a26",
+        "bytes": 1099331,
+        "durationSeconds": 27.455
+      },
       "outputs": [
         "/audio/02-thinking/bgm-think-puzzle.webm",
         "/audio/02-thinking/bgm-think-puzzle.mp3"
+      ],
+      "outputFiles": [
+        {
+          "url": "/audio/02-thinking/bgm-think-puzzle.webm",
+          "sha256": "8e7116af56ae3cb61308ee7d93b40366b1b8588ac261886b9fa0b73922fa6454",
+          "bytes": 350385
+        },
+        {
+          "url": "/audio/02-thinking/bgm-think-puzzle.mp3",
+          "sha256": "79922802dfa4a6e325084a0e37a5cc288f982b93f887868227a54b0d5aac11aa",
+          "bytes": 439737
+        }
       ],
       "phase": "thinking",
       "cue": "puzzle",
@@ -194,12 +274,26 @@
     },
     {
       "path": "02-thinking/bgm-think-sprint.mp3",
-      "sha256": "e3df71f3295ad801c6177e75dd4e328a8820790888b590277f526e12786b76a8",
-      "bytes": 638427,
-      "durationSeconds": 39.967,
+      "original": {
+        "sha256": "e3df71f3295ad801c6177e75dd4e328a8820790888b590277f526e12786b76a8",
+        "bytes": 638427,
+        "durationSeconds": 39.967
+      },
       "outputs": [
         "/audio/02-thinking/bgm-think-sprint.webm",
         "/audio/02-thinking/bgm-think-sprint.mp3"
+      ],
+      "outputFiles": [
+        {
+          "url": "/audio/02-thinking/bgm-think-sprint.webm",
+          "sha256": "6cbb01291ea350df7d0ae5adfa7cb329d57772e475fcff5d0b18bd287cfba338",
+          "bytes": 515922
+        },
+        {
+          "url": "/audio/02-thinking/bgm-think-sprint.mp3",
+          "sha256": "ffb831812406eeb30213ee1a32f47d124dbd66aa78fb15ea1a003d45e5fae3c7",
+          "bytes": 640357
+        }
       ],
       "phase": "thinking",
       "cue": "sprint",
@@ -227,12 +321,26 @@
     },
     {
       "path": "02-thinking/bgm-think-standard.mp3",
-      "sha256": "bb47a7c1943a6ebc10abf425c844ad94c0c667a5cc18f122294f4b8dca50da01",
-      "bytes": 1994817,
-      "durationSeconds": 83.075,
+      "original": {
+        "sha256": "bb47a7c1943a6ebc10abf425c844ad94c0c667a5cc18f122294f4b8dca50da01",
+        "bytes": 1994817,
+        "durationSeconds": 83.075
+      },
       "outputs": [
         "/audio/02-thinking/bgm-think-standard.webm",
         "/audio/02-thinking/bgm-think-standard.mp3"
+      ],
+      "outputFiles": [
+        {
+          "url": "/audio/02-thinking/bgm-think-standard.webm",
+          "sha256": "12fe0b3576f88848163af045e1259f5bbfbb50efd537daa4ef6d01690ce45851",
+          "bytes": 1110097
+        },
+        {
+          "url": "/audio/02-thinking/bgm-think-standard.mp3",
+          "sha256": "279811ccc6a24f7adb5d9bf5e660bf2b0894487a3b8cf943a74a59af60e69ef2",
+          "bytes": 1329990
+        }
       ],
       "phase": "thinking",
       "cue": "standard",
@@ -258,12 +366,26 @@
     },
     {
       "path": "03-leaderboard/bgm-leaderboard-groove.mp3",
-      "sha256": "154e6a8eb8fb3a58d57bbfaac8ae5deddfb361781f2b1ca3e7dc5bd86aaacf2c",
-      "bytes": 3213376,
-      "durationSeconds": 80.232,
+      "original": {
+        "sha256": "154e6a8eb8fb3a58d57bbfaac8ae5deddfb361781f2b1ca3e7dc5bd86aaacf2c",
+        "bytes": 3213376,
+        "durationSeconds": 80.232
+      },
       "outputs": [
         "/audio/03-leaderboard/bgm-leaderboard-groove.webm",
         "/audio/03-leaderboard/bgm-leaderboard-groove.mp3"
+      ],
+      "outputFiles": [
+        {
+          "url": "/audio/03-leaderboard/bgm-leaderboard-groove.webm",
+          "sha256": "8631b06e9469b20a92751beaadf77b3321f07ac4b43d3887f818326fc2939004",
+          "bytes": 1223062
+        },
+        {
+          "url": "/audio/03-leaderboard/bgm-leaderboard-groove.mp3",
+          "sha256": "c654722c4478d646354a4bdb7fd8aed3c7b88b723459a66e0166c4b58d2a21c3",
+          "bytes": 1284850
+        }
       ],
       "phase": "leaderboard",
       "cue": "groove",
@@ -289,12 +411,26 @@
     },
     {
       "path": "04-podium/bgm-podium-buildup.mp3",
-      "sha256": "0d76cb6cecd0652a38e347ecf2a4a915837a31a04267766ba773b3fc980390ef",
-      "bytes": 5083056,
-      "durationSeconds": 211.704,
+      "original": {
+        "sha256": "0d76cb6cecd0652a38e347ecf2a4a915837a31a04267766ba773b3fc980390ef",
+        "bytes": 5083056,
+        "durationSeconds": 211.704
+      },
       "outputs": [
         "/audio/04-podium/bgm-podium-buildup.webm",
         "/audio/04-podium/bgm-podium-buildup.mp3"
+      ],
+      "outputFiles": [
+        {
+          "url": "/audio/04-podium/bgm-podium-buildup.webm",
+          "sha256": "3e27ed2cbe9667b510dae4d13121d504244aefde93fc92ced8b02b6e035a22e6",
+          "bytes": 2975024
+        },
+        {
+          "url": "/audio/04-podium/bgm-podium-buildup.mp3",
+          "sha256": "eb7f3bf41532df0bf19e54c6c82e4ecbcdda22b9714f8099d7343e0f30d4ba2f",
+          "bytes": 3388439
+        }
       ],
       "phase": "podium",
       "cue": "buildup",
@@ -322,12 +458,26 @@
     },
     {
       "path": "04-podium/bgm-podium-victory.mp3",
-      "sha256": "4764255bde27feaa547749631daac5e2d4d72a1615ae4e58a07530546b058672",
-      "bytes": 9505524,
-      "durationSeconds": 395.893,
+      "original": {
+        "sha256": "4764255bde27feaa547749631daac5e2d4d72a1615ae4e58a07530546b058672",
+        "bytes": 9505524,
+        "durationSeconds": 395.893
+      },
       "outputs": [
         "/audio/04-podium/bgm-podium-victory.webm",
         "/audio/04-podium/bgm-podium-victory.mp3"
+      ],
+      "outputFiles": [
+        {
+          "url": "/audio/04-podium/bgm-podium-victory.webm",
+          "sha256": "d29eccaa6b6f2b5f8044a05fec7c951783f93995bcbbc6c65741ab84a6d4f39f",
+          "bytes": 4974199
+        },
+        {
+          "url": "/audio/04-podium/bgm-podium-victory.mp3",
+          "sha256": "f5d13f9d3a8469d595031db5bad682e5227b0041a68b26db488358ab6b7acd56",
+          "bytes": 6344664
+        }
       ],
       "phase": "podium",
       "cue": "victory",
@@ -353,10 +503,24 @@
     },
     {
       "path": "05-sfx/sfx-answer-correct.mp3",
-      "sha256": "e94301a555dfce24900d7abaaa893334097ec9655aa621124b04fd9c33e4d6db",
-      "bytes": 40123,
-      "durationSeconds": 1.228,
+      "original": {
+        "sha256": "e94301a555dfce24900d7abaaa893334097ec9655aa621124b04fd9c33e4d6db",
+        "bytes": 40123,
+        "durationSeconds": 1.228
+      },
       "outputs": ["/audio/05-sfx/sfx-answer-correct.webm", "/audio/05-sfx/sfx-answer-correct.mp3"],
+      "outputFiles": [
+        {
+          "url": "/audio/05-sfx/sfx-answer-correct.webm",
+          "sha256": "bd2d3e0561c335f3f7a4e3ef87f295c5e11be6f41273cd785b77059513cac03a",
+          "bytes": 17552
+        },
+        {
+          "url": "/audio/05-sfx/sfx-answer-correct.mp3",
+          "sha256": "0b8341f6b0bad01f36ab0862e403c71c038015d38ea3274f9cb0a09e776680f8",
+          "bytes": 20106
+        }
+      ],
       "phase": "sfx",
       "cue": "answerCorrect",
       "kind": "sfx",
@@ -383,10 +547,24 @@
     },
     {
       "path": "05-sfx/sfx-answer-wrong.mp3",
-      "sha256": "4c02589a6a598ec1e4b665abac52a67cf5b49fb874cf72f1728d8aea2b79b1e9",
-      "bytes": 40750,
-      "durationSeconds": 1.698,
+      "original": {
+        "sha256": "4c02589a6a598ec1e4b665abac52a67cf5b49fb874cf72f1728d8aea2b79b1e9",
+        "bytes": 40750,
+        "durationSeconds": 1.698
+      },
       "outputs": ["/audio/05-sfx/sfx-answer-wrong.webm", "/audio/05-sfx/sfx-answer-wrong.mp3"],
+      "outputFiles": [
+        {
+          "url": "/audio/05-sfx/sfx-answer-wrong.webm",
+          "sha256": "2fe0e5e9c7edd5ada52555d729e950e4a89a5b147f0da13ff3a4478675d3aa1c",
+          "bytes": 25792
+        },
+        {
+          "url": "/audio/05-sfx/sfx-answer-wrong.mp3",
+          "sha256": "46034415da5b202b40e6453d7624609da8a261231427b1edb7796867eec66a91",
+          "bytes": 28047
+        }
+      ],
       "phase": "sfx",
       "cue": "answerWrong",
       "kind": "sfx",
@@ -413,10 +591,24 @@
     },
     {
       "path": "05-sfx/sfx-hyoshigi-start.mp3",
-      "sha256": "daf1e106dc295082358b689101533655b76779fd9a24f2be8b5edf684eb9d884",
-      "bytes": 12955,
-      "durationSeconds": 0.784,
+      "original": {
+        "sha256": "daf1e106dc295082358b689101533655b76779fd9a24f2be8b5edf684eb9d884",
+        "bytes": 12955,
+        "durationSeconds": 0.784
+      },
       "outputs": ["/audio/05-sfx/sfx-hyoshigi-start.webm", "/audio/05-sfx/sfx-hyoshigi-start.mp3"],
+      "outputFiles": [
+        {
+          "url": "/audio/05-sfx/sfx-hyoshigi-start.webm",
+          "sha256": "2388eade35cae4317c80f2fd5621c5d6466be7ea05191bfc24954713c66b7652",
+          "bytes": 9425
+        },
+        {
+          "url": "/audio/05-sfx/sfx-hyoshigi-start.mp3",
+          "sha256": "d8b0adf54981f9cc409aaa13027915f0b0d6e7c4f53b5526bfcaee27b1d874c7",
+          "bytes": 13000
+        }
+      ],
       "phase": "sfx",
       "cue": "hyoshigiStart",
       "kind": "sfx",
@@ -443,10 +635,24 @@
     },
     {
       "path": "05-sfx/sfx-neko-pop.mp3",
-      "sha256": "a4fae393fad93cd24c6902ca9d5914986353139e4751585caea62bad290f2472",
-      "bytes": 9970,
-      "durationSeconds": 0.648,
+      "original": {
+        "sha256": "a4fae393fad93cd24c6902ca9d5914986353139e4751585caea62bad290f2472",
+        "bytes": 9970,
+        "durationSeconds": 0.648
+      },
       "outputs": ["/audio/05-sfx/sfx-neko-pop.webm", "/audio/05-sfx/sfx-neko-pop.mp3"],
+      "outputFiles": [
+        {
+          "url": "/audio/05-sfx/sfx-neko-pop.webm",
+          "sha256": "2a135ded62aeb3b3d8c62204b0928676b3589b4ed3f9c0756f4f9b5a4e6c28a3",
+          "bytes": 9199
+        },
+        {
+          "url": "/audio/05-sfx/sfx-neko-pop.mp3",
+          "sha256": "4dbfec30f495d3664336d849b2c6c92457cdf734d1da1c7006f5d370284bdf7f",
+          "bytes": 11328
+        }
+      ],
       "phase": "sfx",
       "cue": "nekoPop",
       "kind": "sfx",
@@ -473,12 +679,26 @@
     },
     {
       "path": "05-sfx/sfx-podium-spotlight.mp3",
-      "sha256": "ee48934885f0ca34c69b4bc4284b3c214d15585e86cf489c262c5220bc0f36bc",
-      "bytes": 198111,
-      "durationSeconds": 6.165,
+      "original": {
+        "sha256": "ee48934885f0ca34c69b4bc4284b3c214d15585e86cf489c262c5220bc0f36bc",
+        "bytes": 198111,
+        "durationSeconds": 6.165
+      },
       "outputs": [
         "/audio/05-sfx/sfx-podium-spotlight.webm",
         "/audio/05-sfx/sfx-podium-spotlight.mp3"
+      ],
+      "outputFiles": [
+        {
+          "url": "/audio/05-sfx/sfx-podium-spotlight.webm",
+          "sha256": "20bc58592986e81b575f5cf511711127909d1dac0ea5de2c3661854429a2f25e",
+          "bytes": 73094
+        },
+        {
+          "url": "/audio/05-sfx/sfx-podium-spotlight.mp3",
+          "sha256": "21f4827ee6165f67f5a5e5f3566ceb1ea3d47006d8fec9b5fcf49072a7920a13",
+          "bytes": 99100
+        }
       ],
       "phase": "sfx",
       "cue": "podiumSpotlight",
@@ -506,12 +726,26 @@
     },
     {
       "path": "05-sfx/sfx-question-whoosh.mp3",
-      "sha256": "c7655219637304c269eca65e880b6bf41ce5b0419c4125b53e691be9f3d93bc3",
-      "bytes": 36779,
-      "durationSeconds": 2.273,
+      "original": {
+        "sha256": "c7655219637304c269eca65e880b6bf41ce5b0419c4125b53e691be9f3d93bc3",
+        "bytes": 36779,
+        "durationSeconds": 2.273
+      },
       "outputs": [
         "/audio/05-sfx/sfx-question-whoosh.webm",
         "/audio/05-sfx/sfx-question-whoosh.mp3"
+      ],
+      "outputFiles": [
+        {
+          "url": "/audio/05-sfx/sfx-question-whoosh.webm",
+          "sha256": "e112c95752b19b868adace9b2bbcebc99f4c367f02859e091a6fa7765fa611b1",
+          "bytes": 28659
+        },
+        {
+          "url": "/audio/05-sfx/sfx-question-whoosh.mp3",
+          "sha256": "505b84ff7e980d5292fb5a284fcfb1b134ade1f4150edd38c3bce7ee8f77a9ca",
+          "bytes": 36824
+        }
       ],
       "phase": "sfx",
       "cue": "questionWhoosh",
@@ -539,10 +773,24 @@
     },
     {
       "path": "05-sfx/sfx-reveal-bar.mp3",
-      "sha256": "beb816685abf3cb658c1a0999576cf9ae8ab95c961b400e8546d8d49ace8f24f",
-      "bytes": 241920,
-      "durationSeconds": 6.048,
+      "original": {
+        "sha256": "beb816685abf3cb658c1a0999576cf9ae8ab95c961b400e8546d8d49ace8f24f",
+        "bytes": 241920,
+        "durationSeconds": 6.048
+      },
       "outputs": ["/audio/05-sfx/sfx-reveal-bar.webm", "/audio/05-sfx/sfx-reveal-bar.mp3"],
+      "outputFiles": [
+        {
+          "url": "/audio/05-sfx/sfx-reveal-bar.webm",
+          "sha256": "e9f1429c2f8ecbf818e4075f689363103a7842c9b320ade7d73672b775301503",
+          "bytes": 88766
+        },
+        {
+          "url": "/audio/05-sfx/sfx-reveal-bar.mp3",
+          "sha256": "60f68642df1e9167077e17ec83cdde9e06c856aa0967f58d588be81f40d8d7f5",
+          "bytes": 97846
+        }
+      ],
       "phase": "sfx",
       "cue": "revealBar",
       "kind": "sfx",
@@ -569,10 +817,24 @@
     },
     {
       "path": "05-sfx/sfx-streak-fire.mp3",
-      "sha256": "03d23f5ad2ffc8c09d511c22c84fbae8dac62ca2db225ba9e58a0e60ee1567b0",
-      "bytes": 37615,
-      "durationSeconds": 1.567,
+      "original": {
+        "sha256": "03d23f5ad2ffc8c09d511c22c84fbae8dac62ca2db225ba9e58a0e60ee1567b0",
+        "bytes": 37615,
+        "durationSeconds": 1.567
+      },
       "outputs": ["/audio/05-sfx/sfx-streak-fire.webm", "/audio/05-sfx/sfx-streak-fire.mp3"],
+      "outputFiles": [
+        {
+          "url": "/audio/05-sfx/sfx-streak-fire.webm",
+          "sha256": "06eede92d72400bf35510eac4332761844312b8a123439cff98173d372f61238",
+          "bytes": 11488
+        },
+        {
+          "url": "/audio/05-sfx/sfx-streak-fire.mp3",
+          "sha256": "26eee5d3b6295b4cf3ed898bdefcc145b373ec27c3fd52f27850b7baab5ba3bc",
+          "bytes": 25957
+        }
+      ],
       "phase": "sfx",
       "cue": "streakFire",
       "kind": "sfx",
@@ -599,10 +861,24 @@
     },
     {
       "path": "05-sfx/sfx-tick-last5s.mp3",
-      "sha256": "452508dde277a3f3ec6511773d2c2f363b4152b6d0480be5b010456acb37da90",
-      "bytes": 456410,
-      "durationSeconds": 28.5,
+      "original": {
+        "sha256": "452508dde277a3f3ec6511773d2c2f363b4152b6d0480be5b010456acb37da90",
+        "bytes": 456410,
+        "durationSeconds": 28.5
+      },
       "outputs": ["/audio/05-sfx/sfx-tick-last5s.webm", "/audio/05-sfx/sfx-tick-last5s.mp3"],
+      "outputFiles": [
+        {
+          "url": "/audio/05-sfx/sfx-tick-last5s.webm",
+          "sha256": "bd3001cc3edba765c91512556a32a82de060166a3f620ee57d9a94bfada455a5",
+          "bytes": 414745
+        },
+        {
+          "url": "/audio/05-sfx/sfx-tick-last5s.mp3",
+          "sha256": "83c277d1d942c87e83090bb0e86ddf76e70e55fa836c19cb2784a99013c8069b",
+          "bytes": 456455
+        }
+      ],
       "phase": "sfx",
       "cue": "tickLast5s",
       "kind": "sfx",
@@ -629,10 +905,24 @@
     },
     {
       "path": "05-sfx/sfx-timeup-gong.mp3",
-      "sha256": "cad65f5ab04826ecd7ddddd8f70d65704780b8f219ee0ed4f692e2baf5c00fcf",
-      "bytes": 97092,
-      "durationSeconds": 2.325,
+      "original": {
+        "sha256": "cad65f5ab04826ecd7ddddd8f70d65704780b8f219ee0ed4f692e2baf5c00fcf",
+        "bytes": 97092,
+        "durationSeconds": 2.325
+      },
       "outputs": ["/audio/05-sfx/sfx-timeup-gong.webm", "/audio/05-sfx/sfx-timeup-gong.mp3"],
+      "outputFiles": [
+        {
+          "url": "/audio/05-sfx/sfx-timeup-gong.webm",
+          "sha256": "04339112274f2ef607a62393d1efa9446f5960a2327df8d4d71e641036634dda",
+          "bytes": 29931
+        },
+        {
+          "url": "/audio/05-sfx/sfx-timeup-gong.mp3",
+          "sha256": "33fc9001e7cfe735ecac220934e3cac9b2619a07285f189716a05e50b9bd70a2",
+          "bytes": 38078
+        }
+      ],
       "phase": "sfx",
       "cue": "timeupGong",
       "kind": "sfx",

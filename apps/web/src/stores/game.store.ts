@@ -147,6 +147,48 @@ function phaseTiming(serverTime: number, durationMs: number | null): RoomSnapsho
   };
 }
 
+/** Phases before the final podium, in which the host may still kick and end (server projector). */
+const ACTIVE_HOST_PHASES: ReadonlySet<RoomSnapshot["phase"]> = new Set([
+  "LOBBY",
+  "GAME_START_COUNTDOWN",
+  "QUESTION_PREVIEW",
+  "QUESTION_ANSWERING",
+  "ANSWER_REVEAL",
+  "LEADERBOARD",
+]);
+
+/**
+ * Host capabilities after an applied push, by the server projector's rules (room-projector.ts).
+ * Pushes carry no capabilities, and since applied pushes advance `publicRevision` (MJ-25) no full
+ * `room:sync` refreshes them, so the store derives them from the reduced roster and phase:
+ * otherwise `canStart` stays false after the first player joins an empty lobby. `canSkip` also
+ * needs the private `accepting` flag: it is true when answering opens and keeps the last
+ * snapshot's value while the phase stays the same (a closed question moves on to the reveal).
+ */
+function hostCapabilities(
+  previous: HostRoomSync,
+  next: HostRoomSync,
+): HostRoomSync["capabilities"] {
+  const phase = next.phase;
+  const connected = next.players.filter((player) => player.connected).length;
+  return {
+    canStart: phase === "LOBBY" && connected > 0,
+    canLock: phase === "LOBBY",
+    canKick: ACTIVE_HOST_PHASES.has(phase),
+    canSkip:
+      phase === "QUESTION_ANSWERING" &&
+      (previous.phase === "QUESTION_ANSWERING" ? previous.capabilities.canSkip : true),
+    canNext: phase === "ANSWER_REVEAL" || phase === "LEADERBOARD",
+    canEnd: ACTIVE_HOST_PHASES.has(phase),
+  };
+}
+
+/** Pushes sent only to the host channel; they never advance the public revision. */
+const HOST_ONLY_EVENTS: ReadonlySet<string> = new Set([
+  "game:answer_count_updated",
+  "report:status_changed",
+]);
+
 /** Applies a validated event payload to the snapshot; returns null for unknown events. */
 function reduce(
   snapshot: RoomSnapshot,
@@ -156,6 +198,13 @@ function reduce(
 ): RoomSnapshot | null {
   const base = {
     revision: Math.max(snapshot.revision, envelope.revision),
+    // A room-wide push reflects the public state at its revision (the server sets
+    // publicRevision = revision on every public mutation), so the heartbeat comparison stays
+    // quiet after applied events. Host-only pushes do not change the public revision
+    // (code review MJ-25).
+    publicRevision: HOST_ONLY_EVENTS.has(name)
+      ? snapshot.publicRevision
+      : Math.max(snapshot.publicRevision, envelope.revision),
     phaseVersion: Math.max(snapshot.phaseVersion, envelope.phaseVersion),
     serverTime: envelope.serverTime,
   };
@@ -219,7 +268,7 @@ function reduce(
         },
         ...(snapshot.role === "player"
           ? { self: { ...snapshot.self, acceptedAnswer: null, result: null } }
-          : { answeredCount: 0 }),
+          : { answeredCount: 0, eligibleCount: 0 }),
       });
     case "game:question_answering":
       return patch(snapshot, {
@@ -237,7 +286,13 @@ function reduce(
       });
     case "game:answer_count_updated":
       return snapshot.role === "host"
-        ? patch(snapshot, { ...base, answeredCount: data.answeredCount })
+        ? // totalPlayers is the server's eligibleCount (required, not kicked); like the
+          // capabilities it is otherwise only refreshed by a full room:sync (QA regression of MJ-25).
+          patch(snapshot, {
+            ...base,
+            answeredCount: data.answeredCount,
+            eligibleCount: data.totalPlayers,
+          })
         : patch(snapshot, base);
     case "game:answer_reveal": {
       const result = data.result as PersonalResult | undefined;
@@ -366,15 +421,17 @@ export function createGameStore(): StoreApi<GameState> {
         });
         return { applied: true };
       }
-      if (envelope.revision <= state.snapshotRevision)
-        return { applied: false, reason: "stale-revision" };
       if (state.seenEventIds.has(envelope.eventId)) return { applied: false, reason: "duplicate" };
-      if (envelope.phaseVersion < state.phaseVersion)
-        return { applied: false, reason: "stale-phase" };
-      const seen = new Set(state.seenEventIds);
-      seen.add(envelope.eventId);
-      if (seen.size > MAX_SEEN_EVENTS) seen.delete(seen.values().next().value ?? "");
-
+      /** Remembers the event id (bounded) so a duplicate delivery is ignored. */
+      const remember = () => {
+        const seen = new Set(state.seenEventIds);
+        seen.add(envelope.eventId);
+        if (seen.size > MAX_SEEN_EVENTS) seen.delete(seen.values().next().value ?? "");
+        return seen;
+      };
+      // Terminal pushes end the session whatever their revision: the server sends `room:expired`
+      // for a released room with revision/phaseVersion 1, which the revision fence below would
+      // always drop (code review MJ-29). Session id and event-id dedup still apply.
       if (
         name === "player:kicked" ||
         name === "player:session_replaced" ||
@@ -386,15 +443,25 @@ export function createGameStore(): StoreApi<GameState> {
             : name === "player:session_replaced"
               ? "SESSION_REPLACED"
               : (envelope.data as { reason: "ROOM_EXPIRED" | "ROOM_LOST" }).reason;
-        set({ seenEventIds: seen, terminal: reason });
+        set({ seenEventIds: remember(), terminal: reason });
         return { applied: true };
       }
+      if (envelope.revision <= state.snapshotRevision)
+        return { applied: false, reason: "stale-revision" };
+      if (envelope.phaseVersion < state.phaseVersion)
+        return { applied: false, reason: "stale-phase" };
+      const seen = remember();
+
       if (name === "room:error") {
         set({ seenEventIds: seen, syncRequested: true });
         return { applied: true };
       }
-      const next = reduce(snapshot, name, envelope.data as Record<string, unknown>, envelope);
-      if (next === null) return { applied: false, reason: "unknown-event" };
+      const reduced = reduce(snapshot, name, envelope.data as Record<string, unknown>, envelope);
+      if (reduced === null) return { applied: false, reason: "unknown-event" };
+      const next =
+        reduced.role === "host" && snapshot.role === "host"
+          ? { ...reduced, capabilities: hostCapabilities(snapshot, reduced) }
+          : reduced;
       set({
         snapshot: next,
         seenEventIds: seen,

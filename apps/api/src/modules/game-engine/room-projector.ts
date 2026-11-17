@@ -11,12 +11,17 @@
  * receive the same permitted content; only the client layout differs.
  */
 import {
+  finalizeStatusSchema,
   hostRoomSyncSchema,
   playerRoomSyncSchema,
+  type FinalizeStatus,
   type HostRoomSync,
   type PlayerRoomSync,
   type PublicQuestion,
+  type Reveal,
 } from "@kabuki-neko/shared/schemas/game.schema";
+import { playerPodiumDataSchema, playerRevealDataSchema } from "@kabuki-neko/shared/socket-events";
+import type { z } from "zod";
 import {
   StateDomainError,
   type ActiveRoomState,
@@ -179,16 +184,7 @@ export function projectHost(
     answeredCount: phase === "QUESTION_ANSWERING" || phase === "ANSWER_REVEAL" ? answered : 0,
     eligibleCount:
       phase === "QUESTION_ANSWERING" || phase === "ANSWER_REVEAL" ? required.length : 0,
-    finalization: state.finalization
-      ? {
-          sessionId: state.finalization.sessionId,
-          status: state.finalization.status,
-          reportId: state.finalization.reportId,
-          retryable: state.finalization.retryable,
-          errorCode: state.finalization.errorCode,
-          updatedAt: state.finalization.updatedAt,
-        }
-      : null,
+    finalization: finalizationOf(state),
     capabilities: {
       canStart: phase === "LOBBY" && connected > 0,
       canLock: phase === "LOBBY",
@@ -244,6 +240,68 @@ export function projectPlayer(
         : null,
       result: personal ?? null,
     },
+  });
+}
+
+/** Host-only finalization fields, copied by allowlist (validated by the caller's schema). */
+function finalizationOf(state: Readonly<ActiveRoomState>) {
+  const status = state.finalization;
+  return status
+    ? {
+        sessionId: status.sessionId,
+        status: status.status,
+        reportId: status.reportId,
+        retryable: status.retryable,
+        errorCode: status.errorCode,
+        updatedAt: status.updatedAt,
+      }
+    : null;
+}
+
+/**
+ * `report:status_changed` data for the host: the same allowlisted finalization fields as the host
+ * snapshot, without projecting the whole room (QA follow-up TASK-185C).
+ */
+export function projectFinalization(state: Readonly<ActiveRoomState>): FinalizeStatus | null {
+  const status = finalizationOf(state);
+  return status ? finalizeStatusSchema.parse(status) : null;
+}
+
+/** The current personal result of one player, for the reveal or the podium push. */
+function personalResult(state: Readonly<ActiveRoomState>, playerId: string, index: number | null) {
+  return index === null ? undefined : state.results[String(index)]?.personal[playerId];
+}
+
+/**
+ * `game:answer_reveal` data for one player: the room's public reveal (shared, computed once per
+ * publish) plus only that player's own personal result. It equals the `reveal` and `self.result`
+ * of `projectPlayer` for the player, without validating a whole room snapshot per player, which
+ * made a 200-player reveal O(n²) (QA follow-up TASK-185C). Null when the player has no result.
+ */
+export function projectPlayerReveal(
+  state: Readonly<ActiveRoomState>,
+  playerId: string,
+  reveal: Reveal,
+): z.infer<typeof playerRevealDataSchema> | null {
+  const result = personalResult(state, playerId, state.questionIndex);
+  return result ? playerRevealDataSchema.parse({ reveal, result }) : null;
+}
+
+/**
+ * `game:podium` data for one player: the room's podium (shared) plus only that player's result
+ * of the last scored question, as `projectPlayer` reports it at PODIUM (TASK-185C).
+ */
+export function projectPlayerPodium(
+  state: Readonly<ActiveRoomState>,
+  playerId: string,
+  podium: HostRoomSync["podium"],
+): z.infer<typeof playerPodiumDataSchema> {
+  const latest = Object.keys(state.results)
+    .map(Number)
+    .sort((a, b) => b - a)[0];
+  return playerPodiumDataSchema.parse({
+    podium,
+    result: personalResult(state, playerId, latest ?? null) ?? null,
   });
 }
 

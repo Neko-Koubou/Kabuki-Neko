@@ -114,6 +114,13 @@ export interface IGameStateStore {
   markFinalization(identity: RoomIdentity, status: FinalizeStatus): Promise<number>;
   /** Detached private read is restricted to scheduler, scoring and finalization. */
   getPrivateSnapshot(identity: RoomIdentity): Promise<ActiveRoomState | null>;
+  /**
+   * Private read without a defensive copy, for hot read-only paths (gateway publish, settle;
+   * QA follow-up TASK-185B). The result may be the store's live state: callers must never mutate
+   * it and must not use it after their next `await`, when the store may have changed it. Redis
+   * returns a freshly parsed object, so the contract is the same for both stores.
+   */
+  readPrivateSnapshot(identity: RoomIdentity): Promise<Readonly<ActiveRoomState> | null>;
   reserveFriendlyTicket(identity: RoomIdentity, ticket: FriendlyTicket): Promise<void>;
   setPresence(
     identity: RoomIdentity,
@@ -150,5 +157,20 @@ export interface IGameStateStore {
     timing: ActiveRoomState["timing"],
     questionIndex: number | null,
   ): Promise<boolean>;
+  /**
+   * Hard-lifetime end of a started game outside QUESTION_ANSWERING (code review MJ-06; SA §5.5,
+   * BR-18): GAME_START_COUNTDOWN, QUESTION_PREVIEW, ANSWER_REVEAL or LEADERBOARD moves to PODIUM
+   * with endReason EXPIRED and a pending finalization, so the played questions still produce a
+   * report. Allowed only once `hardExpiresAt` has passed; a stale phase version returns false;
+   * any other phase fails with INVALID_PHASE.
+   */
+  expireToPodium(identity: RoomIdentity, expectedPhaseVersion: number): Promise<boolean>;
 }
+/** Phases `expireToPodium` accepts: started, not answering, not yet at the podium. */
+export const EXPIRABLE_TO_PODIUM: readonly GamePhase[] = [
+  "GAME_START_COUNTDOWN",
+  "QUESTION_PREVIEW",
+  "ANSWER_REVEAL",
+  "LEADERBOARD",
+];
 export const GAME_STATE_STORE = Symbol("GAME_STATE_STORE");

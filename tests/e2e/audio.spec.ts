@@ -379,11 +379,24 @@ test("plays the full role matrix, bounded loops and a silent teardown", async ({
 
   // Start: lobby fades, hyoshigi, whoosh, then the sprint thinking loop (10 s ≤ 15 s).
   await host.getByRole("button", { name: "Start game" }).click();
+  // revealBar plays 450 ms into ANSWER_REVEAL and is cancelled when the host moves on earlier, as
+  // every pending cue is on a phase change. The host controls follow the reveal push at once, so
+  // the host waits for the cue before advancing (as a person reading the reveal would).
+  let reveals = 0;
+  const revealBarPlayed = async () => {
+    reveals += 1;
+    await expect
+      .poll(async () => sfxCalls(await readAudioLog(host)).get("revealBar")?.length ?? 0, {
+        timeout: 5_000,
+      })
+      .toBe(reveals);
+  };
   // Questions 1–3 correct (streak 3), then skipped before the last five seconds.
   for (const text of ["Dua", "Biru", "Kucing"]) {
     await answer(player, text);
     await host.getByRole("button", { name: "Skip timer" }).click();
     await phase(host, "ANSWER_REVEAL");
+    await revealBarPlayed();
     await host.getByRole("button", { name: "Show leaderboard" }).click();
     await phase(host, "LEADERBOARD");
     await host.getByRole("button", { name: "Next question" }).click();
@@ -393,6 +406,7 @@ test("plays the full role matrix, bounded loops and a silent teardown", async ({
   await answer(player, "Osaka");
   await phase(host, "ANSWER_REVEAL", 30_000);
   await expect(player.getByRole("heading", { name: "Incorrect" })).toBeVisible();
+  await revealBarPlayed();
   const q4 = since(await readAudioLog(host), q4From);
   expect(sfxCalls(q4).get("tickLast5s")).toHaveLength(5);
   const rates = q4.filter((entry) => entry.kind === "rate").map((entry) => entry.args?.[0]);
@@ -417,6 +431,7 @@ test("plays the full role matrix, bounded loops and a silent teardown", async ({
   await answer(player, "Hujan");
   await host.getByRole("button", { name: "Skip timer" }).click();
   await phase(host, "ANSWER_REVEAL");
+  await revealBarPlayed();
   await player.waitForTimeout(1_500);
   const pollFeedback = sfxCalls(since(await readAudioLog(player), pollFrom));
   expect(pollFeedback.get("answerCorrect")).toBeUndefined();

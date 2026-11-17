@@ -7,7 +7,7 @@
 import { randomUUID } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -420,8 +420,17 @@ it("cleans orphans with partial failures, reports metrics and enforces the clean
       ),
     ),
   ).toEqual([403, "FORBIDDEN"]);
-  const covers = path.join(runtime.env.LOCAL_STORAGE_PATH ?? "", "covers");
-  await chmod(covers, 0o555);
+  // Make exactly the cover's delete fail, for any uid: a read-only folder (chmod) is ignored by
+  // root, so the stored file is replaced by a directory instead, which the local adapter refuses
+  // to delete (not a regular file). The file is restored afterwards (TASK-186).
+  const coverFile = path.join(
+    runtime.env.LOCAL_STORAGE_PATH ?? "",
+    "covers",
+    path.posix.basename(new URL(cover.publicUrl).pathname),
+  );
+  const coverBytes = await readFile(coverFile);
+  await rm(coverFile);
+  await mkdir(coverFile);
   let result;
   try {
     const response = await call(
@@ -434,7 +443,8 @@ it("cleans orphans with partial failures, reports metrics and enforces the clean
     expect(response.status).toBe(200);
     result = cleanupResultSchema.parse(await response.json());
   } finally {
-    await chmod(covers, 0o755);
+    await rm(coverFile, { recursive: true, force: true });
+    await writeFile(coverFile, coverBytes);
   }
   expect(result).toMatchObject({
     scannedCount: 2,

@@ -222,7 +222,7 @@ it.each<DatabaseDriver>(["sqlite", "postgres", "mysql"])(
         ).toBe(10000);
         await expect(
           auth.rotate(original.id, original.token_hash, 1, { ...next, id: randomUUID() }, 6),
-        ).rejects.toThrow("TOKEN_REVOKED");
+        ).rejects.toThrow("TOKEN_REUSED");
         expect(
           (
             await db.manager.findOneByOrFail<TokenRecord & { revoked_at: number | null }>(

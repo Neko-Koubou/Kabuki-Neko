@@ -28,7 +28,7 @@ Statuses:
 
 These stay PENDING until they are done and recorded (date, reviewer, result):
 
-1. **Audio distribution rights.** The 20 audio files are "release-unverified" (docs/audio-provenance.json,
+1. **Audio distribution rights.** The 20 audio cues (committed as 40 optimized WebM/MP3 files) are "release-unverified" (docs/audio-provenance.json,
    THIRD-PARTY-NOTICES.md). Written permission from OpenTracks for embedding them in a
    self-hostable platform is needed, or the audio must be replaced. This is a release blocker
    (TASK-114A).

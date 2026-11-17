@@ -38,10 +38,52 @@ function frozen(input: Record<string, unknown>) {
     hash: createHash("sha256").update(json).digest("hex"),
   };
 }
+/**
+ * SHA-256 of a report payload's canonical JSON, exactly as `enqueue` stores it in `payload_hash`
+ * (code review MJ-13: callers verify an existing job without reading its payload).
+ */
+export function finalizationPayloadHash(input: Record<string, unknown>): string {
+  return frozen(input).hash;
+}
 const due =
   "((state IN ('PENDING','FAILED') AND attempts <= :retries AND next_attempt_at <= :now) OR (state='RUNNING' AND lease_until <= :now))";
+/** A finalization job without its payload (code review MJ-13). */
+export type FinalizationJobStatus = Pick<
+  FinalizationJob,
+  "session_id" | "host_id" | "payload_hash" | "state" | "attempts" | "last_error_code"
+>;
 export class JobsRepository {
   constructor(private readonly db: DataSource) {}
+  /**
+   * The job of a session without its payload, or null (code review MJ-13): the scheduler's
+   * finalization sync polls this every few seconds, so it must not read, parse or hash the
+   * (up to 64 MiB) frozen report.
+   */
+  async statusOf(sessionId: string): Promise<FinalizationJobStatus | null> {
+    const row = await this.db
+      .getRepository<FinalizationJob>("finalization_jobs")
+      .createQueryBuilder("j")
+      .select([
+        "j.session_id",
+        "j.host_id",
+        "j.payload_hash",
+        "j.state",
+        "j.attempts",
+        "j.last_error_code",
+      ])
+      .where("j.session_id=:sessionId", { sessionId })
+      .getOne();
+    return row
+      ? {
+          session_id: row.session_id,
+          host_id: row.host_id,
+          payload_hash: row.payload_hash,
+          state: row.state,
+          attempts: row.attempts,
+          last_error_code: row.last_error_code,
+        }
+      : null;
+  }
   enqueue(sessionId: string, hostId: string, input: Record<string, unknown>, now: number) {
     const data = frozen(input);
     return writeTransaction(this.db, async (m) => {

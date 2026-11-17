@@ -1,15 +1,15 @@
 /**
  * Audio catalogue served to clients (audio-engine revision 2026-10-31, SA §4.4 public-config).
  *
- * The API reads the same **generated** manifest the web app ships (`AUDIO_MANIFEST_PATH`, produced
- * by the audio optimizer): root keys `lobby/thinking/leaderboard/podium/sfx`, dual WebM+MP3 sources
+ * The API reads the same manifest the web app ships (`AUDIO_MANIFEST_PATH`: the published copy in
+ * production, the committed optimized set in `audio-assets/kabuki-neko-audio` otherwise): root keys `lobby/thinking/leaderboard/podium/sfx`, dual WebM+MP3 sources
  * and volumes. The legacy source manifest (`phases` wrapper, scalar MP3 URLs) is rejected by the
  * strict shared schema. Every referenced file must exist as a regular file under the manifest's
  * audio root, so a descriptor never points at a missing pair. Lobby descriptors become
  * `/system/public-config.audioTracks`; nothing is synthesized from quiz data or user input.
  *
  * A missing manifest is fatal in production and reported as unavailable (503 at the route) in
- * development/test, where the optimizer may not have run yet.
+ * development/test, where the manifest may point at a removed or moved audio set.
  */
 import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";

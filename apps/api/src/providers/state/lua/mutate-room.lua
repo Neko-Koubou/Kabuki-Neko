@@ -48,6 +48,18 @@ elseif op.kind == 'markFinalization' then
   s.finalization=status; s.revision=s.revision+1; s.publicRevision=s.revision
   redis.call('HSET',KEYS[1],'state',cjson.encode(s))
   return cjson.encode({revision=s.revision})
+elseif op.kind == 'expireToPodium' then
+  -- Hard-lifetime end of a started game outside ANSWERING (code review MJ-06): PODIUM with
+  -- endReason EXPIRED and a pending finalization, so the played questions still get a report.
+  if s.phaseVersion ~= op.expectedPhaseVersion then return cjson.encode({result=false}) end
+  if (s.phase ~= 'GAME_START_COUNTDOWN' and s.phase ~= 'QUESTION_PREVIEW' and s.phase ~= 'ANSWER_REVEAL' and s.phase ~= 'LEADERBOARD') or now < s.hardExpiresAt then return err('INVALID_PHASE') end
+  s.phase='PODIUM'; s.phaseVersion=s.phaseVersion+1; s.accepting=false
+  s.timing={phaseStartedAt=now,phaseEndsAt=now+8000,questionStartedAt=cjson.null,inputClosesAt=cjson.null,acceptanceClosesAt=cjson.null}
+  s.endReason='EXPIRED'
+  s.finalization={sessionId=session,status='pending',reportId=cjson.null,retryable=true,errorCode=cjson.null,updatedAt=now}
+  s.revision=s.revision+1; s.publicRevision=s.revision
+  redis.call('HSET',KEYS[1],'state',cjson.encode(s))
+  return cjson.encode({result=true})
 end
 if expired then return err('ROOM_EXPIRED') end
 local function write(public)

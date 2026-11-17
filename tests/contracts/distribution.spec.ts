@@ -4,24 +4,27 @@
  * `scripts/package-assets.ts` runs as the release build does (`--require-audio
  * --require-locales`) against a private copy of the release inputs. The copy holds:
  * - the root LICENSE and notices;
- * - the audio provenance and sources;
- * - the web public assets (brand, font, generated audio and locale bundle);
+ * - the audio provenance and the committed, already optimized audio set;
+ * - the web public assets (brand, font, published audio copy and locale bundle);
  * - the API locale bundle;
  * - the installed DiceBear packages (linked).
  *
  * 1. A complete tree packages the legal texts byte-for-byte into the web's `/legal/*.txt` and the
- *    API's `assets/legal`, and the generated audio manifest into the API's `assets/audio`.
+ *    API's `assets/legal`, and the published audio manifest into the API's `assets/audio`.
  * 2. Each required input is then removed or corrupted in turn. The run must fail with a message
  *    naming it, and the previously packaged copies must stay untouched. The inputs:
  *    - legal texts;
  *    - brand/font assets;
- *    - an audio WebM or its MP3 fallback, or a WebM without the Opus codec;
+ *    - a published WebM or MP3 fallback, a changed or stale published file;
+ *    - a committed WebM without the Opus codec, a committed file whose SHA-256 changed;
  *    - a missing, legacy (old four-URL) or stale manifest;
  *    - the public credits;
- *    - an unattributed source, or a provenance claiming the code license covers the audio;
+ *    - an unrecorded audio file, or a provenance claiming the code license covers the audio;
  *    - a missing web locale registry, asset or template;
  *    - an API/web buildId mismatch.
- * 3. The root `pnpm build` declares the hook: locales are built and assets packaged with every
+ * 3. `--publish-audio` recreates the published copy from the committed set by copying alone (no
+ *    encoder runs at build time).
+ * 4. The root `pnpm build` declares the hook: locales are built and assets packaged with every
  *    requirement before turbo builds the apps.
  */
 import { execFile } from "node:child_process";
@@ -41,8 +44,8 @@ let fixture = "";
 const web = () => path.join(fixture, "apps/web/public");
 const api = () => path.join(fixture, "apps/api/assets");
 
-/** Runs the packager like the release build; returns its exit code and output. */
-async function packageAssets() {
+/** Runs the packager like the release build (plus `extra` flags); returns its exit code and output. */
+async function packageAssets(...extra: string[]) {
   try {
     const { stdout, stderr } = await run(
       TSX,
@@ -52,6 +55,7 @@ async function packageAssets() {
         fixture,
         "--require-audio",
         "--require-locales",
+        ...extra,
       ],
       { cwd: ROOT, maxBuffer: 16 * 1024 * 1024 },
     );
@@ -129,7 +133,9 @@ it("packages the legal texts into both artifacts and the audio metadata into the
   const outcome = await packageAssets();
   expect(outcome.stderr).toBe("");
   expect(outcome.code).toBe(0);
-  expect(outcome.stdout).toContain("20 audio sources and 40 generated outputs verified");
+  expect(outcome.stdout).toContain(
+    "20 audio cues and 40 optimized files verified; published copy identical",
+  );
   expect(outcome.stdout).toMatch(
     /locale bundle [0-9a-f]{12}: 6 locales, \d+ assets in both API and web/u,
   );
@@ -173,7 +179,7 @@ const BROKEN: [string, () => Promise<() => Promise<unknown>>, RegExp][] = [
   [
     "WebM without the Opus codec",
     () =>
-      replace("apps/web/public/audio/02-thinking/bgm-think-sprint.webm", () =>
+      replace("audio-assets/kabuki-neko-audio/02-thinking/bgm-think-sprint.webm", () =>
         Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), Buffer.alloc(4096, 0x41)]),
       ),
     /bgm-think-sprint\.webm: not a WebM file with the Opus codec/u,
@@ -186,7 +192,7 @@ const BROKEN: [string, () => Promise<() => Promise<unknown>>, RegExp][] = [
   [
     "legacy four-URL manifest",
     () =>
-      replace("apps/web/public/audio/audio-manifest.json", () =>
+      replace("audio-assets/kabuki-neko-audio/audio-manifest.json", () =>
         JSON.stringify({
           phases: {
             lobby: { src: ["/audio/lobby.mp3"] },
@@ -201,7 +207,7 @@ const BROKEN: [string, () => Promise<() => Promise<unknown>>, RegExp][] = [
   [
     "stale manifest (an output dropped)",
     () =>
-      replace("apps/web/public/audio/audio-manifest.json", (original) => {
+      replace("audio-assets/kabuki-neko-audio/audio-manifest.json", (original) => {
         const manifest = JSON.parse(original.toString("utf8")) as { lobby: unknown[] };
         manifest.lobby = manifest.lobby.slice(1);
         return JSON.stringify(manifest);
@@ -214,9 +220,30 @@ const BROKEN: [string, () => Promise<() => Promise<unknown>>, RegExp][] = [
     /audio\/CREDITS\.md: missing/u,
   ],
   [
-    "unattributed audio source",
+    "unrecorded audio file",
     () => add("audio-assets/kabuki-neko-audio/01-lobby/bgm-lobby-unknown.mp3", "ID3"),
-    /bgm-lobby-unknown\.mp3: source has no provenance entry/u,
+    /bgm-lobby-unknown\.mp3: audio file has no provenance entry/u,
+  ],
+  [
+    "committed audio changed after it was recorded",
+    () =>
+      replace("audio-assets/kabuki-neko-audio/05-sfx/sfx-neko-pop.mp3", (original) =>
+        Buffer.concat([original, Buffer.from([0])]),
+      ),
+    /sfx-neko-pop\.mp3: SHA-256 differs from docs\/audio-provenance\.json/u,
+  ],
+  [
+    "published copy changed",
+    () =>
+      replace("apps/web/public/audio/04-podium/bgm-podium-buildup.mp3", (original) =>
+        Buffer.concat([original, Buffer.from([0])]),
+      ),
+    /bgm-podium-buildup\.mp3: differs from the committed audio set/u,
+  ],
+  [
+    "stale published file",
+    () => add("apps/web/public/audio/01-lobby/bgm-lobby-retired.mp3", "ID3"),
+    /bgm-lobby-retired\.mp3: not part of the committed audio set/u,
   ],
   [
     "code license claimed for the audio",
@@ -276,17 +303,38 @@ it("fails on a missing locale asset in the web copy", async () => {
   }
 });
 
-it("fails without the generated audio when the release requires it", async () => {
+it("fails without the published audio when the release requires it", async () => {
   const restore = await remove("apps/web/public/audio");
   try {
     const outcome = await packageAssets();
     expect(outcome.code).toBe(1);
-    expect(outcome.stderr).toContain("generated audio missing; run pnpm audio:optimize");
+    expect(outcome.stderr).toContain("published audio missing; run pnpm build:assets");
   } finally {
     await restore();
   }
   // Restored: the complete tree packages again.
   expect((await packageAssets()).code).toBe(0);
+});
+
+it("publishes the committed audio set by copying it, without an encoder", async () => {
+  const published = path.join(web(), "audio");
+  await rm(published, { recursive: true, force: true });
+  const outcome = await packageAssets("--publish-audio");
+  expect(outcome.stderr).toBe("");
+  expect(outcome.code).toBe(0);
+  const committed = path.join(fixture, "audio-assets/kabuki-neko-audio");
+  for (const name of [
+    "audio-manifest.json",
+    "CREDITS.md",
+    "01-lobby/bgm-lobby-kabuki.webm",
+    "05-sfx/sfx-answer-correct.mp3",
+  ])
+    expect(await readFile(path.join(published, name))).toEqual(
+      await readFile(path.join(committed, name)),
+    );
+  // The packager never starts a process (no ffmpeg, no optimizer).
+  const source = await readFile(path.join(ROOT, "scripts/package-assets.ts"), "utf8");
+  expect(source).not.toMatch(/child_process|execFile|spawn/u);
 });
 
 it("declares the build hook: locales and assets are packaged before turbo builds the apps", async () => {
@@ -295,7 +343,7 @@ it("declares the build hook: locales and assets are packaged before turbo builds
   };
   expect(manifest.scripts["build"]).toBe("pnpm build:assets && turbo run build");
   expect(manifest.scripts["build:assets"]).toBe(
-    "pnpm --filter @kabuki-neko/shared build && pnpm locales:build && pnpm assets:package --require-audio --require-locales --ensure-audio",
+    "pnpm --filter @kabuki-neko/shared build && pnpm locales:build && pnpm assets:package --require-audio --require-locales --publish-audio",
   );
   expect(manifest.scripts["assets:package"]).toBe("tsx scripts/package-assets.ts");
 });

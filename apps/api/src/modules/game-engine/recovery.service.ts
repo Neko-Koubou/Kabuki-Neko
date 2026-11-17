@@ -111,6 +111,8 @@ const TICKET_TTL_MS = 120_000;
 export class RecoveryService {
   /** `${sessionId}|${ip}` → ticket expiry times (process-local reservation bound). */
   private readonly outstanding = new Map<string, number[]>();
+  /** Next time `outstanding` is swept for expired entries. */
+  private nextSweep = 0;
 
   constructor(
     @Inject(RuntimeRepository) private readonly runtime: RuntimeRepository,
@@ -118,12 +120,20 @@ export class RecoveryService {
     @Inject(GAME_STATE_STORE) private readonly store: IGameStateStore,
   ) {}
 
-  /** Resolves a live PIN to its room identity and private state, or 404. */
+  /**
+   * Resolves a live PIN to its room identity and private state, or 404. New joins, PIN checks
+   * and friendly names need an ACTIVE allocation; token recovery also accepts FINALIZING, which
+   * the scheduler sets as soon as the report is frozen (PODIUM/FINISHED), so a player who
+   * refreshes on the podium still gets the results during the 1 h retention (SA §6.2(4), BR-12;
+   * code review MJ-04).
+   */
   private async room(
     pin: string,
+    statuses: readonly string[] = ["ACTIVE"],
   ): Promise<{ identity: { pin: string; sessionId: string }; state: ActiveRoomState }> {
     const allocation = await this.runtime.findByPin(pin);
-    if (!allocation || allocation.status !== "ACTIVE") throw new ApiError("ROOM_NOT_FOUND", 404);
+    if (!allocation || !statuses.includes(allocation.status))
+      throw new ApiError("ROOM_NOT_FOUND", 404);
     const identity = { pin: allocation.pin_code, sessionId: allocation.id };
     const state = await this.store.getPrivateSnapshot(identity);
     if (!state) throw new ApiError("ROOM_NOT_FOUND", 404);
@@ -157,6 +167,7 @@ export class RecoveryService {
     RecoveryService.assertJoinable(state);
     if (!state.friendlyNicknames) throw new ApiError("INVALID_PHASE", 409);
     const now = Date.now();
+    this.sweep(now);
     const key = `${identity.sessionId}|${context.ip}`;
     const live = (this.outstanding.get(key) ?? []).filter((expiry) => expiry > now);
     if (live.length >= FRIENDLY_TICKETS_PER_IP)
@@ -188,6 +199,17 @@ export class RecoveryService {
     throw new ApiError("NICKNAME_TAKEN", 409);
   }
 
+  /**
+   * Drops `outstanding` entries whose tickets have all expired, at most once a minute, so rooms
+   * and clients that are gone do not keep memory (code review MJ-05).
+   */
+  private sweep(now: number): void {
+    if (now < this.nextSweep) return;
+    this.nextSweep = now + 60_000;
+    for (const [key, expiries] of this.outstanding)
+      if (expiries.every((expiry) => expiry <= now)) this.outstanding.delete(key);
+  }
+
   /** Validates a typed nickname: schema, then the current profanity list (normalized). */
   private async checkedNickname(raw: string): Promise<{ nickname: string; key: string }> {
     const parsed = nicknameSchema.safeParse(raw);
@@ -201,7 +223,10 @@ export class RecoveryService {
 
   /** `player:join_room` — new join or token recovery; see the module comment. */
   async join(request: JoinRequest, context: PlayerContext): Promise<JoinOutcome> {
-    const { identity, state } = await this.room(request.pinCode);
+    const { identity, state } = await this.room(
+      request.pinCode,
+      "sessionToken" in request ? ["ACTIVE", "FINALIZING"] : ["ACTIVE"],
+    );
     const { requestId: _requestId, ...payload } = request;
     const payloadHash = canonicalRequestHash(JSON.parse(JSON.stringify(payload)));
     if ("sessionToken" in request) {

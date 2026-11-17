@@ -41,6 +41,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { monitorEventLoopDelay } from "node:perf_hooks";
 import { parseArgs } from "node:util";
 import { io, type Socket } from "socket.io-client";
 
@@ -111,17 +112,31 @@ export interface LatencySummary {
   mean: number;
 }
 
+/**
+ * Largest and smallest value without spreading the array into arguments: a 200-client run yields
+ * more than 100,000 latency samples, past V8's argument limit ("Maximum call stack size exceeded").
+ */
+function extremes(values: readonly number[]): { min: number; max: number } {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const value of values) {
+    if (value < min) min = value;
+    if (value > max) max = value;
+  }
+  return { min, max };
+}
+
 /** Summarizes a sample; an empty sample is reported as count 0 with nulls avoided by zeros. */
 export function summarize(values: readonly number[]): LatencySummary {
   const round = (value: number) => Math.round(value * 100) / 100;
   if (values.length === 0) return { count: 0, min: 0, p50: 0, p95: 0, p99: 0, max: 0, mean: 0 };
   return {
     count: values.length,
-    min: round(Math.min(...values)),
+    min: round(extremes(values).min),
     p50: round(percentile(values, 50)),
     p95: round(percentile(values, 95)),
     p99: round(percentile(values, 99)),
-    max: round(Math.max(...values)),
+    max: round(extremes(values).max),
     mean: round(values.reduce((sum, value) => sum + value, 0) / values.length),
   };
 }
@@ -134,15 +149,147 @@ export function deliveryLoss(expectedPhases: readonly number[], observed: readon
   return { expected, missing, ratio: expected === 0 ? 0 : missing / expected };
 }
 
-/** Pass/fail verdict: p95 under the target, nothing lost and no player connection dropped. */
-export function verdict(transport: LatencySummary, lossRatio: number, disconnects = 0) {
+/** Outcomes besides latency that also fail a run (code review MN-43). */
+export interface VerdictExtras {
+  /** Answers without a successful ACK (refused, timed out or lost with a dropped connection). */
+  rejectedAnswers?: number;
+  /** False when the game's report never became durable (`ready`) within the wait. */
+  reportReady?: boolean;
+  /** Why the run stopped early (a host command failed after its retries), if it did. */
+  abortReason?: string | null;
+}
+
+/**
+ * Pass/fail verdict: p95 under the target, nothing lost, no player connection dropped, every
+ * answer admitted and the report durable. Each miss is a stated reason, never a silent pass.
+ */
+export function verdict(
+  transport: LatencySummary,
+  lossRatio: number,
+  disconnects = 0,
+  extras: VerdictExtras = {},
+) {
   const reasons: string[] = [];
   if (disconnects > 0) reasons.push(`${disconnects} player connection(s) dropped`);
   if (transport.count === 0) reasons.push("no transport samples");
   if (transport.p95 >= P95_TARGET_MS)
     reasons.push(`transport p95 ${transport.p95} ms ≥ ${P95_TARGET_MS} ms`);
   if (lossRatio > 0) reasons.push(`delivery loss ${(lossRatio * 100).toFixed(3)}%`);
+  if ((extras.rejectedAnswers ?? 0) > 0)
+    reasons.push(`${extras.rejectedAnswers} answer(s) not admitted`);
+  if (extras.reportReady === false) reasons.push("report not durable");
+  if (extras.abortReason) reasons.push(`run aborted: ${extras.abortReason}`);
   return { pass: reasons.length === 0, reasons };
+}
+
+/** Line prefix written by `scripts/lib/event-loop-probe.cjs`. */
+export const PROBE_PREFIX = "KN_PROBE ";
+
+/** One probe interval of a process: event-loop delay, CPU (% of one core) and heap. */
+export interface ProbeSample {
+  t: number;
+  lagP50Ms: number;
+  lagP99Ms: number;
+  lagMaxMs: number;
+  cpuPercent: number;
+  heapMiB: number;
+}
+
+/**
+ * Probe samples from a process's output, kept when `from <= t <= to` (the measured run). Lines
+ * that are not well-formed probe samples are ignored.
+ */
+export function parseProbeLines(output: string, from = 0, to = Infinity): ProbeSample[] {
+  const samples: ProbeSample[] = [];
+  for (const line of output.split(/\r?\n/u)) {
+    const start = line.indexOf(PROBE_PREFIX);
+    if (start === -1) continue;
+    let value: unknown;
+    try {
+      value = JSON.parse(line.slice(start + PROBE_PREFIX.length));
+    } catch {
+      continue;
+    }
+    if (typeof value !== "object" || value === null) continue;
+    const fields = value as Record<string, unknown>;
+    const keys = ["t", "lagP50Ms", "lagP99Ms", "lagMaxMs", "cpuPercent", "heapMiB"] as const;
+    if (!keys.every((key) => typeof fields[key] === "number" && Number.isFinite(fields[key])))
+      continue;
+    const sample = Object.fromEntries(
+      keys.map((key) => [key, fields[key]]),
+    ) as unknown as ProbeSample;
+    if (sample.t >= from && sample.t <= to) samples.push(sample);
+  }
+  return samples;
+}
+
+/** Per-process diagnostics over the measured run. */
+export interface ProcessDiagnostics {
+  samples: number;
+  /** Distribution of the per-interval p99 event-loop delay. */
+  lagP99Ms: LatencySummary;
+  /** Largest single event-loop delay observed. */
+  lagMaxMs: number;
+  cpuPercentMean: number;
+  cpuPercentMax: number;
+  heapMaxMiB: number;
+}
+
+/** Aggregates probe samples; null when the process was not measured. */
+export function summarizeProbe(samples: readonly ProbeSample[]): ProcessDiagnostics | null {
+  if (samples.length === 0) return null;
+  const round = (value: number) => Math.round(value * 10) / 10;
+  const cpu = samples.map((sample) => sample.cpuPercent);
+  return {
+    samples: samples.length,
+    lagP99Ms: summarize(samples.map((sample) => sample.lagP99Ms)),
+    lagMaxMs: extremes(samples.map((sample) => sample.lagMaxMs)).max,
+    cpuPercentMean: round(cpu.reduce((sum, value) => sum + value, 0) / cpu.length),
+    cpuPercentMax: round(extremes(cpu).max),
+    heapMaxMiB: extremes(samples.map((sample) => sample.heapMiB)).max,
+  };
+}
+
+/** One dropped player connection: the API node it was on and Socket.io's reason. */
+export interface DisconnectEvent {
+  node: string;
+  reason: string;
+  /** Milliseconds after the measured run started. */
+  atMs: number;
+}
+
+/** Counts dropped connections per node and reason (e.g. `{ B: { "transport close": 100 } }`). */
+export function disconnectsByReason(
+  events: readonly DisconnectEvent[],
+): Record<string, Record<string, number>> {
+  const counts: Record<string, Record<string, number>> = {};
+  for (const { node, reason } of events) {
+    const perNode = (counts[node] ??= {});
+    perNode[reason] = (perNode[reason] ?? 0) + 1;
+  }
+  return counts;
+}
+
+/**
+ * `--api-urls a[,b]`: one or two running API origins (http/https, no path). One origin serves as
+ * both nodes. Returns null when absent; throws on anything else.
+ */
+export function parseApiUrls(value: string | undefined): [string, string] | null {
+  if (value === undefined || value.trim() === "") return null;
+  const urls = value.split(",").map((item) => item.trim());
+  if (urls.length > 2) throw new Error("--api-urls takes one or two origins");
+  for (const url of urls) {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new Error(`--api-urls: not a URL: ${url}`);
+    }
+    if (!["http:", "https:"].includes(parsed.protocol) || parsed.pathname !== "/" || parsed.search)
+      throw new Error(`--api-urls: expected an http(s) origin without a path: ${url}`);
+  }
+  const [first, second] = urls.map((url) => new URL(url).origin) as [string, string?];
+  return [first, second ?? first];
 }
 
 /** High-resolution wall clock (ms since the epoch). */
@@ -277,29 +424,160 @@ async function engineVersions(env: Record<string, string>): Promise<Record<strin
   return versions;
 }
 
-/** Runs one benchmark; returns the JSON record. */
-export async function runBenchmark(options: {
+/**
+ * Samples this process (the load generator) like the API probe does, so a busy harness can be
+ * told apart from a busy server. `stop` returns the samples.
+ */
+function startSelfProbe(): { stop: () => ProbeSample[] } {
+  const samples: ProbeSample[] = [];
+  const histogram = monitorEventLoopDelay({ resolution: 10 });
+  histogram.enable();
+  let lastCpu = process.cpuUsage();
+  let lastAt = process.hrtime.bigint();
+  // Same units as the API probe: delay beyond the 10 ms sampling resolution, in ms.
+  const ms = (nanoseconds: number) => Math.max(0, Math.round((nanoseconds / 1e6 - 10) * 100) / 100);
+  const timer = setInterval(() => {
+    const at = process.hrtime.bigint();
+    const cpu = process.cpuUsage(lastCpu);
+    const elapsedUs = Number(at - lastAt) / 1000;
+    samples.push({
+      t: Date.now(),
+      lagP50Ms: ms(histogram.percentile(50)),
+      lagP99Ms: ms(histogram.percentile(99)),
+      lagMaxMs: ms(histogram.max),
+      cpuPercent: elapsedUs > 0 ? Math.round(((cpu.user + cpu.system) / elapsedUs) * 1000) / 10 : 0,
+      heapMiB: Math.round((process.memoryUsage().heapUsed / 2 ** 20) * 10) / 10,
+    });
+    histogram.reset();
+    lastCpu = process.cpuUsage();
+    lastAt = at;
+  }, 1000);
+  timer.unref();
+  return {
+    stop: () => {
+      clearInterval(timer);
+      histogram.disable();
+      return samples;
+    },
+  };
+}
+
+/** An API node the benchmark talks to; `logs` is null for an external node (not measured). */
+interface BenchNode {
+  label: "A" | "B";
+  url: string;
+  logs: (() => string) | null;
+  /** Exit code once a local node's process has exited (null while running or external). */
+  exitCode: () => number | null;
+}
+
+/** Benchmark options (see the CLI usage). */
+export interface BenchmarkOptions {
   clients: number;
   transitions: number;
   mode: "memory" | "redis";
-}) {
+  /** Running API origins to use instead of starting a local harness (`--api-urls`). */
+  apiUrls?: [string, string] | null;
+  /** Browser origin the API accepts (`--origin`); defaults to the test harness origin. */
+  origin?: string;
+  /** Existing CREATOR account on external nodes (`KN_BENCH_HOST_EMAIL`/`_PASSWORD`). */
+  credentials?: { email: string; password: string };
+}
+
+/** The last `count` non-empty output lines of a process, without probe lines. */
+function outputTail(output: string, count: number): string[] {
+  return output
+    .split("\n")
+    .filter((line) => line.trim() !== "" && !line.includes(PROBE_PREFIX))
+    .slice(-count);
+}
+
+/** Runs one benchmark; returns the JSON record. */
+export async function runBenchmark(options: BenchmarkOptions) {
   const { PASSWORD, startScaledApis, startSingleApi, quizWith } =
     await import("../tests/helpers/game");
-  const { TEST_ORIGIN } = await import("../tests/helpers/runtime");
+  const { TEST_ORIGIN, httpClient } = await import("../tests/helpers/runtime");
+  const origin = options.origin ?? TEST_ORIGIN;
+  const credentials = options.credentials ?? { email: "host@example.org", password: PASSWORD };
   const started = Date.now();
-  const cluster =
-    options.mode === "redis"
-      ? await startScaledApis("postgres")
-      : await (async () => {
+  const cluster = options.apiUrls
+    ? await (async () => {
+        const [first, second] = options.apiUrls as [string, string];
+        const direct = httpClient(`${first}/api/v1`);
+        const call: typeof direct = (route, request = {}) =>
+          direct(route, { ...request, headers: { Origin: origin, ...request.headers } });
+        const login = await call("/auth/login", {
+          method: "POST",
+          ip: "10.200.0.9",
+          body: credentials,
+        });
+        const host = (login.json as { accessToken?: string } | null)?.accessToken;
+        if (login.status !== 200 || !host)
+          throw new Error(`host sign-in on ${first} failed with HTTP ${login.status}`);
+        const none = () => null;
+        const nodeA: BenchNode = { label: "A", url: first, logs: null, exitCode: none };
+        const nodeB: BenchNode =
+          second === first ? nodeA : { label: "B", url: second, logs: null, exitCode: none };
+        return {
+          nodes: [nodeA, nodeB] as const,
+          env: {} as Record<string, string>,
+          call,
+          host,
+          drivers: `external API node(s) ${[...new Set([first, second])].join(", ")} (not measured)`,
+          stop: async () => undefined,
+        };
+      })()
+    : await (async () => {
+        // Each local API node loads the event-loop probe (TASK-184); startApi passes this
+        // process's environment to its children. Restored once the nodes are up.
+        const probe = path.resolve("scripts", "lib", "event-loop-probe.cjs");
+        const previous = process.env["NODE_OPTIONS"];
+        process.env["NODE_OPTIONS"] = [previous, `--require ${JSON.stringify(probe)}`]
+          .filter(Boolean)
+          .join(" ");
+        try {
+          if (options.mode === "redis") {
+            const scaled = await startScaledApis("postgres");
+            const [a, b] = scaled.nodes;
+            return {
+              nodes: [
+                { label: "A", url: a.url, logs: a.logs, exitCode: a.exitCode },
+                { label: "B", url: b.url, logs: b.logs, exitCode: b.exitCode },
+              ] as const satisfies readonly BenchNode[],
+              env: scaled.env,
+              call: scaled.call,
+              host: scaled.host,
+              drivers: "postgres + redis, 2 API nodes, local shared uploads",
+              stop: async () => {
+                await a.stop();
+                await b.stop();
+                await scaled.runtime.cleanup();
+              },
+            };
+          }
           const single = await startSingleApi("sqlite", "memory");
+          const node: BenchNode = {
+            label: "A",
+            url: single.api.url,
+            logs: single.api.logs,
+            exitCode: single.api.exitCode,
+          };
           return {
-            runtime: single.runtime,
-            nodes: [single.api, single.api] as const,
+            nodes: [node, node] as const,
             env: single.env,
             call: single.call,
             host: single.host,
+            drivers: "sqlite + memory state, 1 API node",
+            stop: async () => {
+              await single.api.stop();
+              await single.runtime.cleanup();
+            },
           };
-        })();
+        } finally {
+          if (previous === undefined) delete process.env["NODE_OPTIONS"];
+          else process.env["NODE_OPTIONS"] = previous;
+        }
+      })();
   const sockets: Socket[] = [];
   try {
     const questions = Math.ceil(options.transitions / 4) + 1;
@@ -315,7 +593,7 @@ export async function runBenchmark(options: {
       })),
     );
     const [nodeA, nodeB] = cluster.nodes;
-    const host = await connect(nodeA.url, TEST_ORIGIN, "10.200.0.1", cluster.host);
+    const host = await connect(nodeA.url, origin, "10.200.0.1", cluster.host);
     sockets.push(host);
     const created = await command(host, "host:create_room", {
       quizId: quiz.id,
@@ -346,6 +624,8 @@ export async function runBenchmark(options: {
 
     /** Player disconnects during the measured run (each one is a failure). */
     const disconnects: string[] = [];
+    const disconnectEvents: DisconnectEvent[] = [];
+    const clientsPerNode = new Map<BenchNode, number>();
     let finished = false;
     // Players join in batches from distinct addresses (each device has its own join budget).
     const clients: Client[] = [];
@@ -354,9 +634,10 @@ export async function runBenchmark(options: {
         Array.from({ length: Math.min(20, options.clients - batch) }, async (_, offset) => {
           const index = batch + offset;
           const node = index % 2 === 0 ? nodeA : nodeB;
+          clientsPerNode.set(node, (clientsPerNode.get(node) ?? 0) + 1);
           const socket = await connect(
             node.url,
-            TEST_ORIGIN,
+            origin,
             `10.201.${Math.floor(index / 200)}.${(index % 200) + 1}`,
           );
           sockets.push(socket);
@@ -368,7 +649,9 @@ export async function runBenchmark(options: {
           if (!joined.ack.ok)
             throw new Error(`join ${index} failed: ${JSON.stringify(joined.ack.error)}`);
           socket.on("disconnect", (reason: string) => {
-            if (!finished) disconnects.push(`client ${index}: ${reason}`);
+            if (finished) return;
+            disconnects.push(`client ${index}: ${reason}`);
+            disconnectEvents.push({ node: node.label, reason, atMs: Date.now() - started });
           });
           const client = {
             socket,
@@ -391,7 +674,15 @@ export async function runBenchmark(options: {
     /** Sends a host phase command with the latest phase version, retrying on a stale one. */
     const step = async (event: string) => {
       for (let attempt = 0; attempt < 3; attempt++) {
-        const result = await command(host, event, { ...room, expectedPhaseVersion: phaseVersion });
+        let result: Awaited<ReturnType<typeof command>>;
+        try {
+          result = await command(host, event, { ...room, expectedPhaseVersion: phaseVersion });
+        } catch (error) {
+          // No ACK within the timeout (or the connection dropped): an observed failure, retried.
+          refusals.push(`${event}: no ACK (${error instanceof Error ? error.message : "error"})`);
+          await sleep(300);
+          continue;
+        }
         if (result.ack.ok) {
           stateLatency.push(result.rttMs);
           phaseVersion = Number(result.ack.data?.["phaseVersion"] ?? phaseVersion);
@@ -406,7 +697,7 @@ export async function runBenchmark(options: {
           const login = await cluster.call("/auth/login", {
             method: "POST",
             ip: "10.200.0.9",
-            body: { email: "host@example.org", password: PASSWORD },
+            body: credentials,
           });
           const accessToken = (login.json as { accessToken?: string } | null)?.accessToken;
           if (accessToken) {
@@ -418,60 +709,82 @@ export async function runBenchmark(options: {
       }
       throw new Error(`${event} refused: ${refusals.slice(-1).join("")}`);
     };
+    const rejectionCodes: Record<string, number> = {};
     let rejectedAnswers = 0;
     let unclosed = 0;
     const benchmarkStart = Date.now();
+    const selfProbe = startSelfProbe();
     const startVersion = phaseVersion;
-    await step("host:start_game");
+    /**
+     * Set when a host command still fails after its retries. The run then stops early but still
+     * ends the game and writes its record with the failure, instead of losing every measurement.
+     */
+    let abortReason: string | null = null;
     let transitions = 0;
-    for (
-      let question = 0;
-      transitions < options.transitions && question < questions - 1;
-      question++
-    ) {
-      // Wait for the server's preview → answering transition.
-      const deadline = Date.now() + 20_000;
-      while (clients.some((client) => !client.questions.has(question)) && Date.now() < deadline)
-        await sleep(20);
-      await Promise.all(
-        clients.map(async (client) => {
-          const open = client.questions.get(question);
-          if (!open) return;
-          await sleep(Math.random() * 1500);
-          try {
-            const answered = await command(client.socket, "player:submit_answer", {
-              ...room,
-              questionIndex: question,
-              questionId: open.id,
-              submissionId: randomUUID(),
-              answer: open.options[0]?.index ?? 0,
-            });
-            if (answered.ack.ok) admission.push(answered.rttMs);
-            else rejectedAnswers++;
-          } catch {
-            // No ACK (timeout or dropped connection): an observed failure, kept in the record.
-            rejectedAnswers++;
-          }
-        }),
-      );
-      // The question closes once every answer is admitted. If any answer was not admitted (it
-      // then stays a failure in the admission count), the host skips the remaining time instead.
-      const closing = Date.now() + 30_000;
-      while (!revealed.has(question) && Date.now() < closing) await sleep(20);
-      if (!revealed.has(question)) {
-        unclosed++;
-        await step("host:skip_timer");
+    try {
+      await step("host:start_game");
+      for (
+        let question = 0;
+        transitions < options.transitions && question < questions - 1;
+        question++
+      ) {
+        // Wait for the server's preview → answering transition.
+        const deadline = Date.now() + 20_000;
+        while (clients.some((client) => !client.questions.has(question)) && Date.now() < deadline)
+          await sleep(20);
+        await Promise.all(
+          clients.map(async (client) => {
+            const open = client.questions.get(question);
+            if (!open) return;
+            await sleep(Math.random() * 1500);
+            try {
+              const answered = await command(client.socket, "player:submit_answer", {
+                ...room,
+                questionIndex: question,
+                questionId: open.id,
+                submissionId: randomUUID(),
+                answer: open.options[0]?.index ?? 0,
+              });
+              if (answered.ack.ok) admission.push(answered.rttMs);
+              else {
+                rejectedAnswers++;
+                const code =
+                  (answered.ack.error as { errorCode?: string } | undefined)?.errorCode ??
+                  "UNKNOWN";
+                rejectionCodes[code] = (rejectionCodes[code] ?? 0) + 1;
+              }
+            } catch {
+              // No ACK (timeout or dropped connection): an observed failure, kept in the record.
+              rejectedAnswers++;
+              rejectionCodes["NO_ACK"] = (rejectionCodes["NO_ACK"] ?? 0) + 1;
+            }
+          }),
+        );
+        // The question closes once every answer is admitted. If any answer was not admitted (it
+        // then stays a failure in the admission count), the host skips the remaining time instead.
+        const closing = Date.now() + 30_000;
+        while (!revealed.has(question) && Date.now() < closing) await sleep(20);
+        if (!revealed.has(question)) {
+          unclosed++;
+          await step("host:skip_timer");
+        }
+        await sleep(2_100);
+        await step("host:next_step"); // reveal → leaderboard
+        await sleep(2_100);
+        await step("host:next_step"); // leaderboard → next question (preview)
+        transitions += 4;
       }
-      await sleep(2_100);
-      await step("host:next_step"); // reveal → leaderboard
-      await sleep(2_100);
-      await step("host:next_step"); // leaderboard → next question (preview)
-      transitions += 4;
+    } catch (error) {
+      abortReason = error instanceof Error ? error.message : String(error);
     }
     // Finish: skip through the last question to the podium; the server finishes the game.
     await sleep(2_100);
     const endVersion = phaseVersion;
-    await step("host:end_game");
+    try {
+      await step("host:end_game");
+    } catch (error) {
+      abortReason ??= error instanceof Error ? error.message : String(error);
+    }
     const ended = Date.now();
     for (let version = startVersion + 1; version <= endVersion; version++)
       expectedPhases.push(version);
@@ -490,13 +803,33 @@ export async function runBenchmark(options: {
     }
 
     finished = true;
+    const finishedAt = Date.now();
+    const loadGenerator = summarizeProbe(selfProbe.stop());
+    const byReason = disconnectsByReason(disconnectEvents);
+    const nodes = [...new Set(cluster.nodes)].map((node) => ({
+      node: node.label,
+      url: node.url,
+      clients: clientsPerNode.get(node) ?? 0,
+      measured: node.logs !== null,
+      process: node.logs
+        ? summarizeProbe(parseProbeLines(node.logs(), benchmarkStart, finishedAt))
+        : null,
+      disconnects: byReason[node.label] ?? {},
+      // A node that died during the run: its exit code and last output (probe lines excluded).
+      exitCode: node.exitCode(),
+      lastOutput: node.exitCode() === null || !node.logs ? null : outputTail(node.logs(), 40),
+    }));
     const transport = summarize(clients.flatMap((client) => client.latencies));
     const loss = deliveryLoss(
       expectedPhases,
       clients.map((client) => client.phases),
     );
     const clock = summarize(clients.map((client) => client.offset.errorBoundMs));
-    const result = verdict(transport, loss.ratio, disconnects.length);
+    const result = verdict(transport, loss.ratio, disconnects.length, {
+      rejectedAnswers,
+      reportReady: reportReadyMs !== null,
+      abortReason,
+    });
     return {
       mode: options.mode,
       recordedAt: new Date(started).toISOString(),
@@ -510,12 +843,11 @@ export async function runBenchmark(options: {
         memoryGiB: Math.round((os.totalmem() / 2 ** 30) * 10) / 10,
         loadAverage: os.loadavg().map((value) => Math.round(value * 100) / 100),
         platform: `${os.platform()} ${os.release()} ${os.arch()}`,
-        drivers:
-          options.mode === "redis"
-            ? "postgres + redis, 2 API nodes, local shared uploads"
-            : "sqlite + memory state, 1 API node",
+        drivers: cluster.drivers,
         versions: await engineVersions(cluster.env),
-        network: "loopback on one host (controlled baseline; no NIC, Wi-Fi or WAN)",
+        network: options.apiUrls
+          ? "load generator to external API node(s); describe the network path with the record"
+          : "loopback on one host (controlled baseline; no NIC, Wi-Fi or WAN)",
       },
       clockErrorBoundMs: clock,
       transportLatencyMs: transport,
@@ -525,17 +857,30 @@ export async function runBenchmark(options: {
       reportQueueAgeMs: reportReadyMs,
       answersWritten: admission.length,
       answersRejected: rejectedAnswers,
+      /** Why answers were not admitted: server error code, or NO_ACK. */
+      answerRejectionCodes: rejectionCodes,
       disconnects,
+      disconnectsFirstAtMs: disconnectEvents[0]?.atMs ?? null,
       questionsClosedBySkip: unclosed,
+      abortReason,
+      hostCommandFailures: refusals,
+      diagnostics: { nodes, loadGenerator },
       target: { p95Ms: P95_TARGET_MS, ...result },
     };
+  } catch (error) {
+    // The run could not even finish its record: keep the evidence of each local node (its last
+    // output, probe lines excluded), since the processes and their logs go away with the run.
+    const tails = [...new Set(cluster.nodes)]
+      .filter((node) => node.logs !== null)
+      .map((node) => {
+        const lines = outputTail(node.logs?.() ?? "", 40);
+        return `--- API node ${node.label} (exit ${node.exitCode() ?? "running"}, last ${lines.length} lines) ---\n${lines.join("\n")}`;
+      });
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error([message, ...tails].join("\n"), { cause: error });
   } finally {
     for (const socket of sockets) socket.disconnect();
-    if (options.mode === "redis") {
-      await cluster.nodes[0].stop();
-      await cluster.nodes[1].stop();
-    } else await cluster.nodes[0].stop();
-    await cluster.runtime.cleanup();
+    await cluster.stop();
   }
 }
 
@@ -548,7 +893,7 @@ export function markdownSummary(record: Awaited<ReturnType<typeof runBenchmark>>
     "",
     `- ${record.clients} clients, ${record.phaseTransitionsObserved} phase transitions, ${Math.round(record.durationMs / 1000)} s, ${record.environment.network}`,
     `- ${record.environment.cpu}, ${record.environment.cores} cores, ${record.environment.memoryGiB} GiB, ${record.environment.platform}, versions ${JSON.stringify(record.environment.versions)}`,
-    `- Clock error bound p95 ${record.clockErrorBoundMs.p95} ms; delivery loss ${record.delivery.missing}/${record.delivery.expected}; report queue age ${record.reportQueueAgeMs ?? "not ready"} ms for ${record.answersWritten} answers (${record.answersRejected} rejected; ${record.questionsClosedBySkip} questions closed by Skip; ${record.disconnects.length} player disconnects${record.disconnects.length ? `: ${[...new Set(record.disconnects.map((item) => item.split(": ")[1]))].join(", ")}` : ""})`,
+    `- Clock error bound p95 ${record.clockErrorBoundMs.p95} ms; delivery loss ${record.delivery.missing}/${record.delivery.expected}; report queue age ${record.reportQueueAgeMs ?? "not ready"} ms for ${record.answersWritten} answers (${record.answersRejected} rejected${rejectionSummary(record.answerRejectionCodes)}; ${record.questionsClosedBySkip} questions closed by Skip; ${record.disconnects.length} player disconnects${record.disconnects.length ? `: ${[...new Set(record.disconnects.map((item) => item.split(": ")[1]))].join(", ")}` : ""})`,
     `- Target p95 < ${record.target.p95Ms} ms: **${record.target.pass ? "PASS" : `FAIL (${record.target.reasons.join("; ")})`}**`,
     "",
     "| Measure (ms) | n | p50 | p95 | p99 | max |",
@@ -557,7 +902,51 @@ export function markdownSummary(record: Awaited<ReturnType<typeof runBenchmark>>
     row("Admission (answer ACK RTT)", record.admissionLatencyMs),
     row("State commit (host ACK RTT)", record.stateCommitLatencyMs),
     "",
+    ...diagnosticsTable(record),
+    "",
   ].join("\n");
+}
+
+/** " [CODE n, …]" for rejected answers, or "" when none were rejected. */
+function rejectionSummary(codes: Record<string, number>): string {
+  const entries = Object.entries(codes);
+  return entries.length === 0
+    ? ""
+    : ` [${entries.map(([code, count]) => `${code} ${count}`).join(", ")}]`;
+}
+
+/** Per-process table: each API node and the load generator (TASK-184). */
+function diagnosticsTable(record: Awaited<ReturnType<typeof runBenchmark>>): string[] {
+  const cells = (process: ProcessDiagnostics | null) =>
+    process
+      ? `${process.lagP99Ms.p50} / ${process.lagP99Ms.max} | ${process.lagMaxMs} | ${process.cpuPercentMean} / ${process.cpuPercentMax} | ${process.heapMaxMiB}`
+      : "not measured | not measured | not measured | not measured";
+  const reasons = (counts: Record<string, number>) =>
+    Object.entries(counts)
+      .map(([reason, count]) => `${count} ${reason}`)
+      .join(", ") || "0";
+  return [
+    "| Process | Clients | Loop lag p99 per 1 s, median / max (ms) | Max loop lag (ms) | CPU mean / max (% of one core) | Heap max (MiB) | Disconnects |",
+    "| --- | --- | --- | --- | --- | --- | --- |",
+    ...record.diagnostics.nodes.map(
+      (node) =>
+        `| API node ${node.node} | ${node.clients} | ${cells(node.process)} | ${reasons(node.disconnects)} |`,
+    ),
+    `| Load generator | ${record.clients} | ${cells(record.diagnostics.loadGenerator)} | — |`,
+    ...(record.disconnectsFirstAtMs === null
+      ? []
+      : ["", `First disconnect ${Math.round(record.disconnectsFirstAtMs / 1000)} s after start.`]),
+    ...record.diagnostics.nodes
+      .filter((node) => node.exitCode !== null)
+      .flatMap((node) => [
+        "",
+        `API node ${node.node} exited during the run with code ${node.exitCode}. Last output:`,
+        "",
+        "```text",
+        ...(node.lastOutput ?? []),
+        "```",
+      ]),
+  ];
 }
 
 /** CLI entry. */
@@ -568,6 +957,8 @@ async function main() {
       transitions: { type: "string", default: "100" },
       mode: { type: "string", default: "memory" },
       out: { type: "string" },
+      "api-urls": { type: "string" },
+      origin: { type: "string" },
     },
   });
   const clients = Number(values.clients);
@@ -582,9 +973,23 @@ async function main() {
     transitions < 4
   )
     throw new Error(
-      "usage: --clients 1..200 --transitions ≥4 --mode memory|redis (more than 200 clients needs a separate harness)",
+      "usage: --clients 1..200 --transitions ≥4 --mode memory|redis [--api-urls a[,b] --origin url] (more than 200 clients needs a separate harness)",
     );
-  const record = await runBenchmark({ clients, transitions, mode });
+  const apiUrls = parseApiUrls(values["api-urls"]);
+  const email = process.env["KN_BENCH_HOST_EMAIL"];
+  const password = process.env["KN_BENCH_HOST_PASSWORD"];
+  if (apiUrls && (!email || !password))
+    throw new Error(
+      "--api-urls needs KN_BENCH_HOST_EMAIL and KN_BENCH_HOST_PASSWORD (an existing CREATOR account)",
+    );
+  const record = await runBenchmark({
+    clients,
+    transitions,
+    mode,
+    apiUrls,
+    ...(values.origin ? { origin: values.origin } : {}),
+    ...(apiUrls && email && password ? { credentials: { email, password } } : {}),
+  });
   const out = path.resolve(values.out ?? path.join("test-results", "benchmark", `${mode}.json`));
   await mkdir(path.dirname(out), { recursive: true });
   await writeFile(out, `${JSON.stringify(record, null, 2)}\n`);

@@ -15,15 +15,21 @@ import type {
   ActiveRoomState,
   RoomProjector,
   ApplyCommandInput,
+  HostCommand,
 } from "../../apps/api/src/providers/state/game-state.interface";
 import Redis from "ioredis";
 import { setTimeout as delay } from "node:timers/promises";
-import { RedisStateStore } from "../../apps/api/src/providers/state/redis-state.store";
+import {
+  RedisStateStore,
+  restoreArrays,
+} from "../../apps/api/src/providers/state/redis-state.store";
 import { StateConnections, StateProjection } from "../../apps/api/src/providers/state/state.module";
 import { ConfigService } from "../../apps/api/src/config/config.service";
 import { createTestRuntime } from "../helpers/runtime";
 import type { IGameStateStore } from "../../apps/api/src/providers/state/game-state.interface";
 import { MemoryStateStore } from "../../apps/api/src/providers/state/memory-state.store";
+import { GameService } from "../../apps/api/src/modules/game-engine/game.service";
+import type { JwtGuard, VerifiedPrincipal } from "../../apps/api/src/common/guards/jwt.guard";
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 function question() {
   return {
@@ -406,6 +412,87 @@ for (const driver of ["memory", "redis"] as const)
       expect(await store.getPrivateSnapshot({ ...identity, sessionId: uuid(90) })).toBeNull();
       expect(await store.releaseRoom({ ...identity, sessionId: uuid(90) })).toBe(false);
     });
+    it("serves the read-only state equal to the validated read through a scored question (TASK-185F)", async () => {
+      const same = async () => {
+        const light = await store.readPrivateSnapshot(identity);
+        expect(light).toEqual(await store.getPrivateSnapshot(identity));
+        return light;
+      };
+      // Lobby: empty arrays (cjson stores them as {}) and empty records stay distinct.
+      await seed();
+      const lobby = required(await same());
+      expect(lobby.requiredPlayerIds).toEqual([]);
+      expect(lobby.players).toEqual({});
+      expect(lobby.quiz.questions[0]?.publicOptions).toEqual([]);
+      // An unchanged state is served without parsing it again.
+      expect(await store.readPrivateSnapshot(identity)).toBe(lobby);
+      await store.releaseRoom(identity);
+      expect(await store.readPrivateSnapshot(identity)).toBeNull();
+      // Answering, frozen and scored.
+      await seed(answering());
+      await same();
+      await store.admitAnswer(answer());
+      const frozen = required(await same());
+      expect(frozen.closedQuestions[0]?.answers).toHaveLength(1);
+      await store.commitQuestionResult({
+        ...identity,
+        expectedRevision: frozen.revision,
+        closedQuestionHash: required(frozen.closedQuestions[0]).hash,
+        result: result(frozen),
+      });
+      const scored = required(await same());
+      expect(scored.players[uuid(6)]?.score).toBe(1000);
+      expect(await store.readPrivateSnapshot({ ...identity, sessionId: uuid(90) })).toBeNull();
+      if (driver === "redis") {
+        // A state the schema rejects is still refused by the validated read.
+        const [meta] = ["meta"].map(
+          (suffix) => `kabukineko:parity:room:{${identity.pin}}:${suffix}`,
+        );
+        const stored = JSON.parse(required(await redis.hget(required(meta), "state"))) as {
+          players: Record<string, { nickname: string }>;
+        };
+        required(stored.players[uuid(6)]).nickname = "x".repeat(500);
+        await redis.hset(required(meta), "state", JSON.stringify(stored));
+        await expect(store.getPrivateSnapshot(identity)).rejects.toMatchObject({
+          code: "STATE_UNAVAILABLE",
+        });
+      }
+    });
+    it("runs scheduler lease operations without decoding the room state (TASK-185H)", async () => {
+      if (driver !== "redis") return;
+      await seed();
+      // A state Redis cannot decode: only the release, which needs it, may read it.
+      const meta = `kabukineko:parity:room:{${identity.pin}}:meta`;
+      await redis.hset(meta, "state", "{not json");
+      const lease = required(await store.acquireLease(identity, uuid(60), 3000));
+      expect(lease).toMatchObject({ ownerId: uuid(60), epoch: 1 });
+      expect(await store.renewLease(identity, lease, 3000)).toBe(true);
+      expect(await store.releaseLease(identity, lease)).toBe(true);
+      await expect(
+        store.acquireLease({ ...identity, sessionId: uuid(90) }, uuid(61), 3000),
+      ).rejects.toMatchObject({ code: "ROOM_NOT_FOUND" });
+      await expect(store.releaseRoom(identity)).rejects.toMatchObject({
+        code: "STATE_UNAVAILABLE",
+      });
+    });
+    it("reads room state with HMGET, never through a Lua script (TASK-185J)", async () => {
+      if (driver !== "redis") return;
+      await seed(answering());
+      /** Calls of each command so far (`INFO commandstats`). */
+      const calls = async () => {
+        const info = await redis.info("commandstats");
+        const count = (name: string) =>
+          Number(new RegExp(`cmdstat_${name}:calls=(\\d+)`, "u").exec(info)?.[1] ?? "0");
+        return { scripts: count("evalsha") + count("eval"), hmget: count("hmget") };
+      };
+      const before = await calls();
+      expect(await store.readPrivateSnapshot(identity)).not.toBeNull();
+      expect(await store.getPrivateSnapshot(identity)).not.toBeNull();
+      expect(await store.readPrivateSnapshot({ ...identity, sessionId: uuid(90) })).toBeNull();
+      const after = await calls();
+      expect(after.scripts).toBe(before.scripts);
+      expect(after.hmget - before.hmget).toBe(3);
+    });
     it("retries joins without a second slot, recovers and rejects old generations", async () => {
       await seed();
       const first = await join();
@@ -487,6 +574,55 @@ for (const driver of ["memory", "redis"] as const)
       expect(await store.admitAnswer(answer())).toEqual(answers[0]);
       await expect(store.admitAnswer({ ...answer(), answer: "Other" })).rejects.toMatchObject({
         code: "ALREADY_ANSWERED",
+      });
+    });
+    it("closes ALL_ANSWERED and scores when the last unanswered required player is kicked", async () => {
+      // MJ-03: the Redis kick script does not freeze; GameService drives the close for both stores.
+      await seed(answering([uuid(6), uuid(7)]));
+      await store.admitAnswer(answer(6));
+      const jwt = { current: async () => ({ id: uuid(5) }) } as unknown as JwtGuard;
+      const game = new GameService(store, jwt, () => Date.now());
+      const ack = await game.hostCommand(
+        { user: { id: uuid(5) } } as VerifiedPrincipal,
+        {
+          event: "host:kick_player",
+          request: {
+            pinCode: identity.pin,
+            sessionId: identity.sessionId,
+            requestId: uuid(21),
+            playerId: uuid(7),
+          },
+        } as HostCommand,
+      );
+      expect(ack).toMatchObject({ ok: true, data: { kicked: true, playerId: uuid(7) } });
+      const s = required(await store.getPrivateSnapshot(identity));
+      expect(s.closedQuestions[0]?.reason).toBe("ALL_ANSWERED");
+      expect(s.phase).toBe("ANSWER_REVEAL");
+      expect(s.results[0]).toBeDefined();
+    });
+    it("expires a started game outside ANSWERING to PODIUM only after the hard lifetime", async () => {
+      // Code review MJ-06: the same atomic step on both stores.
+      const state = activeRoomStateSchema.parse(room());
+      state.players = { [uuid(6)]: player() };
+      state.phase = "LEADERBOARD";
+      state.questionIndex = 0;
+      state.createdAt = now;
+      state.lobbyActiveAt = now;
+      state.hardExpiresAt = Date.now() + 300;
+      expect(await store.createRoom(identity.pin, state, 28_800_000)).toBe("CREATED");
+      await expect(store.expireToPodium(identity, 1)).rejects.toMatchObject({
+        code: "INVALID_PHASE",
+      });
+      await delay(400);
+      now = Date.now();
+      expect(await store.expireToPodium(identity, 7)).toBe(false);
+      expect(await store.expireToPodium(identity, 1)).toBe(true);
+      const ended = required(await store.getPrivateSnapshot(identity));
+      expect(ended).toMatchObject({ phase: "PODIUM", phaseVersion: 2, endReason: "EXPIRED" });
+      expect(ended.finalization).toMatchObject({ status: "pending", retryable: true });
+      expect(ended.timing.phaseEndsAt).toBe(required(ended.timing.phaseStartedAt) + 8_000);
+      await expect(store.expireToPodium(identity, 2)).rejects.toMatchObject({
+        code: "INVALID_PHASE",
       });
     });
     it("holds host ACK until result commit and preserves the command receipt", async () => {
@@ -606,6 +742,44 @@ for (const driver of ["memory", "redis"] as const)
       expect(joined.generation).toBe(1);
     });
   });
+
+describe("read-only Redis state decoding (TASK-185F)", () => {
+  /** What Redis cjson does to a stored state: every empty array becomes `{}`. */
+  function cjsonEncoded(value: unknown): unknown {
+    if (Array.isArray(value)) return value.length === 0 ? {} : value.map(cjsonEncoded);
+    if (value && typeof value === "object")
+      return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, cjsonEncoded(v)]));
+    return value;
+  }
+  /** States that together hold every kind of empty array: lobby, answering, scored, frozen. */
+  function fixtures(): ActiveRoomState[] {
+    const lobby = activeRoomStateSchema.parse(room());
+    const scored = answering([]);
+    scored.results = { "0": result(scored) };
+    scored.phase = "LEADERBOARD";
+    scored.accepting = false;
+    const frozen = activeRoomStateSchema.parse({
+      ...scored,
+      phase: "PODIUM",
+      frozenReport: frozenReportSchema.parse(report()),
+      finalization: {
+        sessionId: uuid(1),
+        status: "pending",
+        reportId: null,
+        retryable: true,
+        errorCode: null,
+        updatedAt: 1,
+      },
+    });
+    return [lobby, answering(), scored, frozen];
+  }
+
+  it.each([0, 1, 2, 3])("restores every cjson-encoded empty array of fixture %i", (n) => {
+    const state = required(fixtures()[n]);
+    const encoded = cjsonEncoded(JSON.parse(JSON.stringify(state)));
+    expect(restoreArrays(activeRoomStateSchema, encoded)).toEqual(state);
+  });
+});
 
 describe("Redis lifecycle", () => {
   it("reloads scripts after SCRIPT FLUSH, reconnects and never falls back on outages", async () => {

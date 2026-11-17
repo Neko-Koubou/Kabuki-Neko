@@ -35,6 +35,11 @@ The distribution rights of the bundled music are **not verified yet**
 ([docs/audio-provenance.json](docs/audio-provenance.json), `release-unverified`). Do not
 redistribute builds publicly until that status is `cleared`.
 
+The music is committed **already optimized** in `audio-assets/kabuki-neko-audio/` (Opus/WebM plus
+an MP3 fallback per cue, with its manifest and credits). `pnpm build` only copies and verifies it,
+so self-hosting and local tests never run the audio optimizer or need ffmpeg for the audio.
+`pnpm audio:optimize --source <dir>` is a maintainer tool for replacing the music.
+
 ## License
 
 Code: [LICENSE](LICENSE) (Apache-2.0 with Commons Clause). Third-party components and assets:

@@ -371,7 +371,7 @@ const T = {
   ),
   recoveryTerminal: e(
     F.recovery,
-    "clears credentials once on terminal outcomes (kicked, invalid/replaced token, lost) and never retries",
+    "clears credentials once on terminal outcomes (kicked, lost) but keeps them when replaced, and never retries",
   ),
   importWalk: e(
     F.importExport,

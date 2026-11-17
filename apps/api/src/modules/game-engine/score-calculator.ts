@@ -263,6 +263,9 @@ export function computeQuestionResult(input: {
   }
   const totals: QuestionResult["playerTotals"] = {};
   const rankable: RankablePlayer[] = [];
+  // correctCount (also the ranking tie-break) counts only questions worth points: not POLL and
+  // not ×0 (SA §4.5; code review MJ-07). A ×0 answer can still be "correct" for feedback.
+  const counted = question.type !== "POLL" && question.pointsMultiplier > 0;
   for (const player of Object.values(players)) {
     const outcome = scored.get(player.id);
     const answered = outcome?.responseTimeMs ?? null;
@@ -270,7 +273,7 @@ export function computeQuestionResult(input: {
       score: player.score + (outcome?.pointsAwarded ?? 0),
       streak: outcome ? outcome.currentStreak : player.streak,
       maxStreak: Math.max(player.maxStreak, outcome?.currentStreak ?? 0),
-      correctCount: player.correctCount + (outcome?.isCorrect === true ? 1 : 0),
+      correctCount: player.correctCount + (counted && outcome?.isCorrect === true ? 1 : 0),
       responseSumMs: player.responseSumMs + (answered ?? 0),
       responseCount: player.responseCount + (answered === null ? 0 : 1),
       rank: player.rank,

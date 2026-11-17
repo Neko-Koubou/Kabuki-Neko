@@ -304,6 +304,47 @@ describe("ranking", () => {
 });
 
 describe("question result", () => {
+  it("adds correctCount only for questions worth points (×0 is not counted; MJ-07)", () => {
+    const zero = question(
+      "SINGLE_CHOICE",
+      [
+        { text: "right", correct: true },
+        { text: "wrong", correct: false },
+      ],
+      { multiplier: 0, publicOrder: [0, 1] },
+    );
+    const ann = player(0);
+    const closed: ClosedQuestion = {
+      questionIndex: 0,
+      phaseVersion: 3,
+      closedAt: 30_000,
+      reason: "TIMER",
+      hash: "c".repeat(64),
+      requiredPlayerIds: [ann.id],
+      eligiblePlayerIds: [ann.id],
+      answers: [
+        {
+          playerId: ann.id,
+          submissionId: randomUUID(),
+          questionIndex: 0,
+          questionId: zero.id,
+          answer: 0,
+          payloadHash: "b".repeat(64),
+          receivedAt: 2_000,
+          responseTimeMs: 1_000,
+        },
+      ],
+    };
+    const result = computeQuestionResult({
+      question: zero,
+      questionIndex: 0,
+      players: { [ann.id]: ann },
+      closed,
+    });
+    expect(result.personal[ann.id]).toMatchObject({ result: "CORRECT", pointsAwarded: 0 });
+    expect(result.playerTotals[ann.id]?.correctCount).toBe(ann.correctCount);
+  });
+
   it("computes reveal, personal results, totals and ranks deterministically", () => {
     const q = question(
       "SINGLE_CHOICE",

@@ -208,7 +208,7 @@ export function HostStage({ sessionId }: HostStageProps) {
     onAuthError: onAuthExpired,
   });
   const clock = useGameClock({ socket, store });
-  useSessionRecovery({
+  const { recoveryFailed, retryNow } = useSessionRecovery({
     socket,
     store,
     role: "host",
@@ -247,10 +247,15 @@ export function HostStage({ sessionId }: HostStageProps) {
     known.current = { sessionId: host.sessionId, ids };
   }, [host, signal]);
 
+  /** Manual retry: recover now on a live socket, otherwise reconnect (which recovers). */
   const retry = useCallback(() => {
+    if (socket.connected) {
+      retryNow();
+      return;
+    }
     store.getState().setTransport("connecting");
     socket.connect();
-  }, [socket, store]);
+  }, [socket, store, retryNow]);
   const leave = useCallback(() => {
     socket.disconnect();
     router.push("/dashboard/quizzes");
@@ -268,6 +273,7 @@ export function HostStage({ sessionId }: HostStageProps) {
         store={store}
         sessionId={sessionId}
         authExpired={authExpired}
+        recoveryFailed={recoveryFailed}
         onRetry={retry}
         onLeave={leave}
       >

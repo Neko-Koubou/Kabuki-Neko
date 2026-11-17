@@ -234,6 +234,13 @@ it("bounds outstanding friendly reservations per IP and room", async () => {
   await expect(
     service.requestFriendlyName(ack.pinCode, ctx(randomUUID(), "198.51.100.8")),
   ).resolves.toMatchObject({ nickname: expect.any(String) });
+  // Expired reservations are swept (code review MJ-05): once every ticket of both IPs has
+  // expired, the process-local map no longer holds them.
+  const outstanding = Reflect.get(service, "outstanding") as Map<string, number[]>;
+  expect(outstanding.size).toBe(2);
+  const sweep = Reflect.get(service, "sweep") as (now: number) => void;
+  sweep.call(service, Date.now() + 120_000 + 60_001);
+  expect(outstanding.size).toBe(0);
   const draws = [0, 0, FRIENDLY_ADJECTIVES.length - 1, FRIENDLY_NOUNS.length - 1];
   expect(friendlyName(() => draws.shift() ?? 0)).toBe(
     `${FRIENDLY_ADJECTIVES[0]} ${FRIENDLY_NOUNS[0]}`,
@@ -241,6 +248,29 @@ it("bounds outstanding friendly reservations per IP and room", async () => {
   for (const adjective of FRIENDLY_ADJECTIVES)
     for (const noun of FRIENDLY_NOUNS)
       expect(`${adjective} ${noun}`.length).toBeLessThanOrEqual(15);
+});
+
+it("lets a player recover by token while the room is FINALIZING but never admits new joins (MJ-04)", async () => {
+  const ack = await room();
+  const joined = await service.join(joinRequest(ack.pinCode, "Hana"), ctx());
+  // The scheduler moves the allocation to FINALIZING as soon as the report is frozen (podium).
+  await runtime.transition(ack.sessionId, "ACTIVE", "FINALIZING", Date.now());
+  const recovered = await service.join(
+    {
+      requestId: randomUUID(),
+      pinCode: ack.pinCode,
+      sessionId: ack.sessionId,
+      sessionToken: joined.ack.sessionToken,
+    },
+    ctx(),
+  );
+  expect(recovered.ack).toMatchObject({ playerId: joined.ack.playerId, recovered: true });
+  await expect(service.checkPin(ack.pinCode)).rejects.toMatchObject({
+    errorCode: "ROOM_NOT_FOUND",
+  });
+  await expect(service.join(joinRequest(ack.pinCode, "Late"), ctx())).rejects.toMatchObject({
+    errorCode: "ROOM_NOT_FOUND",
+  });
 });
 
 it("recovers by token with a new generation and rejects stale, changed, cross-room and kicked sessions", async () => {

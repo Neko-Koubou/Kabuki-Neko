@@ -84,8 +84,34 @@ pnpm test:contracts --runInBand --runTestsByPath tests/contracts/cloud-storage.s
 ```
 
 The matrix needs Docker for the PostgreSQL, MySQL, Redis and MinIO containers. MinIO is built
-from pinned upstream source the first time. Where `docker build` cannot reach the network, set
-`KABUKI_TEST_MINIO_IMAGE` to a prebuilt image of the same source.
+from pinned upstream source the first time (`git fetch` and the Go module downloads need the
+network).
+
+Two ways to get MinIO where that build cannot reach the network directly:
+
+- **Behind a TLS-intercepting proxy:** set `KABUKI_TEST_BUILD_CA` to the proxy's CA certificate
+  (PEM).
+
+  ```bash
+  KABUKI_TEST_BUILD_CA=/path/to/proxy-ca.pem pnpm test:contracts --runInBand \
+    --runTestsByPath tests/contracts/driver-matrix.spec.ts
+  ```
+
+  The build stage trusts it only for the fetch and build step, through a temporary bundle that
+  is deleted in the same step. The image copies the untouched distro bundle, so the proxy CA is
+  never in it. The image tag carries the CA's digest (`…-go1.27.3-ca<sha256 prefix>`), so it never
+  shares a cache entry with an image built without it.
+
+- **No network at all:** set `KABUKI_TEST_MINIO_IMAGE` to a prebuilt image of the same pinned
+  source. It wins over `KABUKI_TEST_BUILD_CA`.
+
+The Compose scale profile builds the same source. Pass the proxy CA as the optional BuildKit
+secret `build_ca` through `KN_BUILD_CA_FILE` (default `/dev/null`, meaning none). It is mounted
+for the fetch and build step only, and is never stored in a layer:
+
+```bash
+KN_BUILD_CA_FILE=/path/to/proxy-ca.pem docker compose -f docker/docker-compose.yml --profile scale build minio
+```
 
 ## Latest recorded run
 

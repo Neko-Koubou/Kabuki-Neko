@@ -1,6 +1,8 @@
 # 06 — Code Review: Kabuki Neko (seluruh Fase 1–6)
 
-> **Verdict**: **CHANGES REQUESTED** — 2 `[CRITICAL]`, 30 `[MAJOR]`, 50 `[MINOR]` terbuka.
+> **Verdict**: **APPROVED WITH MINOR NOTES** — 0 `[CRITICAL]` dan 0 `[MAJOR]` terbuka (2 CRITICAL dan 30 MAJOR sudah `[RESOLVED]` lewat `--fix`, masing-masing satu commit); 48 `[MINOR]` masih terbuka (MN-28 dan MN-36 sudah diselesaikan bersama MJ-26 dan MJ-17).
+>
+> Verdict awal review ini (commit `a8651cc`): CHANGES REQUESTED — 2 CRITICAL, 30 MAJOR, 50 MINOR. Hasil verifikasi akhir ada di §6.
 
 Tanggal review: **2026-11-12 (Asia/Jakarta)**, commit `a8651cc` (branch `main-nv6b09`). Ini review ulang dari awal yang menggantikan review 2026-11-08 (commit `3c960cc`, Fase 1–3). Setiap temuan lama diverifikasi ulang terhadap kode saat ini dan tetap memakai ID lamanya.
 
@@ -116,7 +118,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - `retention.service.spec.ts` membuktikan 2500 audit, 1200 receipt, dan 1500 token terhapus dalam satu run, sementara baris aktif/PENDING tetap ada. Spec yang sama mencakup batas budget, isolasi kegagalan, dan siklus jadwal.
   - Jest API 231/231, tsc, dan lint PASS; contract `operations.repository` (3 DB) PASS.
 
-#### MJ-02 [MAJOR] [OPEN] Perubahan role/status, undangan, dan reuse refresh token tidak diaudit
+#### MJ-02 [MAJOR] [RESOLVED] Perubahan role/status, undangan, dan reuse refresh token tidak diaudit
 - **File:Line**:
   - `apps/api/src/common/audit.service.ts:12-17`;
   - `apps/api/src/modules/users/users.service.ts:27-42`;
@@ -127,8 +129,9 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Inject `AuditService` ke users/invitations dan catat SUCCESS/DENIED (`LAST_SUPERADMIN`).
   - `rotate` membedakan reuse lalu mencatat `auth.refresh.reuse`.
   - Room/quiz/report menjadi tindak lanjut.
+- **Resolusi**: `UsersController` kini mencatat `user.role.change` / `user.status.change` (SUCCESS; DENIED untuk `LAST_SUPERADMIN`; FAILURE lainnya) dan `invitation.create` (ID undangan saja, tanpa kode). `AuthRepository.rotate` membedakan reuse token yang sudah dikonsumsi (`TOKEN_REUSED`, family tetap dicabut); `RefreshService` melempar `RefreshReuseError` (klien tetap menerima `TOKEN_REVOKED`) dan `AuthController.rotate` mencatat `auth.refresh.reuse` (DENIED). Regresi: `admin-audit.spec.ts` (4 kasus, gagal di kode lama), `refresh.service.spec.ts`, kontrak `accounts.repository.spec.ts`; API jest 246/246, tsc/eslint bersih. Audit room/quiz/report tetap tindak lanjut.
 
-#### MJ-03 [MAJOR] [OPEN] Store Redis tidak menutup soal saat pemain wajib terakhir di-kick
+#### MJ-03 [MAJOR] [RESOLVED] Store Redis tidak menutup soal saat pemain wajib terakhir di-kick
 - **File:Line**: `apps/api/src/providers/state/lua/mutate-room.lua:126-139` vs `memory-state.store.ts:532-538`.
 - **Masalah**:
   - Memory store melakukan freeze `ALL_ANSWERED` setelah kick; Lua tidak.
@@ -136,13 +139,15 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Melanggar paritas SA §5.5/§6.1.
 - **Perbaikan**: setelah ACK kick, `GameService` menjalankan `closeQuestion(ALL_ANSWERED)` bila semua pemain wajib sudah menjawab, lalu `settle`.
   - Kasus paritas di `state-parity.spec.ts`.
+- **Resolusi**: `GameService.closeIfAllAnswered` menutup soal dengan `ALL_ANSWERED` bila semua pemain wajib yang tersisa sudah menjawab; dipanggil setelah ACK `host:kick_player` (lalu `settle`) dan di `tick` (pemulihan bila proses mati di antara kick dan close). Store memvalidasi ulang secara atomik, jadi paritas memory/Redis terjaga tanpa mengubah Lua. Regresi: kasus baru di `state-parity.spec.ts` untuk kedua driver (Redis gagal di kode lama); parity 24/24, API jest 246/246, tsc/eslint bersih.
 
-#### MJ-04 [MAJOR] [OPEN] Pemain tidak bisa recover saat PODIUM/FINISHED
+#### MJ-04 [MAJOR] [RESOLVED] Pemain tidak bisa recover saat PODIUM/FINISHED
 - **File:Line**: `apps/api/src/modules/game-engine/recovery.service.ts:122-131`.
 - **Masalah**: allocation berpindah ke FINALIZING saat laporan dibekukan, sehingga recovery dengan token menghasilkan 404. Melanggar SA §6.2(4) dan BR-12.
 - **Perbaikan**: recovery dengan `sessionToken` menerima `ACTIVE|FINALIZING`. `check_pin`, friendly name, dan join baru tetap hanya `ACTIVE`.
+- **Resolusi**: `RecoveryService.room(pin, statuses)` menerima daftar status; `join` dengan `sessionToken` menerima `ACTIVE|FINALIZING`, sedangkan `checkPin`, friendly name, dan join baru tetap hanya `ACTIVE`. Spec baru di `recovery.service.spec.ts` (recovery saat FINALIZING sukses; check_pin dan join baru 404; gagal pada kode lama). API Jest 234/234, tsc, lint PASS.
 
-#### MJ-05 [MAJOR] [OPEN] Map gateway bocor dan klien room yang dilepas tidak menerima `room:expired`
+#### MJ-05 [MAJOR] [RESOLVED] Map gateway bocor dan klien room yang dilepas tidak menerima `room:expired`
 - **File:Line**:
   - `apps/api/src/modules/game-engine/game.gateway.ts:168-169,463-480,631-644`;
   - `room-scheduler.ts:181-186,211-215,248-258`;
@@ -154,23 +159,26 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 - **Perbaikan**:
   - `GameGateway.forget(identity, reason)` dipanggil scheduler melalui notifier saat LOST/release.
   - Prune `outstanding`.
+- **Resolusi**: Scheduler memanggil `GameService.roomEnded(identity, reason)` saat LOST (`ROOM_LOST` untuk state hilang, `ROOM_EXPIRED` untuk lobby idle/kedaluwarsa) dan saat release setelah retensi (`null`, tanpa push); `NotifyingGameService` meneruskannya ke `GameGateway.forget`, yang mengirim `room:expired` dengan alasan sebenarnya (lewat adapter Redis ke semua instance) lalu menghapus summary sehingga heartbeat berhenti. Antrian publish dihapus begitu selesai (`enqueue`), dan `RecoveryService.outstanding` disapu tiap menit. Regresi: `game-gateway-lifecycle.spec.ts`, `room-scheduler.spec.ts`, `recovery.service.spec.ts` (5 kasus gagal di kode lama); API jest 249/249, tsc/eslint bersih.
 
-#### MJ-06 [MAJOR] [OPEN] Batas umur 8 jam di luar fase ANSWERING membuang game yang sudah dimainkan
+#### MJ-06 [MAJOR] [RESOLVED] Batas umur 8 jam di luar fase ANSWERING membuang game yang sudah dimainkan
 - **File:Line**: `apps/api/src/modules/game-engine/room-scheduler.ts:197-216`.
 - **Masalah**: hard TTL pada fase PREVIEW/REVEAL/LEADERBOARD/COUNTDOWN berakhir LOST tanpa laporan. Melanggar SA §5.5, BR-18, dan AC-14-02.
 - **Perbaikan**:
   - Operasi atomik `expireToPodium` (memory + Lua) untuk fase pra-PODIUM non-LOBBY, lalu `game.finalize`.
   - LOST hanya untuk LOBBY atau state yang hilang.
+- **Resolusi**: Operasi atomik baru `IGameStateStore.expireToPodium` (memory + Lua `mutate-room`, Redis TIME) memindahkan COUNTDOWN/PREVIEW/REVEAL/LEADERBOARD ke PODIUM dengan `endReason: EXPIRED` dan finalisasi `pending`, hanya setelah `hardExpiresAt`; `RoomScheduler.visit` memakainya lalu `game.finalize`, sehingga soal yang sudah dimainkan tetap menghasilkan laporan. LOST kini hanya untuk LOBBY (atau state hilang). Regresi: `room-scheduler.spec.ts` (REVEAL kedaluwarsa → PODIUM + laporan PLAYED, gagal di kode lama; LOBBY tetap LOST) dan kontrak `state-parity.spec.ts` untuk memory dan Redis; parity 26/26, API jest 251/251, tsc/eslint bersih.
 
-#### MJ-07 [MAJOR] [OPEN] `correctCount`/`unansweredCount` ikut menghitung soal ×0 (dan POLL untuk unanswered)
+#### MJ-07 [MAJOR] [RESOLVED] `correctCount`/`unansweredCount` ikut menghitung soal ×0 (dan POLL untuk unanswered)
 - **File:Line**: `apps/api/src/modules/game-engine/score-calculator.ts:273`; `game.service.ts:110-111`.
 - **Masalah**:
   - Jawaban benar di soal ×0 menambah `correctCount`, yang dipakai sebagai tie-break.
   - UNANSWERED dihitung juga untuk POLL dan ×0.
   - Melanggar SA §4.5.
 - **Perbaikan**: hitung keduanya hanya bila `type !== "POLL" && pointsMultiplier > 0`, lalu perbarui spec skor, game, dan laporan.
+- **Resolusi**: `computeQuestionResult` (`score-calculator.ts`) menambah `correctCount` hanya bila `type !== "POLL" && pointsMultiplier > 0`; `buildFrozenReport` (`game.service.ts`) menghitung `unansweredCount` hanya untuk soal berpoin. Spec baru di `scoring.spec.ts` (jawaban benar ×0 tidak menambah correctCount) dan `game.service.spec.ts` (laporan beku: correct/unanswered 0 untuk soal ×0); keduanya gagal pada kode lama. API Jest 32/233, tsc, lint PASS.
 
-#### MJ-08 [MAJOR] [OPEN] Baca kuis memakai write transaction + `FOR UPDATE`, dan daftar kuis N+1
+#### MJ-08 [MAJOR] [RESOLVED] Baca kuis memakai write transaction + `FOR UPDATE`, dan daftar kuis N+1
 - **File:Line**:
   - `packages/database/src/repositories/quizzes.repository.ts:62-73,231-238,274-289`;
   - `apps/api/src/modules/quizzes/quizzes.service.ts:290-291,322-339`.
@@ -179,38 +187,44 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Viewer PUBLIC memblokir PUT milik pemilik.
   - Kuis yang terhapus di tengah proses membuat seluruh daftar menjadi 404.
 - **Perbaikan**: jalur `read` tanpa lock/transaksi tulis, dan summary batch yang melewati baris yang hilang.
+- **Resolusi**: `QuizzesRepository.read` tanpa `manager` kini memakai snapshot tanpa lock (REPEATABLE READ di PostgreSQL/MySQL; antrian tulis di SQLite yang satu koneksi), sedangkan dengan `manager` tetap mengunci baris untuk transaksi pemanggil. `readMany` membaca satu halaman daftar dengan jumlah query tetap (`contents` batch, creator dan media batch) dan melewati kuis yang hilang/tersembunyi; `QuizzesService.list` memakainya lewat `detailOf`. Regresi: kontrak `quizzes.repository.spec.ts` untuk sqlite/postgres/mysql (baca saat pemilik memegang row lock: kode lama "blocked", kini lulus; batch melewati baris hilang/privat); API jest 251/251, tsc/eslint bersih.
 
-#### MJ-10 [MAJOR] [OPEN] `/system/health` tidak dapat melaporkan Redis down
+#### MJ-10 [MAJOR] [RESOLVED] `/system/health` tidak dapat melaporkan Redis down
 - **File:Line**: `apps/api/src/modules/system/system.controller.ts:53-57,91-97`; `apps/api/src/common/rate-limit.service.ts:77-95`.
 - **Masalah**: limiter gagal lebih dulu (`DEPENDENCY_UNAVAILABLE`) sehingga body Health 503 tidak pernah dikirim. Melanggar SA §4.4 dan AC-16-02.
 - **Perbaikan**: di `getHealth`, abaikan `DEPENDENCY_UNAVAILABLE` dari limiter. 429 tetap diteruskan.
+- **Resolusi**: `getHealth` (`system.controller.ts`) tetap membebankan tier PUBLIC (429 diteruskan, query tetap 422), tetapi `DEPENDENCY_UNAVAILABLE` dari limiter (Redis mati) tidak lagi menghentikan request: pengecekan berjalan dan mengembalikan body Health 503 dengan `state` down. Spec baru `system.controller.spec.ts` (gagal pada kode lama). API Jest 34/239, tsc, lint PASS.
 
-#### MJ-11 [MAJOR] [OPEN] Endpoint laporan berhalaman memuat seluruh jawaban sesi
+#### MJ-11 [MAJOR] [RESOLVED] Endpoint laporan berhalaman memuat seluruh jawaban sesi
 - **File:Line**: `apps/api/src/modules/reports/reports.service.ts:322-330,359-367,389-395`; `reports.repository.ts:323-333`.
 - **Masalah**: hingga 1 juta baris (termasuk payload) dihidrasi per request hanya untuk 20 pemain. Melanggar SA §4.5 dan §10.3.
 - **Perbaikan**: tally lewat `GROUP BY` di SQL. Payload hanya dibaca untuk hitungan opsi soal pilihan.
+- **Resolusi**: `ReportsRepository.answerOutcomes` mengagregasi hasil jawaban dengan `GROUP BY` (per soal atau per pemain, dengan filter pemain/soal) dan `payloadCounts` membaca payload yang berbeda beserta hitungannya hanya untuk soal pilihan yang dimainkan. `questionReport`/`playerTallies` kini bekerja di atas agregat; halaman pemain hanya menghitung pemain di halaman itu, CSV per pemain tanpa payload, dan `allAnswers` tidak lagi dipakai endpoint. Regresi: kontrak `reports.repository.spec.ts` (SQLite/PostgreSQL/MySQL), `reports.service.spec.ts` (tidak memanggil `allAnswers`, filter halaman dan soal skor), integrasi `reports.spec.ts` lulus; API jest 252/252, tsc/eslint bersih.
 
-#### MJ-12 [MAJOR] [OPEN] Query string laporan yang tidak valid menghasilkan 500
+#### MJ-12 [MAJOR] [RESOLVED] Query string laporan yang tidak valid menghasilkan 500
 - **File:Line**: `packages/database/src/repositories/reports.repository.ts:237,263,296`; `reports.service.ts:362`; `error.filter.ts:55-83`.
 - **Masalah**: `ZodError` dari `.parse()` menjadi `INTERNAL_ERROR` 500. Melanggar SA §4.1.
 - **Perbaikan**: validasi query di service dengan `ZodValidationPipe` (422).
+- **Resolusi**: `ReportsService.list`, `players`, dan `answers` memvalidasi query dengan `ZodValidationPipe` (`reportsQuerySchema`, `reportPlayersQuerySchema`, `reportAnswersQuerySchema`) sebelum gate, sehingga `?limit=abc`, `?sort=x`, search > 150 karakter, atau key asing menghasilkan 422 `VALIDATION_FAILED`, bukan 500. Spec baru di `reports.service.spec.ts` (pada kode lama: rejection ZodError tak tertangani). API Jest 235/235, tsc, lint, integration `reports.spec.ts` PASS.
 
-#### MJ-13 [MAJOR] [OPEN] Sync finalisasi memvalidasi dan meng-hash ulang seluruh FrozenReport setiap 5 detik
+#### MJ-13 [MAJOR] [RESOLVED] Sync finalisasi memvalidasi dan meng-hash ulang seluruh FrozenReport setiap 5 detik
 - **File:Line**: `room-scheduler.ts:226-234` → `report-worker.ts:239-279` → `jobs.repository.ts:20-58`.
 - **Masalah**: `parse` + stringify + SHA-256 hingga 64 MiB, dengan event loop terblokir, terus berulang selama status bukan `ready` (termasuk FAILED tanpa batas).
 - **Perbaikan**:
   - `JobsRepository.statusOf(sessionId)` yang ringan.
   - Enqueue hanya bila belum ada job.
   - Jalur job yang sudah ada hanya membaca `payload_hash`.
+- **Resolusi**: `JobsRepository.statusOf` membaca baris job tanpa payload; `ReportWorker.sync` memakainya dulu dan hanya meng-enqueue (validasi + JSON kanonik + SHA-256) bila session belum punya job. Hash laporan beku dihitung sekali per session per proses (`reportHash`, memo dibuang saat `ready`, dibatasi 10.000) lalu cukup dibandingkan dengan `payload_hash`, jadi pelanggaran invarian tetap terdeteksi. Regresi: `report-worker.spec.ts` (5 sync → 5 `statusOf`, 0 enqueue, 1 parse; mismatch tetap dilempar — gagal di kode lama), kontrak `jobs.repository.spec.ts` di SQLite/PostgreSQL/MySQL, integrasi `finalization-failures.spec.ts` 12/12; API jest 253/253, tsc/eslint bersih.
 
-#### MJ-14 [MAJOR] [OPEN] Unduhan CSV menggantung (dan membocorkan memori) bila klien memutus koneksi (eks-MN-21)
+#### MJ-14 [MAJOR] [RESOLVED] Unduhan CSV menggantung (dan membocorkan memori) bila klien memutus koneksi (eks-MN-21)
 - **File:Line**: `apps/api/src/modules/reports/reports.controller.ts:164`; `reports.service.ts:406`.
 - **Masalah**:
   - `await once(response, "drain")` tidak pernah selesai setelah `close`.
   - Array CSV penuh beserta request tertahan selamanya, dan bisa dipicu 10×/menit.
 - **Perbaikan**: `pipeline(Readable.from(chunks), response)` dari `node:stream/promises`.
+- **Resolusi**: ekspor CSV kini mengalir lewat `streamChunks` (`pipeline(Readable.from(chunks), response)`) di `reports.controller.ts`: pemutusan klien menolak pipeline dan respons dihancurkan, sehingga handler, request, dan array chunk dilepas. Sebelumnya `once(response, "drain")` menggantung (diverifikasi: loop lama masih pending setelah 2 s). Spec baru `report-stream.spec.ts` (unduhan normal lengkap + diakhiri; abort selesai, bukan menggantung). API Jest 237/237, tsc, lint, integration `reports.spec.ts` (CSV) PASS.
 
-#### MJ-15 [MAJOR] [OPEN] Event socket anonim memenuhi map rate-limiter in-memory → 503 global
+#### MJ-15 [MAJOR] [RESOLVED] Event socket anonim memenuhi map rate-limiter in-memory → 503 global
 - **File:Line**: `apps/api/src/modules/game-engine/game.gateway.ts:214,265-272,281`; `apps/api/src/common/rate-limit.service.ts:100`.
 - **Masalah**:
   - Tier SYNC/TIME/ANSWER/AVATAR tanpa binding dikunci pada `socket.id`, dan limiter dibebankan sebelum validasi.
@@ -220,8 +234,9 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Kunci tier anonim ke IP, atau ke `playerId` bila sudah terikat.
   - Event yang butuh binding ditolak sebelum limiter.
   - Test: N socket dari satu IP hanya menambah key dalam jumlah konstan.
+- **Resolusi**: `GameGateway.requireBinding` menolak ANSWER/AVATAR tanpa player terikat (`INVALID_SESSION_TOKEN`) dan SYNC/TIME tanpa player/host (`AUTH_REQUIRED`) **sebelum** limiter dibebani; `rateKey` tidak lagi memakai `socket.id` (HOST → `user:`/`ip:`, ANSWER/AVATAR/SYNC/TIME → `player:` lalu `user:`, sisanya `ip:`). Regresi: `game-gateway-rate.spec.ts` (40 socket anonim → 0 key; 20 socket satu IP → 1 key; reconnect player berbagi satu key) — gagal pada kode lama, lulus sekarang; API jest 242/242, tsc dan eslint bersih.
 
-#### MJ-16 [MAJOR] [OPEN] Kegagalan finalisasi tidak memicu alarm atau metrik
+#### MJ-16 [MAJOR] [RESOLVED] Kegagalan finalisasi tidak memicu alarm atau metrik
 - **File:Line**: `apps/api/src/common/metrics.service.ts:61`; `apps/api/src/modules/reports/report-worker.ts:192-216`; `room-scheduler.ts:244`.
 - **Masalah**:
   - `MetricsService.reportJobFailed` tidak pernah dipanggil.
@@ -231,8 +246,9 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 - **Perbaikan**:
   - Inject `MetricsService` ke `ReportWorker` dan panggil `reportJobFailed(code)` setelah `jobs.fail`.
   - Alarm 24 jam dikirim sebagai event terstruktur.
+- **Resolusi**: `ReportWorker` (opsional `MetricsService`) memanggil `reportJobFailed(code)` setelah setiap `jobs.fail` dan saat antrian tidak terjangkau (sekali per transisi ke failed): counter `report_queue_failures:<code>` + event terstruktur `report_queue_failed` (dibatasi 1/menit). Alarm 24 jam di `RoomScheduler` kini juga memanggil `MetricsService.finalizationPendingAlarm()` (counter `finalization_pending_alarms` + event `finalization_pending_alarm`), baris log lama tetap ada. Didokumentasikan di `docs/operations.md`. Regresi: `report-worker.spec.ts` dan `room-scheduler.spec.ts` (gagal di kode lama); API jest 253/253, tsc/eslint bersih.
 
-#### MJ-17 [MAJOR] [OPEN] Gate startup DB/Redis di entrypoint tidak berjalan ketika profil memilih driver
+#### MJ-17 [MAJOR] [RESOLVED] Gate startup DB/Redis di entrypoint tidak berjalan ketika profil memilih driver
 - **File:Line**: `docker/entrypoint.sh:109-114`; `docs/deployment.md:29-30`.
 - **Masalah**:
   - Gate hanya membaca `DB_DRIVER`/`STATE_DRIVER` mentah, padahal Compose hanya menyetel `DEPLOYMENT_PROFILE`. Akibatnya gate tidak pernah jalan di profil scale.
@@ -241,8 +257,9 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Turunkan driver efektif: default `postgres`/`redis` bila `DEPLOYMENT_PROFILE=scale` dan variabel kosong.
   - Validasi `KN_STARTUP_WAIT_SEC` (MN-32).
   - Koreksi dokumen.
+- **Resolusi**: Gate startup dipindah ke `docker/startup-gate.cjs` (disalin ke image API): memvalidasi konfigurasi dengan skema terkompilasi lalu menunggu database/Redis dari konfigurasi **efektif** (default `postgres`/`redis` untuk `DEPLOYMENT_PROFILE=scale` walau `DB_DRIVER`/`STATE_DRIVER` kosong, termasuk node Redis Cluster), dibatasi `KN_STARTUP_WAIT_SEC` (integer 1–3600, kosong = 60). `docs/deployment.md` dikoreksi. Regresi: kontrak `startup-gate.spec.ts` (scale tanpa driver → timeout database/Redis, lulus saat keduanya terbuka, default tanpa tunggu, nilai tidak valid ditolak tanpa mencetak nilai) dan smoke `entrypoint.sh api`.
 
-#### MJ-18 [MAJOR] [OPEN] Prosedur restore SQLite di dokumentasi menghasilkan DB yang tidak bisa ditulis API
+#### MJ-18 [MAJOR] [RESOLVED] Prosedur restore SQLite di dokumentasi menghasilkan DB yang tidak bisa ditulis API
 - **File:Line**: `docs/operations.md:40-50`.
 - **Masalah**:
   - `docker compose cp` tanpa `-a` meninggalkan pemilik root/0644, sehingga API (uid 10001) gagal menulis.
@@ -250,20 +267,23 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 - **Perbaikan**:
   - Restore lewat `compose run` sebagai user image (`cp` dari mount `/backup:ro`, hapus WAL/SHM).
   - Backup ditulis ke `/tmp` lalu dihapus.
+- **Resolusi**: `docs/operations.md`: backup SQLite ditulis ke `/tmp/kabuki-backup.sqlite` di container, disalin keluar lalu dihapus (tidak tertinggal di volume data); restore berjalan lewat `$C run --rm --no-deps -v "$PWD/backup:/backup:ro" --entrypoint sh api` sebagai user image (uid 10001), menghapus DB lama + WAL/SHM lalu `cp` dari mount read-only. Diverifikasi dengan image API: prosedur lama → `attempt to write a readonly database`, prosedur baru → file milik 10001 dan bisa ditulis, data sama dengan backup. Regresi: pemeriksaan dokumen di `backup-restore.spec.ts` (gagal pada dokumen lama).
 
-#### MJ-19 [MAJOR] [OPEN] Rotasi secret di dokumentasi tidak berlaku untuk profil scale
+#### MJ-19 [MAJOR] [RESOLVED] Rotasi secret di dokumentasi tidak berlaku untuk profil scale
 - **File:Line**: `docs/operations.md:116-117`; `docs/deployment.md:81-84`; `docker/docker-compose.yml:36-58`.
 - **Masalah**:
   - Compose tidak meneruskan `JWT_*`/`*_FILE` ke API, dan entrypoint tetap memuat file di volume `kabuki-secrets`.
   - Karena itu, "rotasi" setelah backup bocor tidak mengganti secret.
 - **Perbaikan**: dokumentasikan rotasi dengan menghapus `jwt_*_secret` dari volume secrets lalu `up -d` (secrets-init membuat ulang). Untuk profil default, hapus `runtime-secrets.json`.
+- **Resolusi**: `secrets-init` mendukung `KN_ROTATE_JWT_SECRETS=true` yang mengganti pasangan JWT secara atomik (stage + rename, tetap 0400/uid 10001) dan mempertahankan kredensial lain. `docs/operations.md` kini menjelaskan rotasi yang benar per profil (default: hapus `runtime-secrets.json` lalu start; scale: `KN_ROTATE_JWT_SECRETS=true … run --rm --no-deps secrets-init` lalu `restart api`; secret eksplisit lewat override) dan bahwa Compose tidak meneruskan `JWT_*` dari shell; `docs/deployment.md` dikoreksi. Diverifikasi dengan compose project sementara: run biasa idempoten, rotasi hanya mengubah JWT. Langkah rotasi ditambahkan ke integrasi `deployment.spec.ts` (token lama → 401 setelah restart).
 
-#### MJ-20 [MAJOR] [OPEN] Job CI `drivers` gagal di runner bersih: `catalog-deployment.spec` butuh image yang tidak pernah dibangun
+#### MJ-20 [MAJOR] [RESOLVED] Job CI `drivers` gagal di runner bersih: `catalog-deployment.spec` butuh image yang tidak pernah dibangun
 - **File:Line**: `.github/workflows/ci.yml:114-121`; `tests/integration/catalog-deployment.spec.ts:86-105`.
 - **Masalah**: spec memanggil `docker run kabuki-neko-api:local` tanpa build, dan job menjalankan integration paralel.
 - **Perbaikan**: langkah CI yang membangun kedua image sebelum Integration.
+- **Resolusi**: Job CI `drivers` kini menjalankan `KN_IMAGE_TAG=local docker compose -f docker/docker-compose.yml build api web` sebelum Integration, sehingga suite deployment/katalog yang berjalan paralel tidak menarik image yang tidak ada atau membangunnya bersamaan. `catalog-deployment.spec.ts` memeriksa kedua image di `beforeAll` dan gagal dengan instruksi build yang jelas (diverifikasi dengan tag yang tidak ada).
 
-#### MJ-21 [MAJOR] [OPEN] Build image gagal setelah Debian memperbarui ffmpeg (pin versi apt eksak)
+#### MJ-21 [MAJOR] [RESOLVED] Build image gagal setelah Debian memperbarui ffmpeg (pin versi apt eksak)
 - **File:Line**: `docker/Dockerfile.api:34,42,63`; `docker/Dockerfile.web:28,36`.
 - **Masalah**:
   - Mirror bookworm hanya menyimpan versi terkini, sehingga `ffmpeg=7:5.1.9-0+deb12u1` akan "not found".
@@ -272,6 +292,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Pasang ffmpeg tanpa pin versi eksak (paket keamanan terbaru dari repo resmi).
   - Verifikasi `ffprobe -version` saat build.
   - Catat versi aktual di inventaris image.
+- **Resolusi**: `Dockerfile.api` tidak lagi mem-pin versi ffmpeg secara eksak: `FFMPEG_VERSION` default kosong (rilis keamanan bookworm terkini; pin opsional hanya untuk reproduksi), build menjalankan `ffprobe -version` (gagal bila tidak ada), dan inventaris image di CI mencatat versi ffprobe sebenarnya. Dockerfile.web sudah tidak memasang ffmpeg sejak audio di-commit teroptimasi. Diverifikasi: `apt-get -s` dengan pin lama → "Version ... was not found", tanpa pin → versi keamanan terbaru; stage runtime mini berhasil dibangun dan mencetak `ffprobe version 5.1.9-0+deb12u1`.
 
 #### MJ-22 [MAJOR] [RESOLVED] Socket host tidak pernah memperbarui access token (perintah host gagal setelah 15 menit)
 - **File:Line**: `apps/web/src/components/host/host-stage.tsx:93-97,176`; `apps/web/src/hooks/use-socket.ts:313-316`; `host-phase-controls.tsx:90`.
@@ -287,10 +308,11 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Spec baru `host-stage.spec.ts` (3 test) dan `use-socket.spec.tsx` (2 test).
   - Web Vitest 51 file / 444 test, tsc, dan lint PASS.
 
-#### MJ-23 [MAJOR] [OPEN] Socket anonim halaman join diputus server setelah 120 s dan tidak pernah tersambung lagi
+#### MJ-23 [MAJOR] [RESOLVED] Socket anonim halaman join diputus server setelah 120 s dan tidak pernah tersambung lagi
 - **File:Line**: `apps/web/src/components/player/pin-join-scanner.tsx:118-125,141-145`; `apps/web/src/lib/socket-client.ts:106`.
 - **Masalah**: `reconnection: false` ditambah batas umur anonim 120 s menyebabkan cek PIN atau join gagal ("unknown") sampai halaman dimuat ulang. Ini skenario umum di kelas.
 - **Perbaikan**: sambungkan ulang bila `!socket.connected` sebelum `emit`.
+- **Resolusi**: `reconnectingEmitter` di `pin-join-scanner.tsx` menyambungkan ulang socket anonim yang terputus (`connected === false`) sebelum setiap `check_pin`, `join_room` (recover), dan seluruh perintah langkah identitas; tunggu `connect`/`connect_error` maksimal 5 s. `JoinSocket` kini mengekspos `connected` dan `onLifecycle`. Spec baru (reconnect lalu emit; socket hidup dipakai langsung; timeout tetap mengirim). Web Vitest player 40/40, tsc, lint PASS.
 
 #### MJ-24 [MAJOR] [RESOLVED] Media unggahan tidak pernah tampil: MediaPreview menolak URL absolut dari API
 - **File:Line**: `apps/web/src/components/ui/media-preview.tsx:58-71,120` (dipakai di player, projector, picker, library, dan detail jawaban).
@@ -303,42 +325,50 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
   - Spec baru membuktikan URL `/uploads` absolut dari API dan basis bucket ter-render secara default, sedangkan origin asing tetap ditolak.
   - Web Vitest, tsc, dan lint PASS; E2E `security-headers` 8/8; Compose config default + TLS PASS.
 
-#### MJ-25 [MAJOR] [OPEN] `publicRevision` snapshot tidak ikut maju oleh event → `room:sync` penuh berulang
+#### MJ-25 [MAJOR] [RESOLVED] `publicRevision` snapshot tidak ikut maju oleh event → `room:sync` penuh berulang
 - **File:Line**: `apps/web/src/stores/game.store.ts:157-161,360-366`; `connection-recovery.tsx:64,200`.
 - **Masalah**: heartbeat selalu terlihat lebih baru, sehingga semua klien (hingga 200) meminta snapshot penuh beberapa kali per soal. Selama itu UI menjadi `inert` ("Catching up…").
 - **Perbaikan**: event room-scope memajukan `publicRevision`. Event khusus host tidak.
+- **Resolusi**: `reduce` di `game.store.ts` kini memajukan `publicRevision` ke revisi envelope untuk setiap push room-wide; push khusus host (`game:answer_count_updated`, `report:status_changed`) tidak. Heartbeat dengan publicRevision yang sama tidak lagi memicu `room:sync`; heartbeat lebih baru tetap memicu. Spec baru di `game.store.spec.ts`. Web Vitest 51/448, tsc, lint PASS.
+- **Tindak lanjut QA (2026-11-12, `/vibe-test`)**: perbaikan ini memunculkan regresi. Push tidak membawa `capabilities`, dan sebelumnya hanya `room:sync` penuh yang memperbaruinya. Akibatnya `canStart` host tetap `false` setelah pemain pertama bergabung, sehingga "Start game" tidak pernah aktif (5 kegagalan E2E). `applyEvent` kini menurunkan kapabilitas host dari roster dan fase hasil reduce dengan aturan `room-projector.ts`. Spec regresi baru di `game.store.spec.ts`: gagal tanpa perbaikan, lulus dengan perbaikan. Rincian di [07-qa-report.md](07-qa-report.md).
 
-#### MJ-26 [MAJOR] [OPEN] Kegagalan recovery non-terminal diabaikan: tanpa backoff, `retryAfter` diabaikan, tanpa tombol Retry
+#### MJ-26 [MAJOR] [RESOLVED] Kegagalan recovery non-terminal diabaikan: tanpa backoff, `retryAfter` diabaikan, tanpa tombol Retry
 - **File:Line**: `apps/web/src/hooks/use-session-recovery.ts:239-241,262-268`; `connection-recovery.tsx:140-145`.
 - **Masalah**: RATE_LIMITED/DEPENDENCY_UNAVAILABLE membuat pemain macet di "Connecting…" atau mengulang join tiap ±2 s. Melanggar SA §5.1.
 - **Perbaikan**:
   - Jadwalkan `recover` single-flight dengan `backoffDelay(attempt, retryAfterMs)`.
   - Tampilkan Retry/Leave.
+- **Resolusi**: error recovery non-terminal (RATE_LIMITED, DEPENDENCY_UNAVAILABLE, INTERNAL_ERROR, …) untuk pemain dan host kini menjadwalkan retry dengan `backoffDelay(attempt, retryAfterMs)` lewat satu timer terkelola (dibatalkan saat sukses, retry manual, unmount; dilewati saat terputus) dan menyetel `recoveryFailed`; `ConnectionRecovery` menampilkan Retry/Leave (`lost`/`stale lost`) alih-alih "Connecting…" tanpa akhir; Retry di player/host memicu `retryNow` pada socket hidup. Spec baru (tidak ada join sebelum 9 s, tepat satu setelahnya, flag gagal lalu pulih, tidak ada timer setelah unmount; gagal pada kode lama) + kasus `recoveryView`. Web Vitest 51/450, tsc, lint PASS.
 
-#### MJ-27 [MAJOR] [OPEN] Reconnect pemain mengirim `room:sync` sebelum rejoin → join ganda
+#### MJ-27 [MAJOR] [RESOLVED] Reconnect pemain mengirim `room:sync` sebelum rejoin → join ganda
 - **File:Line**: `apps/web/src/stores/game.store.ts:407-414`; `use-session-recovery.ts:293-305`; `use-socket.ts:301-304`.
 - **Masalah**: socket yang belum terikat mendapat AUTH_REQUIRED lalu `recover()` kedua, sehingga token CHECK_JOIN terpakai dua kali per reconnect.
 - **Perbaikan**: `recover` single-flight; `sync` pemain ditunda sampai rebind.
+- **Resolusi**: `recover` di `use-session-recovery.ts` kini single-flight (pemanggil konkuren berbagi run yang sedang berjalan; retry terjadwal lewat ref), dan `sync` pemain dilewati sampai socket ter-bind ulang (`bound` di-reset pada `disconnect`, di-set setelah `player:join_room` sukses), sehingga `room:sync` dari socket yang belum ter-bind tidak lagi memicu join kedua. Spec baru mereproduksi jendela reconnect→ACK join (gagal tanpa perbaikan, lulus dengan perbaikan). Web Vitest 51/450, tsc, lint PASS.
 
-#### MJ-28 [MAJOR] [OPEN] `player:session_replaced` menghapus kredensial yang dipakai tab pengganti
+#### MJ-28 [MAJOR] [RESOLVED] `player:session_replaced` menghapus kredensial yang dipakai tab pengganti
 - **File:Line**: `apps/web/src/hooks/use-session-recovery.ts:306-316`; `connection-recovery.tsx:117-122`.
 - **Masalah**: kedua tab berbagi key localStorage yang sama. Tab lama menghapus record, sehingga tab baru tidak bisa recover.
 - **Perbaikan**: jangan hapus storage untuk `session_replaced`. Tetap hapus untuk `INVALID_SESSION_TOKEN`.
+- **Resolusi**: push `player:session_replaced` dan error recovery `SESSION_REPLACED` tidak lagi menghapus record `kabuki:player:<sessionId>` (dipakai tab pengganti) di `use-session-recovery.ts` maupun `connection-recovery.tsx`; `INVALID_SESSION_TOKEN`, kick, dan room lost tetap menghapusnya. Spec diperbarui (record tetap ada setelah replaced; token tidak valid tetap menghapus). Web Vitest hooks/player 64/64, tsc, lint PASS.
 
-#### MJ-29 [MAJOR] [OPEN] `room:expired` selalu dibuang oleh fence revisi
+#### MJ-29 [MAJOR] [RESOLVED] `room:expired` selalu dibuang oleh fence revisi
 - **File:Line**: `apps/web/src/stores/game.store.ts:369-391`.
 - **Masalah**: server mengirim `room:expired` dengan revision/phaseVersion 1, sehingga event itu dianggap stale dan klien tidak pernah mencapai state terminal.
 - **Perbaikan**: tangani `room:expired`, `player:kicked`, dan `player:session_replaced` sebelum fence (cukup cek `sessionId` + dedup `eventId`).
+- **Resolusi**: di `game.store.ts` `applyEvent`, `player:kicked`/`player:session_replaced`/`room:expired` ditangani sebelum fence revision/phaseVersion (tetap cek `sessionId` + dedup `eventId`), sehingga `room:expired` dengan revision 1/phaseVersion 1 dari server menghasilkan state terminal. Spec baru di `game.store.spec.ts` (terapan, duplikat ditolak, sesi lain ditolak). Web Vitest stores/hooks/player/host 134/134, tsc, lint PASS.
 
-#### MJ-30 [MAJOR] [OPEN] Kegagalan `/auth/me` apa pun (offline, timeout, 5xx) dianggap sign-out
+#### MJ-30 [MAJOR] [RESOLVED] Kegagalan `/auth/me` apa pun (offline, timeout, 5xx) dianggap sign-out
 - **File:Line**: `apps/web/src/providers/auth-provider.tsx:240-251`.
 - **Masalah**: token valid dibuang dan halaman dilindungi di-unmount, sehingga host stage kehilangan socket. Melanggar "error bukan empty" dan S17.
 - **Perbaikan**: status anonim hanya untuk 401 (`AUTH_REQUIRED`/`TOKEN_REVOKED`/`TOKEN_EXPIRED`). Error lain mempertahankan token dan menampilkan error yang bisa di-retry.
+- **Resolusi**: `loadPrincipal` di `auth-provider.tsx` hanya keluar sesi untuk 401 `AUTH_REQUIRED`/`TOKEN_REVOKED`/`TOKEN_EXPIRED`; kegagalan sementara (offline, timeout, 5xx) mempertahankan token dan halaman — saat pengecekan awal status menjadi `unavailable` dan `RequireAuth` menampilkan alert + Retry (katalog `common.inventory.s17.error`, `common.actions.retry`), halaman terautentikasi tetap tidak berubah. Spec baru (gagal pada kode lama). Web Vitest 51/451, tsc, lint PASS.
 
-#### MJ-31 [MAJOR] [OPEN] "Save and continue" studio bernavigasi saat save sebelumnya masih berjalan
+#### MJ-31 [MAJOR] [RESOLVED] "Save and continue" studio bernavigasi saat save sebelumnya masih berjalan
 - **File:Line**: `apps/web/src/components/studio/studio-editor.tsx:317`; `apps/web/src/stores/studio.store.ts` (`save`).
 - **Masalah**: hasil `"skipped"` (save sedang berjalan) dianggap sukses. Bila PUT kemudian gagal, draft hilang. Melanggar M10 X.
 - **Perbaikan**: save single-flight yang mengembalikan promise yang sedang berjalan kepada pemanggil konkuren.
+- **Resolusi**: `save` di `studio.store.ts` kini single-flight: pemanggil yang datang saat save berjalan menunggu hasil sebenarnya (bukan `"skipped"`), lalu menyimpan lagi bila ada edit selama save; `"Save and continue"` hanya bernavigasi setelah semua tersimpan, dan saat PUT gagal draft tetap ada. Spec baru (gagal pada kode lama). Web Vitest 51/452, tsc, lint PASS.
 
 ### 3.3. [MINOR]
 
@@ -371,7 +401,7 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 | MN-25 | [OPEN] | `room-scheduler.ts:137-164,193` | Map/timer scheduler bocor saat instance lain mengambil lease. | `forget` saat `lead()` gagal. |
 | MN-26 | [OPEN] | `room-scheduler.ts:20,235-245`; `docs/operations.md:143` | Alarm 24 jam tanpa status/errorCode dan hanya sekali per proses. | Sertakan status; ulangi tiap 24 jam. |
 | MN-27 | [OPEN] | `apps/api/src/main.ts:24,56` | `securityHeaders` di modul entry, sehingga tidak bisa diuji unit. | Pindah ke `common/security-headers.middleware.ts`. |
-| MN-28 | [OPEN] | `apps/web/src/hooks/use-session-recovery.ts:223,264` | Timer retry `recover()` tidak dibatalkan atau dibatasi. | Bersihkan saat cleanup; skip saat terputus. |
+| MN-28 | [RESOLVED] | `apps/web/src/hooks/use-session-recovery.ts:223,264` | Timer retry `recover()` tidak dibatalkan atau dibatasi. | Bersihkan saat cleanup; skip saat terputus. **Resolusi:** timer retry `recover()` kini satu timer terkelola di `use-session-recovery.ts` (diganti oleh jadwal baru, dibatalkan saat sukses/retry manual/unmount, dilewati saat socket terputus); dikerjakan bersama MJ-26 dan diuji oleh spec MJ-26 (tidak ada emit setelah unmount). |
 | MN-29 | [OPEN] | `player-game.tsx:95`; `use-socket.ts:305-334` | Halaman player membuka socket anonim walau tanpa kredensial. | Flag `enabled`. |
 | MN-30 | [OPEN] | `studio-editor.tsx:348-358,475,480` | Kegagalan resolve konflik senyap dan rejection tidak ditangani. | Notice error + Retry. |
 | MN-31 | [OPEN] | `user-invites.tsx:590`; `admin-settings-health.tsx:232` | Idempotency-Key baru per tekan setelah hasil tidak pasti. | Simpan key sampai respons definitif. |
@@ -379,14 +409,14 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 | MN-33 | [OPEN] | `locale-provider.tsx:256,281-301` | Ganti bahasa bisa membuang namespace yang dimuat bersamaan. | Gabungkan namespace yang hilang setelah load. |
 | MN-34 | [OPEN] | `host-stage-lobby.tsx:195`; `connection-recovery.tsx:185`; `slide-navigator.tsx:328-406`; `quiz-library-detail.tsx:413` | Copy/aria hardcoded di luar katalog. | Pesan ICU berplaceholder. |
 | MN-35 | [OPEN] | `question-fields.tsx:393-397`; `question-properties.tsx:340-343` | Tombol error-summary < 44 px. | `min-h-11 inline-flex items-center`. |
-| MN-36 | [OPEN] | `docker/entrypoint.sh:76-88` | `KN_STARTUP_WAIT_SEC` tidak valid → tunggu tanpa batas. | Validasi integer 1–3600. |
+| MN-36 | [RESOLVED] | `docker/entrypoint.sh:76-88` | `KN_STARTUP_WAIT_SEC` tidak valid → tunggu tanpa batas. | Validasi integer 1–3600. **Resolusi:** Divalidasi di `docker/startup-gate.cjs` (integer 1–3600; kosong = default 60) bersama MJ-17; diuji di `tests/contracts/startup-gate.spec.ts`. |
 | MN-37 | [OPEN] | `scripts/optimize-audio.mjs:356,409,438-449` | `--concurrency 0` menimpa output dengan direktori kosong. | Validasi 1–16; assert hasil. |
 | MN-38 | [OPEN] | `scripts/measure-web-budget.ts:214-245,531-535`; `tests/helpers/game.ts:195-222` | Proses API dan socket bocor. | Stop di `finally`/`catch`. |
 | MN-39 | [OPEN] | `scripts/locales-template.ts:116` | Instruksi README template merusak `locales:build`. | Salin hanya `manifest.json` + namespace. |
 | MN-40 | [OPEN] | `scripts/selfhost-smoke.sh:95-99,194` | Tidak jalan di bash 3.2/macOS. | Ekspansi array aman; UUID portabel. |
 | MN-41 | [OPEN] | `docs/deployment.md:115`; `docs/self-hosting.md:40,200` | Deskripsi healthcheck web salah; `cd kabuki-neko` gagal di FS case-sensitive. | Koreksi dokumen. |
 | MN-42 | [OPEN] | `.github/workflows/ci.yml:186-189` | Overlay TLS, Caddyfile, dan smoke test tidak ada di CI. | Langkah config TLS + `caddy validate`. |
-| MN-43 | [OPEN] | `scripts/benchmark-game.ts:138-146` | Verdict benchmark mengabaikan jawaban ditolak dan laporan tidak durable. | Tambahkan alasan gagal. |
+| MN-43 | [RESOLVED] | `scripts/benchmark-game.ts:138-146` | Verdict benchmark mengabaikan jawaban ditolak dan laporan tidak durable. | Tambahkan alasan gagal. Diselesaikan di TASK-184 (alasan "answer(s) not admitted" dan "report not durable"). |
 | MN-44 | [OPEN] | `scripts/migrate.ts:21-24` | `db:migrate` menyembunyikan field konfigurasi dan tanpa doc comment. | Cetak `fields`/kode; header comment. |
 | MN-45 | [OPEN] | `docker/Dockerfile.api:48`; `Dockerfile.web:42` | pnpm dipasang tanpa verifikasi integritas. | corepack. |
 | MN-46 | [OPEN] | `docker/docker-compose.yml:61-106,141-172` | Tanpa `no-new-privileges`/`cap_drop`/`read_only` pada api, web, dan data. | Hardening per service. |
@@ -411,3 +441,23 @@ Seluruh 218 task `[x]` di [04-tasks.md](04-tasks.md):
 2. Lanjutkan dengan kebenaran data game/laporan (MJ-07, MJ-04, MJ-03, MJ-06, MJ-12, MJ-14) dan ketersediaan (MJ-15, MJ-08, MJ-11, MJ-13).
 3. Perbaiki dokumen operasional (MJ-17–MJ-19) dan CI/build (MJ-20, MJ-21).
 4. `[MINOR]` dijadwalkan sebagai task hardening yang menyentuh file yang sama.
+
+## 6. Verifikasi akhir setelah `--fix` (2026-11-12)
+
+Dijalankan dari root workspace di commit `863422b` (branch `main-nv6b09`), Node v26.13.0, pnpm 10.34.9, Docker tersedia:
+
+| Perintah | Hasil |
+| --- | --- |
+| `pnpm install --frozen-lockfile` + `git diff --exit-code pnpm-lock.yaml` | PASS (lockfile tidak berubah) |
+| `pnpm locales:validate` | PASS |
+| `pnpm build` (termasuk `build:assets`: audio teroptimasi hanya disalin, tanpa ffmpeg) | PASS |
+| `pnpm lint` | PASS (`--max-warnings 0`) |
+| `pnpm typecheck` | PASS |
+| `pnpm test` | PASS — API 253/253, web 51 file, shared 11 file, database 4/4 |
+| `pnpm test:performance` | PASS |
+| `pnpm test:audio` | PASS (11/11) |
+| `pnpm test:contracts` | PASS — 25 suite. `driver-matrix` dan `storage` butuh `KABUKI_TEST_MINIO_IMAGE=kabuki-neko/minio-test:local-ca` di container ini (proxy CA); tanpa variabel itu keduanya gagal karena build image MinIO, bukan karena kode |
+| `docker compose ... config --quiet` (default dan scale) | PASS |
+| Integration terarah | PASS — `reports.spec`, `finalization-failures.spec` (12/12), `backup-restore` (cek dokumen), `catalog-deployment` (cek image hilang) |
+
+Tidak dijalankan ulang secara penuh pada tahap ini: `pnpm test:integration` lengkap, `pnpm test:e2e`, dan build image Docker produksi (butuh CA proxy sebagai BuildKit secret). Langkah rotasi JWT baru di `deployment.spec.ts` (MJ-19) hanya diperiksa kompilasinya; perilakunya diverifikasi manual dengan project Compose sementara.

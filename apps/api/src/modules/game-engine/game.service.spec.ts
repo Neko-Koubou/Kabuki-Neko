@@ -53,7 +53,7 @@ let rooms: RoomRegistryService;
 let frozen: FrozenReport[];
 
 /** Playable quiz: SINGLE_CHOICE (key = option 0) or MULTIPLE_SELECT (keys = options 0 and 1). */
-async function quiz(kinds: Kind[]) {
+async function quiz(kinds: Kind[], multipliers: readonly number[] = []) {
   const id = await quizzes.create(host.user.id, { title: "Engine" }, 1);
   const write = quizWriteSchema.parse({
     title: "Engine",
@@ -72,7 +72,7 @@ async function quiz(kinds: Kind[]) {
       videoEndSec: null,
       mediaRevealMode: "NONE",
       timeLimitSec: 20,
-      pointsMultiplier: 1,
+      pointsMultiplier: multipliers[orderIndex] ?? 1,
       explanationText: null,
       accessibility: emptyAccessibility(),
       options: [0, 1, 2].map((optionIndex) => ({
@@ -88,8 +88,8 @@ async function quiz(kinds: Kind[]) {
   return { id, revision: await quizzes.save(host.user.id, id, 1, write, 2) };
 }
 /** Creates a room for a quiz of `kinds` and joins `players` players. */
-async function room(kinds: Kind[], players = 2) {
-  const { id, revision } = await quiz(kinds);
+async function room(kinds: Kind[], players = 2, multipliers: readonly number[] = []) {
+  const { id, revision } = await quiz(kinds, multipliers);
   const ack = await rooms.createRoom(host, {
     requestId: randomUUID(),
     quizId: id,
@@ -333,6 +333,27 @@ it("ends an empty lobby and an active question with immutable reports", async ()
   expect((await state(identity)).phase).toBe("FINISHED");
 });
 
+it("counts correct and unanswered only on scored questions, never on ×0 (MJ-07)", async () => {
+  const { identity, bindings } = await room(["SINGLE_CHOICE", "SINGLE_CHOICE"], 2, [0, 1]);
+  const [a, b] = bindings as [PlayerBinding, PlayerBinding];
+  await toAnswering(identity);
+  await submit(identity, a, await publicIndex(identity, 0)); // correct, but worth ×0
+  await command(identity, "host:end_game");
+  const report = frozen.at(-1);
+  expect(report?.answers.find((x) => x.playerId === a.playerId)?.result).toBe("CORRECT");
+  expect(report?.answers.find((x) => x.playerId === b.playerId)?.result).toBe("UNANSWERED");
+  // A ×0 question is neither a tie-break "correct" nor a scored unanswered opportunity.
+  expect(report?.players.find((p) => p.id === a.playerId)).toMatchObject({
+    finalScore: 0,
+    correctCount: 0,
+    unansweredCount: 0,
+  });
+  expect(report?.players.find((p) => p.id === b.playerId)).toMatchObject({
+    correctCount: 0,
+    unansweredCount: 0,
+  });
+});
+
 it("recovers after a crash during result commit and during report freeze", async () => {
   const { identity, bindings } = await room(["SINGLE_CHOICE"]);
   const [a] = bindings as [PlayerBinding];
@@ -358,4 +379,69 @@ it("recovers after a crash during result commit and during report freeze", async
   await advance(identity, 10);
   expect(frozen).toHaveLength(1);
   expect(revealed.players[a.playerId]?.streak).toBe(1);
+});
+
+it("coalesces settles of a burst of answers and still scores the closing answer before its ACK (TASK-183)", async () => {
+  const players = 50;
+  const { identity, bindings } = await room(["SINGLE_CHOICE"], players);
+  await toAnswering(identity);
+  const s = await state(identity);
+  const questionId = s.quiz.questions[0]?.id ?? "";
+  const correct = await publicIndex(identity, 0);
+  const snapshots = jest.spyOn(store, "getPrivateSnapshot");
+  const reads = jest.spyOn(store, "readPrivateSnapshot");
+  const fullReads = () => snapshots.mock.calls.length + reads.mock.calls.length;
+  const commits = jest.spyOn(store, "commitQuestionResult");
+
+  const acks = await Promise.all(
+    bindings.map((binding) =>
+      game.submitAnswer(binding, {
+        questionIndex: 0,
+        questionId,
+        submissionId: randomUUID(),
+        answer: correct,
+      }),
+    ),
+  );
+  expect(acks.every((ack) => ack.accepted)).toBe(true);
+  // One round in flight plus one coalesced round, plus the one read `finalize` makes after the
+  // commit, instead of one full-state read per answer.
+  expect(fullReads()).toBeLessThanOrEqual(3);
+  // The last answer closed the question; it was scored before the ACKs resolved, exactly once.
+  expect(commits).toHaveBeenCalledTimes(1);
+  await expect(commits.mock.results[0]?.value).resolves.toBe("COMMITTED");
+  const revealed = await state(identity);
+  expect(revealed.phase).toBe("ANSWER_REVEAL");
+  expect(revealed.closedQuestions["0"]?.reason).toBe("ALL_ANSWERED");
+  expect(Object.keys(revealed.results["0"]?.personal ?? {})).toHaveLength(players);
+
+  // Later calls start fresh rounds (no stale shared result) and commit nothing twice.
+  snapshots.mockClear();
+  reads.mockClear();
+  expect(await game.settle(identity)).toBe(false);
+  expect(fullReads()).toBe(1);
+  expect(commits).toHaveBeenCalledTimes(1);
+});
+
+it("settles from the live state without changing it outside the commit (TASK-185D)", async () => {
+  const { identity, bindings } = await room(["SINGLE_CHOICE"], 2);
+  await toAnswering(identity);
+  const [a, b] = bindings as [PlayerBinding, PlayerBinding];
+  await submit(identity, a, await publicIndex(identity, 0));
+  // Close the question but keep the result uncommitted: the admission's settle is refused.
+  const commit = jest.spyOn(store, "commitQuestionResult").mockResolvedValueOnce("RETRY");
+  await submit(identity, b, await publicIndex(identity, 1));
+  expect((await state(identity)).phase).toBe("QUESTION_ANSWERING");
+  const copies = jest.spyOn(store, "getPrivateSnapshot");
+  commit.mockResolvedValueOnce("RETRY");
+  const live = await store.readPrivateSnapshot(identity);
+  const before = structuredClone(live);
+  expect(await game.settle(identity)).toBe(false);
+  // The refused round read the live state without copying it and left it unchanged.
+  expect(copies).not.toHaveBeenCalled();
+  expect(await store.readPrivateSnapshot(identity)).toEqual(before);
+  // The next round commits once, as before.
+  expect(await game.settle(identity)).toBe(true);
+  expect(commit.mock.results.filter((r) => r.type === "return")).toHaveLength(3);
+  expect((await state(identity)).phase).toBe("ANSWER_REVEAL");
 });

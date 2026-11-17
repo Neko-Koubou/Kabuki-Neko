@@ -288,7 +288,10 @@ export class QuizzesService {
     }
   }
   private async detail(actorId: string, id: string, manager?: EntityManager) {
-    const source = await this.quizzes.read(actorId, id, manager);
+    return this.detailOf(actorId, await this.quizzes.read(actorId, id, manager));
+  }
+  /** The validated quiz detail DTO for one repository read result. */
+  private detailOf(actorId: string, source: Awaited<ReturnType<QuizzesRepository["read"]>>) {
     const media = new Map(source.media.map((row) => [row.id, currentMedia(row)]));
     const validated = validateQuiz(source.content, media, {
       actorId,
@@ -324,15 +327,23 @@ export class QuizzesService {
     const query = new ZodValidationPipe(quizQuerySchema).transform(input);
     return this.boundary(async () => {
       const page = await this.quizzes.list(actor.id, query);
+      // One lock-free batch read for the whole page (code review MJ-08); a quiz deleted (or made
+      // private) since the page query is skipped instead of failing the list.
+      const sources = await this.quizzes.readMany(
+        actor.id,
+        page.items.map((row) => row.id),
+      );
       const items = [];
       for (const row of page.items) {
+        const source = sources.get(row.id);
+        if (!source) continue;
         const {
           createdAt: _created,
           questions: _questions,
           media: _media,
           validationIssues: _issues,
           ...summary
-        } = await this.detail(actor.id, row.id);
+        } = this.detailOf(actor.id, source);
         items.push(summary);
       }
       return { items, meta: page.meta };
