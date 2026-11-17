@@ -459,11 +459,148 @@ it("freezes the report once, persists the room, gates ready on durability and th
   expect(await redis.keys(`${PREFIX}*`)).toEqual([]);
 });
 
+/** Joins player 6 (or `n`) with a fixed request id, as a retried join would. */
+function join(n = 6, friendlyTicketHash: string | null = null) {
+  return store.bindPlayer({
+    ...identity,
+    requestId: uuid(30 + n),
+    payloadHash: "a".repeat(64),
+    connectionId: "join",
+    binding: { kind: "join", player: player(n), sessionToken: "a".repeat(43), friendlyTicketHash },
+  });
+}
+
+it("retries joins without a second slot, recovers and rejects old generations (TASK-185N)", async () => {
+  await seed();
+  const first = await join();
+  expect(first.generation).toBe(1);
+  const second = await join();
+  expect(second.generation).toBe(2);
+  expect(second.token).toBe(first.token);
+  expect(await redis.hlen(`${PREFIX}:players`)).toBe(1);
+  expect(await store.setPresence(identity, uuid(6), 1, false)).toBe(false);
+  await expect(
+    store.getRoleSnapshot(identity, { role: "player", playerId: uuid(6), generation: 1 }),
+  ).rejects.toMatchObject({ code: "SESSION_REPLACED" });
+  const recovered = await store.bindPlayer({
+    ...identity,
+    requestId: uuid(41),
+    payloadHash: "b".repeat(64),
+    connectionId: "recover",
+    binding: { kind: "recover", playerId: uuid(6), tokenHash: player().tokenHash },
+  });
+  expect(recovered.generation).toBe(3);
+  expect(recovered.token).toBeNull();
+  expect(JSON.stringify(recovered.snapshot)).not.toContain("tokenHash");
+  await expect(
+    store.bindPlayer({
+      ...identity,
+      requestId: uuid(42),
+      payloadHash: "b".repeat(64),
+      connectionId: "recover",
+      binding: { kind: "recover", playerId: uuid(6), tokenHash: "f".repeat(64) },
+    }),
+  ).rejects.toMatchObject({ code: "INVALID_SESSION_TOKEN" });
+  await expect(
+    store.getRoleSnapshot(identity, { role: "host", hostId: uuid(90) }),
+  ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  // A different payload under the same join request id is a conflict.
+  await expect(
+    store.bindPlayer({
+      ...identity,
+      requestId: uuid(36),
+      payloadHash: "e".repeat(64),
+      connectionId: "join",
+      binding: {
+        kind: "join",
+        player: player(),
+        sessionToken: "a".repeat(43),
+        friendlyTicketHash: null,
+      },
+    }),
+  ).rejects.toMatchObject({ code: "IDEMPOTENCY_CONFLICT" });
+});
+
+it("tracks presence and lobby avatars per player field only (TASK-185N)", async () => {
+  await seed();
+  const joined = await join();
+  await join(7);
+  const before = required(await store.getPrivateSnapshot(identity)).revision;
+  expect(await store.setPresence(identity, uuid(6), joined.generation, false)).toBe(true);
+  const offline = required(await store.getPrivateSnapshot(identity));
+  expect(offline.players[uuid(6)]).toMatchObject({ connected: false, connectionId: null });
+  expect(offline.players[uuid(7)]?.connected).toBe(true);
+  expect(offline.revision).toBe(before + 1);
+  expect(offline.publicRevision).toBe(offline.revision);
+  const revision = await store.updateAvatar(identity, uuid(6), joined.generation, {
+    style: "bottts",
+    seed: "new",
+  });
+  expect(revision).toBe(offline.revision + 1);
+  expect(required(await store.getPrivateSnapshot(identity)).players[uuid(6)]?.avatar.seed).toBe(
+    "new",
+  );
+  await expect(
+    store.updateAvatar(identity, uuid(6), joined.generation + 5, { style: "bottts", seed: "x" }),
+  ).rejects.toMatchObject({ code: "SESSION_REPLACED" });
+  await expect(
+    store.updateAvatar(identity, uuid(99), 1, { style: "bottts", seed: "x" }),
+  ).rejects.toMatchObject({ code: "INVALID_SESSION_TOKEN" });
+  await expect(
+    store.updateAvatar(identity, uuid(6), joined.generation, { style: "nope", seed: "x" }),
+  ).rejects.toMatchObject({ code: "INVALID_FORMAT" });
+});
+
+it("refuses duplicate nicknames and joins friendly rooms only through the socket's ticket (TASK-185N)", async () => {
+  await seed();
+  await join();
+  await expect(
+    store.bindPlayer({
+      ...identity,
+      requestId: uuid(50),
+      payloadHash: "a".repeat(64),
+      connectionId: "other",
+      binding: {
+        kind: "join",
+        player: { ...player(8), nicknameKey: player().nicknameKey },
+        sessionToken: "a".repeat(43),
+        friendlyTicketHash: null,
+      },
+    }),
+  ).rejects.toMatchObject({ code: "NICKNAME_TAKEN" });
+  await store.releaseRoom(identity);
+  await seed(activeRoomStateSchema.parse({ ...room(), friendlyNicknames: true }));
+  const now = Date.now();
+  await store.reserveFriendlyTicket(identity, {
+    nickname: player().nickname,
+    tokenHash: "b".repeat(64),
+    socketId: "join",
+    expiresAt: now + 119000,
+    consumed: false,
+  });
+  await expect(join()).rejects.toMatchObject({ code: "NICKNAME_INVALID" });
+  const joined = await join(6, "b".repeat(64));
+  expect(joined.generation).toBe(1);
+  // The ticket is consumed once.
+  expect(JSON.parse(required(await redis.hget(`${PREFIX}:tickets`, "b".repeat(64)))).consumed).toBe(
+    true,
+  );
+  await expect(
+    store.reserveFriendlyTicket(identity, {
+      nickname: player().nickname,
+      tokenHash: "c".repeat(64),
+      socketId: "late",
+      expiresAt: now + 119000,
+      consumed: false,
+    }),
+  ).rejects.toMatchObject({ code: "NICKNAME_TAKEN" });
+});
+
 it("fails the gameplay operations that later tasks port closed, never on another layout", async () => {
   await seed();
-  await expect(store.setPresence(identity, uuid(6), 1, false)).rejects.toMatchObject({
-    code: "STATE_UNAVAILABLE",
-  });
+  await expect(
+    store.closeQuestion({ ...identity, expectedPhaseVersion: 1, reason: "TIMER" }),
+  ).rejects.toMatchObject({ code: "STATE_UNAVAILABLE" });
   // v1 keys are never read by v2 (ADR-13 migration by draining).
   await redis.hset(`kabukineko:v2contract:room:{${identity.pin}}:meta`, "state", "{}");
   expect(await store.getPrivateSnapshot({ ...identity, pin: "000124" })).toBeNull();

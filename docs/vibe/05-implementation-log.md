@@ -2807,3 +2807,25 @@
   - Build copies `v2-room.lua` into `dist`.
   - `pnpm --filter @kabuki-neko/api test` → 280/280.
   - `pnpm test:contracts --testPathPatterns='redis-v2|state-parity'` → 2/2 suites, 41/41 tests.
+
+## TASK-185N: Store Redis v2: pemain (join, recover, presence, avatar, kick, tiket) — DONE
+- **Date**: 2026-11-17 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/providers/state/lua/v2-player.lua` (new; flat name, see TASK-185M). Ports the v1 semantics of `bind-player.lua` and the presence/avatar/ticket branches of `mutate-room.lua` to the v2 keys, with the same error codes.
+    - `join`: 120 s idempotent receipt with IDEMPOTENCY_CONFLICT; LOBBY/locked/full/capacity checks; nickname and id uniqueness over `:players`; friendly ticket consumed once.
+    - `recover`: token hash check.
+    - `presence`, `avatar` (LOBBY only, stale generation → SESSION_REPLACED).
+    - `ticket`: socket-bound, replaces the socket's earlier ticket, drops expired ones, NICKNAME_TAKEN.
+    - Each operation decodes only `core` plus the player/ticket fields it touches and writes only those back, plus the core revision.
+    - Bug found by the new contract and fixed: a missing friendly ticket hash arrives as `cjson.null`; it is now NICKNAME_INVALID instead of a script error.
+  - `apps/api/src/providers/state/redis-v2-state.store.ts`: `bindPlayer` (candidate projection on the read window before the script, so a projection failure never consumes a slot or ticket), `setPresence`, `updateAvatar`, `reserveFriendlyTicket`; the script list includes `v2-player`.
+  - `tests/contracts/redis-v2-state.spec.ts`: three new cases.
+    - Join retries keep one slot and the same token; recover raises the generation; stale generations get SESSION_REPLACED; bad tokens get INVALID_SESSION_TOKEN; FORBIDDEN host; IDEMPOTENCY_CONFLICT.
+    - Presence/avatar change one player field with revision/publicRevision; SESSION_REPLACED, INVALID_SESSION_TOKEN and INVALID_FORMAT.
+    - Duplicate nickname → NICKNAME_TAKEN; friendly room joins only with the socket's ticket, which is consumed once; a later reservation of a taken nickname → NICKNAME_TAKEN.
+- **Deviation**: kick is a host command (`host:kick_player` through `applyCommand`), so it moves to TASK-185P with the other host commands.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 280/280.
+  - Build copies `v2-player.lua`.
+  - `pnpm test:contracts --testPathPatterns='redis-v2|state-parity'` → 44/44.

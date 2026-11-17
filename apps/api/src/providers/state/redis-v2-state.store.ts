@@ -13,9 +13,10 @@
  * - `readPrivateSnapshot`: the read-only window (current + latest scored question), only
  *   structurally restored, cached while its raw pieces are unchanged (hot paths).
  *
- * Built next to v1 and not yet installed in `StateModule`: gameplay operations that later tasks
- * port (players TASK-185N, answers TASK-185O, results/commands/phases TASK-185P) fail closed with
- * STATE_UNAVAILABLE until then.
+ * Built next to v1 and not yet installed in `StateModule`. Ported so far: room lifecycle, reads,
+ * leases and the report (TASK-185M); players: join, recover, presence, avatar, friendly tickets
+ * (TASK-185N, `lua/v2-player.lua`). Answers (TASK-185O) and results, host commands including kick,
+ * and phases (TASK-185P) fail closed with STATE_UNAVAILABLE until then.
  */
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -23,7 +24,11 @@ import path from "node:path";
 import type { Redis, Cluster } from "ioredis";
 import { z } from "zod";
 import { ERROR_CODES } from "@kabuki-neko/shared/errors";
-import { finalizeStatusSchema } from "@kabuki-neko/shared/schemas/game.schema";
+import {
+  finalizeStatusSchema,
+  playerRoomSyncSchema,
+} from "@kabuki-neko/shared/schemas/game.schema";
+import { avatarSchema } from "@kabuki-neko/shared/schemas/users.schema";
 import type { FinalizeStatus } from "@kabuki-neko/shared/schemas/game.schema";
 import { StateDomainError } from "./game-state.interface";
 import type {
@@ -53,6 +58,7 @@ import {
   commandReceiptSchema,
   friendlyTicketSchema,
   frozenReportSchema,
+  joinReceiptSchema,
   leaseSchema,
   questionResultSchema,
   quizSnapshotSchema,
@@ -72,7 +78,7 @@ const objectSchema = z.record(z.string(), z.unknown());
 /** Rooms whose last read window is cached, at most (oldest dropped first). */
 const WINDOW_CACHE_ROOMS = 256;
 /** Scripts of the v2 layout, loaded from `lua/<name>.lua`. */
-const SCRIPTS = ["v2-room"] as const;
+const SCRIPTS = ["v2-room", "v2-player"] as const;
 type ScriptName = (typeof SCRIPTS)[number];
 
 /** A flat `HGETALL` reply `[field, value, …]` as a record of raw JSON strings. */
@@ -379,9 +385,70 @@ export class RedisV2StateStore implements IGameStateStore {
   async applyCommand(_input: ApplyCommandInput): Promise<CommandResult> {
     return fail("STATE_UNAVAILABLE");
   }
-  /** Ported in TASK-185N (players); fails closed until then. */
-  async bindPlayer(_input: BindPlayerInput): Promise<BindPlayerResult> {
-    return fail("STATE_UNAVAILABLE");
+  /**
+   * Binds a connection to a player slot: a new join (with a 120 s idempotent join receipt and,
+   * for friendly-nickname rooms, a consumed ticket) or a token recovery. The player's snapshot is
+   * projected on a candidate first, so a projection failure never consumes a slot or a ticket.
+   */
+  async bindPlayer(input: BindPlayerInput): Promise<BindPlayerResult> {
+    const binding = input.binding;
+    if (binding.kind === "join") {
+      activePlayerSchema.parse(binding.player);
+      if (
+        createHash("sha256").update(binding.sessionToken).digest("hex") !== binding.player.tokenHash
+      )
+        return fail("INVALID_SESSION_TOKEN");
+      joinReceiptSchema.parse({
+        requestId: input.requestId,
+        payloadHash: input.payloadHash,
+        playerId: binding.player.id,
+        sessionToken: binding.sessionToken,
+        expiresAt: Date.now() + 120000,
+      });
+    }
+    // Fail closed if the projector is missing or would reject the bound player.
+    const initial = await this.readRaw(input, "window");
+    if (!initial) return fail("ROOM_NOT_FOUND");
+    const candidate = assembleRoomState(structuredClone(initial.parts));
+    if (this.expired(candidate, initial.expiresAt, initial.now)) return fail("ROOM_EXPIRED");
+    const playerId = binding.kind === "join" ? binding.player.id : binding.playerId;
+    if (binding.kind === "join" && !candidate.players[playerId])
+      candidate.players[playerId] = binding.player;
+    const candidatePlayer = candidate.players[playerId];
+    if (candidatePlayer) {
+      candidatePlayer.connectionGeneration++;
+      candidatePlayer.connected = true;
+      candidatePlayer.connectionId = input.connectionId;
+    }
+    this.project(
+      candidate,
+      { role: "player", playerId, generation: candidatePlayer?.connectionGeneration ?? 1 },
+      initial.now,
+    );
+    const result = z
+      .object({
+        player: activePlayerSchema,
+        token: z.string().nullable(),
+        generation: z.number().int(),
+      })
+      .parse(
+        restoreArrays(
+          z.object({ player: activePlayerSchema }),
+          await this.run("v2-player", input, {
+            ...binding,
+            requestId: input.requestId,
+            payloadHash: input.payloadHash,
+            connectionId: input.connectionId,
+          }),
+        ),
+      );
+    const snapshot = await this.getRoleSnapshot(input, {
+      role: "player",
+      playerId: result.player.id,
+      generation: result.generation,
+    });
+    if (!snapshot) return fail("ROOM_EXPIRED");
+    return { ...result, snapshot: playerRoomSyncSchema.parse(snapshot) };
   }
   /** Ported in TASK-185O (answers and freeze); fails closed until then. */
   async admitAnswer(_input: AdmitAnswerInput): Promise<StoredAnswer> {
@@ -395,27 +462,44 @@ export class RedisV2StateStore implements IGameStateStore {
   async commitQuestionResult(_input: CommitQuestionInput): Promise<"COMMITTED" | "RETRY"> {
     return fail("STATE_UNAVAILABLE");
   }
-  /** Ported in TASK-185N (players); fails closed until then. */
-  async reserveFriendlyTicket(_identity: RoomIdentity, _ticket: FriendlyTicket): Promise<void> {
-    return fail("STATE_UNAVAILABLE");
+  /** Reserves a friendly nickname for one socket in the lobby (replaces its earlier ticket). */
+  async reserveFriendlyTicket(identity: RoomIdentity, ticket: FriendlyTicket): Promise<void> {
+    await this.run("v2-player", identity, {
+      kind: "ticket",
+      ticket: friendlyTicketSchema.parse(ticket),
+    });
   }
-  /** Ported in TASK-185N (players); fails closed until then. */
+  /** Connected/disconnected for the player's current connection generation (false if stale). */
   async setPresence(
-    _identity: RoomIdentity,
-    _playerId: string,
-    _generation: number,
-    _connected: boolean,
+    identity: RoomIdentity,
+    playerId: string,
+    generation: number,
+    connected: boolean,
   ): Promise<boolean> {
-    return fail("STATE_UNAVAILABLE");
+    const reply = await this.run("v2-player", identity, {
+      kind: "presence",
+      playerId,
+      generation,
+      connected,
+    });
+    return z.boolean().parse(reply.result);
   }
-  /** Ported in TASK-185N (players); fails closed until then. */
+  /** LOBBY-only avatar change for the bound player connection; returns the new revision. */
   async updateAvatar(
-    _identity: RoomIdentity,
-    _playerId: string,
-    _generation: number,
-    _avatar: { style: string; seed: string },
+    identity: RoomIdentity,
+    playerId: string,
+    generation: number,
+    avatar: { style: string; seed: string },
   ): Promise<number> {
-    return fail("STATE_UNAVAILABLE");
+    const parsed = avatarSchema.safeParse(avatar);
+    if (!parsed.success) return fail("INVALID_FORMAT");
+    const reply = await this.run("v2-player", identity, {
+      kind: "avatar",
+      playerId,
+      generation,
+      avatar: parsed.data,
+    });
+    return z.number().int().positive().parse(reply.revision);
   }
   /** Ported in TASK-185P (results, host commands and phases); fails closed until then. */
   async transitionPhase(
