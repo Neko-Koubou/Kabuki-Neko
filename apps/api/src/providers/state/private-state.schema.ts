@@ -296,60 +296,227 @@ export const capacityReservationSchema = z.strictObject({
   perPlayerBytes: count.positive(),
   maxPublicQuestionBytes: count.max(ROOM_LIMITS.publicQuestionBytes),
 });
-export const activeRoomStateSchema = z
-  .strictObject({
-    schemaVersion: z.literal(1),
-    sessionId: uuidSchema,
-    pinCode: pinCodeSchema,
-    hostId: uuidSchema,
-    quiz: quizSnapshotSchema,
-    displayMode: z.enum(DISPLAY_MODES),
-    friendlyNicknames: z.boolean(),
-    isLocked: z.boolean(),
-    maxPlayers: count.positive().max(SETTINGS_LIMITS.maxPlayers),
-    phase: z.enum(GAME_PHASES),
-    phaseVersion: revisionSchema,
-    revision: revisionSchema,
-    publicRevision: revisionSchema,
-    questionIndex: index.nullable(),
-    timing: timingSchema,
-    createdAt: timestampSchema,
-    hardExpiresAt: timestampSchema,
-    lobbyActiveAt: timestampSchema,
-    accepting: z.boolean(),
-    requiredPlayerIds: ids,
-    eligiblePlayerIds: ids,
-    players: byId(activePlayerSchema),
-    answers: z.record(z.string().regex(/^(0|[1-9][0-9]*):[0-9a-f-]{36}$/u), storedAnswerSchema),
-    closedQuestions: byQuestion(closedQuestionSchema),
-    results: byQuestion(questionResultSchema),
-    commands: byId(commandReceiptSchema),
-    tickets: z.record(hash, friendlyTicketSchema),
-    frozenReport: frozenReportSchema.nullable(),
-    finalization: finalizeStatusSchema.nullable(),
-    endReason: endReasonSchema.nullable(),
-    reservations: capacityReservationSchema,
-  })
-  .superRefine((room, ctx) => {
-    const { baseBytes, perPlayerBytes, maxPublicQuestionBytes } = room.reservations;
-    if (
-      Object.keys(room.players).length > room.maxPlayers ||
-      room.publicRevision > room.revision ||
-      baseBytes + room.maxPlayers * perPlayerBytes > ROOM_LIMITS.frozenReportBytes ||
-      maxPublicQuestionBytes + room.maxPlayers * 1024 > ROOM_LIMITS.roleSnapshotBytes
-    )
-      ctx.addIssue({ code: "custom", message: "CAPACITY_REACHED" });
-    if (
-      Object.entries(room.players).some(([key, p]) => key !== p.id) ||
-      Object.entries(room.answers).some(
-        ([key, a]) => key !== `${a.questionIndex}:${a.playerId}` || !room.players[a.playerId],
-      ) ||
-      Object.entries(room.closedQuestions).some(([key, q]) => key !== String(q.questionIndex)) ||
-      Object.entries(room.results).some(([key, q]) => key !== String(q.questionIndex)) ||
-      room.requiredPlayerIds.some((id) => !room.eligiblePlayerIds.includes(id)) ||
-      room.eligiblePlayerIds.some((id) => !room.players[id]) ||
-      (room.frozenReport && room.frozenReport.session.id !== room.sessionId) ||
-      (room.finalization && room.finalization.sessionId !== room.sessionId)
-    )
-      ctx.addIssue({ code: "custom", message: "INVALID_REFERENCE" });
-  });
+/**
+ * Field schemas of `ActiveRoomState`, shared by the full room schema and by the Redis v2 core
+ * (ADR-13, SA §6.1.1), so both describe the same fields.
+ */
+const activeRoomFields = {
+  schemaVersion: z.literal(1),
+  sessionId: uuidSchema,
+  pinCode: pinCodeSchema,
+  hostId: uuidSchema,
+  quiz: quizSnapshotSchema,
+  displayMode: z.enum(DISPLAY_MODES),
+  friendlyNicknames: z.boolean(),
+  isLocked: z.boolean(),
+  maxPlayers: count.positive().max(SETTINGS_LIMITS.maxPlayers),
+  phase: z.enum(GAME_PHASES),
+  phaseVersion: revisionSchema,
+  revision: revisionSchema,
+  publicRevision: revisionSchema,
+  questionIndex: index.nullable(),
+  timing: timingSchema,
+  createdAt: timestampSchema,
+  hardExpiresAt: timestampSchema,
+  lobbyActiveAt: timestampSchema,
+  accepting: z.boolean(),
+  requiredPlayerIds: ids,
+  eligiblePlayerIds: ids,
+  players: byId(activePlayerSchema),
+  answers: z.record(z.string().regex(/^(0|[1-9][0-9]*):[0-9a-f-]{36}$/u), storedAnswerSchema),
+  closedQuestions: byQuestion(closedQuestionSchema),
+  results: byQuestion(questionResultSchema),
+  commands: byId(commandReceiptSchema),
+  tickets: z.record(hash, friendlyTicketSchema),
+  frozenReport: frozenReportSchema.nullable(),
+  finalization: finalizeStatusSchema.nullable(),
+  endReason: endReasonSchema.nullable(),
+  reservations: capacityReservationSchema,
+};
+export const activeRoomStateSchema = z.strictObject(activeRoomFields).superRefine((room, ctx) => {
+  const { baseBytes, perPlayerBytes, maxPublicQuestionBytes } = room.reservations;
+  if (
+    Object.keys(room.players).length > room.maxPlayers ||
+    room.publicRevision > room.revision ||
+    baseBytes + room.maxPlayers * perPlayerBytes > ROOM_LIMITS.frozenReportBytes ||
+    maxPublicQuestionBytes + room.maxPlayers * 1024 > ROOM_LIMITS.roleSnapshotBytes
+  )
+    ctx.addIssue({ code: "custom", message: "CAPACITY_REACHED" });
+  if (
+    Object.entries(room.players).some(([key, p]) => key !== p.id) ||
+    Object.entries(room.answers).some(
+      ([key, a]) => key !== `${a.questionIndex}:${a.playerId}` || !room.players[a.playerId],
+    ) ||
+    Object.entries(room.closedQuestions).some(([key, q]) => key !== String(q.questionIndex)) ||
+    Object.entries(room.results).some(([key, q]) => key !== String(q.questionIndex)) ||
+    room.requiredPlayerIds.some((id) => !room.eligiblePlayerIds.includes(id)) ||
+    room.eligiblePlayerIds.some((id) => !room.players[id]) ||
+    (room.frozenReport && room.frozenReport.session.id !== room.sessionId) ||
+    (room.finalization && room.finalization.sessionId !== room.sessionId)
+  )
+    ctx.addIssue({ code: "custom", message: "INVALID_REFERENCE" });
+});
+
+/**
+ * Parts of the room state that the Redis v2 layout keeps outside `core` (ADR-13): each lives under
+ * its own key (`quiz`, `:players`, `:answers:<q>`, `:closed:<q>`, `:result:<q>`, `:commands`,
+ * `:tickets`, `:report`).
+ */
+const ROOM_PART_FIELDS = [
+  "quiz",
+  "players",
+  "answers",
+  "closedQuestions",
+  "results",
+  "commands",
+  "tickets",
+  "frozenReport",
+] as const;
+type RoomPartField = (typeof ROOM_PART_FIELDS)[number];
+const coreFields = Object.fromEntries(
+  Object.entries(activeRoomFields).filter(
+    ([key]) => !(ROOM_PART_FIELDS as readonly string[]).includes(key),
+  ),
+) as Omit<typeof activeRoomFields, RoomPartField>;
+
+/**
+ * The small, frequently written room core of the Redis v2 layout (ADR-13): every scalar field of
+ * `ActiveRoomState` plus two derived counters that keep the gameplay scripts O(1) in the number of
+ * played questions:
+ * - `answeredRequired`: required players who answered the current question (last-answer freeze);
+ * - `scoredQuestions`: ascending indices that have a committed result (window and release).
+ */
+export const roomCoreSchema = z.strictObject({
+  ...coreFields,
+  answeredRequired: count.max(SETTINGS_LIMITS.maxPlayers),
+  scoredQuestions: z.array(index).max(QUIZ_LIMITS.questions),
+});
+export type RoomCore = z.output<typeof roomCoreSchema>;
+/** Full room state as stored by the memory driver and assembled by the Redis drivers. */
+export type ActiveRoomStateShape = z.output<typeof activeRoomStateSchema>;
+type StoredAnswerShape = z.output<typeof storedAnswerSchema>;
+
+/** A room state split into the pieces of the Redis v2 layout (one entry per key). */
+export interface RoomParts {
+  core: RoomCore;
+  quiz: ActiveRoomStateShape["quiz"];
+  players: ActiveRoomStateShape["players"];
+  /** Answers per question index (decimal string) and then per player id (`:answers:<q>`). */
+  answers: Record<string, Record<string, StoredAnswerShape>>;
+  closedQuestions: ActiveRoomStateShape["closedQuestions"];
+  results: ActiveRoomStateShape["results"];
+  commands: ActiveRoomStateShape["commands"];
+  tickets: ActiveRoomStateShape["tickets"];
+  frozenReport: ActiveRoomStateShape["frozenReport"];
+}
+
+/** Required players who answered the room's current question (`RoomCore.answeredRequired`). */
+export function answeredRequiredOf(state: Readonly<ActiveRoomStateShape>): number {
+  const index = state.questionIndex;
+  if (index === null) return 0;
+  return state.requiredPlayerIds.filter((id) => state.answers[`${index}:${id}`] !== undefined)
+    .length;
+}
+
+/** Ascending question indices that have a committed result (`RoomCore.scoredQuestions`). */
+export function scoredQuestionsOf(state: Readonly<ActiveRoomStateShape>): number[] {
+  return Object.keys(state.results)
+    .map(Number)
+    .sort((a, b) => a - b);
+}
+
+/**
+ * Splits a room state into the Redis v2 pieces (ADR-13). Pure: the result shares nested objects
+ * with `state`. `assembleRoomState(splitRoomState(state))` deep-equals `state`.
+ */
+export function splitRoomState(state: Readonly<ActiveRoomStateShape>): RoomParts {
+  const {
+    quiz,
+    players,
+    answers,
+    closedQuestions,
+    results,
+    commands,
+    tickets,
+    frozenReport,
+    ...scalars
+  } = state;
+  const grouped: RoomParts["answers"] = {};
+  for (const answer of Object.values(answers))
+    (grouped[String(answer.questionIndex)] ??= {})[answer.playerId] = answer;
+  return {
+    core: {
+      ...scalars,
+      answeredRequired: answeredRequiredOf(state),
+      scoredQuestions: scoredQuestionsOf(state),
+    },
+    quiz,
+    players,
+    answers: grouped,
+    closedQuestions,
+    results,
+    commands,
+    tickets,
+    frozenReport,
+  };
+}
+
+/**
+ * Builds the room state back from its Redis v2 pieces (ADR-13). Pure and unvalidated: the caller
+ * validates the assembled state with `activeRoomStateSchema` where it needs a full check, which is
+ * also where the cross-piece references (player ids, answer keys) are verified.
+ */
+export function assembleRoomState(parts: RoomParts): ActiveRoomStateShape {
+  const { answeredRequired: _answered, scoredQuestions: _scored, ...scalars } = parts.core;
+  const answers: ActiveRoomStateShape["answers"] = {};
+  for (const [index, byPlayer] of Object.entries(parts.answers))
+    for (const [playerId, answer] of Object.entries(byPlayer))
+      answers[`${index}:${playerId}`] = answer;
+  return {
+    ...scalars,
+    quiz: parts.quiz,
+    players: parts.players,
+    answers,
+    closedQuestions: parts.closedQuestions,
+    results: parts.results,
+    commands: parts.commands,
+    tickets: parts.tickets,
+    frozenReport: parts.frozenReport,
+  };
+}
+
+/**
+ * Question indices kept in a read-only window (ADR-13): the current question and the latest
+ * question with a committed result. Every hot reader (gateway diff, settle, projections, the
+ * scheduler tick) needs only these.
+ */
+export function windowIndices(
+  questionIndex: number | null,
+  scoredQuestions: readonly number[],
+): Set<string> {
+  const indices = new Set<string>();
+  if (questionIndex !== null) indices.add(String(questionIndex));
+  const latest = scoredQuestions.at(-1);
+  if (latest !== undefined) indices.add(String(latest));
+  return indices;
+}
+
+/**
+ * The read-only window of a room state: every field as is, but `answers`, `closedQuestions` and
+ * `results` restricted to `windowIndices`. Shares nested objects with `state` (no copy), so callers
+ * must never mutate it (the `readPrivateSnapshot` contract).
+ */
+export function windowRoomState(state: Readonly<ActiveRoomStateShape>): ActiveRoomStateShape {
+  const keep = windowIndices(state.questionIndex, scoredQuestionsOf(state));
+  const pick = <T>(record: Record<string, T>) =>
+    Object.fromEntries(Object.entries(record).filter(([key]) => keep.has(key)));
+  const answers: ActiveRoomStateShape["answers"] = {};
+  for (const [key, answer] of Object.entries(state.answers))
+    if (keep.has(String(answer.questionIndex))) answers[key] = answer;
+  return {
+    ...state,
+    answers,
+    closedQuestions: pick(state.closedQuestions),
+    results: pick(state.results),
+  };
+}

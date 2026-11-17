@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 237 task selesai, 8 task Pending (Phase 7 tindak lanjut QA, 2026-11-12)** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 238 task selesai, 7 task Pending (Phase 7 tindak lanjut QA, 2026-11-12)** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -3239,7 +3239,7 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - Task implementasi tercantum dengan dependensi yang benar.
   - Tidak ada kode aplikasi diubah di task ini.
 
-### - [ ] TASK-185L: Pisahkan skema core room dan tetapkan kontrak pembacaan jendela
+### - [x] TASK-185L: Pisahkan skema core room dan tetapkan kontrak pembacaan jendela
 - **Traceability**: `US-16`, `US-20`, NFR-01, ADR-13 ([SA §6.1.1](03-system-analysis.md#611-redis-room-layout-v2-adr-13-2026-11-17)).
 - **Depends On**: `TASK-185K`, `TASK-046`, `TASK-185B`
 - **Target Files**:

@@ -2757,3 +2757,25 @@
     - v2 is built next to v1 so every task stays green.
 - **Verification**: documentation only, no application code changed. ADR table and section anchor present; the tasks' Depends On point at the last writers of each target file.
 - **User decision needed before TASK-185L**: TASK-185L–S are a large change to the multi-instance core (about 8 tasks, several sessions). Start when approved.
+
+## TASK-185L: Pisahkan skema core room dan tetapkan kontrak pembacaan jendela — DONE
+- **Date**: 2026-11-17 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/providers/state/private-state.schema.ts`:
+    - the room fields are one shared `activeRoomFields` object, so `activeRoomStateSchema` is unchanged in behaviour;
+    - `roomCoreSchema` / `RoomCore`: the room without quiz, players, answers, closedQuestions, results, commands, tickets and frozenReport, plus `answeredRequired` and `scoredQuestions`;
+    - `RoomParts`;
+    - pure helpers: `splitRoomState` / `assembleRoomState` (inverse; answers grouped per question then player), `answeredRequiredOf`, `scoredQuestionsOf`, `windowIndices` (current question + latest scored) and `windowRoomState` (every field, with answers/closed/results restricted to the window, sharing nested objects).
+  - `apps/api/src/providers/state/game-state.interface.ts`: the `readPrivateSnapshot` contract is now the read-only **window**; `getPrivateSnapshot` stays complete.
+  - `apps/api/src/providers/state/memory-state.store.ts`: `readPrivateSnapshot` returns `windowRoomState` of the live state.
+    - It is cached in a WeakMap per state object and revision, so an unchanged room returns the same object, as the state-parity contract expects.
+    - This is safe because every write to answers, closed questions or results, and every change of the current question, raises the revision (checked: `admitAnswer` → `changed`, freeze → `changed`, commit → `phase`/`podium`).
+  - `apps/api/src/providers/state/memory-state.store.spec.ts`:
+    - the TASK-185B case now checks shared nested objects instead of one identical object;
+    - new: a 3-question window keeps question 2 (current) and 1 (latest scored) only, plus `windowIndices` edge cases;
+    - new: split/assemble round-trips lobby, answering, reveal and podium (with frozen report); `roomCoreSchema` accepts the core; `answeredRequired`, `scoredQuestions` and answer grouping are checked.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 39/39 suites, 280/280 tests (window consumers: projector, settle, gateway diff).
+  - `pnpm test:contracts --testPathPatterns=state-parity` → 36/36.
+  - `pnpm test:integration --testPathPatterns='recovery|realtime-races|game-gateway|payload-privacy'` → 4/4 suites, 22/22 tests.

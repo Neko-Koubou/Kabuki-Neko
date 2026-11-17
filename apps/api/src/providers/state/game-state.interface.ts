@@ -115,10 +115,12 @@ export interface IGameStateStore {
   /** Detached private read is restricted to scheduler, scoring and finalization. */
   getPrivateSnapshot(identity: RoomIdentity): Promise<ActiveRoomState | null>;
   /**
-   * Private read without a defensive copy, for hot read-only paths (gateway publish, settle;
-   * QA follow-up TASK-185B). The result may be the store's live state: callers must never mutate
-   * it and must not use it after their next `await`, when the store may have changed it. Redis
-   * returns a freshly parsed object, so the contract is the same for both stores.
+   * Read-only **window** of the private state, for hot paths (gateway publish, settle, scheduler;
+   * TASK-185B, ADR-13 / TASK-185L). Every field is present, but `answers`, `closedQuestions` and
+   * `results` hold only the current question and the latest scored question (`windowIndices`).
+   * The result may share objects with the store's live state: callers must never mutate it and
+   * must not use it after their next `await`. Use `getPrivateSnapshot` for the complete history
+   * (finalization, report freezing, recovery).
    */
   readPrivateSnapshot(identity: RoomIdentity): Promise<Readonly<ActiveRoomState> | null>;
   reserveFriendlyTicket(identity: RoomIdentity, ticket: FriendlyTicket): Promise<void>;

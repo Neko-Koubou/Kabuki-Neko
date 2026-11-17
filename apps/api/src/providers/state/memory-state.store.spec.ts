@@ -4,8 +4,13 @@ import { playerRoomSyncSchema } from "@kabuki-neko/shared/schemas/game.schema";
 import {
   activeRoomStateSchema,
   activePlayerSchema,
+  assembleRoomState,
   questionResultSchema,
   frozenReportSchema,
+  roomCoreSchema,
+  splitRoomState,
+  windowIndices,
+  windowRoomState,
 } from "./private-state.schema";
 import type { ActiveRoomState, RoomProjector, ApplyCommandInput } from "./game-state.interface";
 import { MemoryStateStore } from "./memory-state.store";
@@ -257,6 +262,19 @@ function answer(n = 6) {
     answer: "Neko",
   };
 }
+/** A stored (admitted) answer of player 6 for question `q`, valid for the room schema. */
+function stored(q = 0) {
+  return {
+    playerId: uuid(6),
+    submissionId: uuid(8),
+    questionIndex: q,
+    questionId: uuid(2),
+    answer: "Neko",
+    payloadHash: "c".repeat(64),
+    receivedAt: 2000,
+    responseTimeMs: 1000,
+  };
+}
 function result(s: ActiveRoomState) {
   return questionResultSchema.parse({
     questionIndex: 0,
@@ -460,21 +478,70 @@ describe("memory atomic state", () => {
     expect(await store.releaseLease(identity, first)).toBe(false);
     expect(await store.releaseLease(identity, second)).toBe(true);
   });
-  it("reads private state without a copy that follows later store changes (TASK-185B)", async () => {
+  it("reads a window of the live state without a copy that follows later store changes (TASK-185B/185L)", async () => {
     await seed();
     expect(await store.readPrivateSnapshot({ ...identity, pin: "999999" })).toBeNull();
     const first = required(await store.readPrivateSnapshot(identity));
-    // No copy: the same live object until the store replaces it.
-    expect(await store.readPrivateSnapshot(identity)).toBe(first);
+    const live = required(await store.readPrivateSnapshot(identity));
+    // No deep copy: nested objects are shared with the store's live state.
+    expect(live.players).toBe(first.players);
+    expect(live.quiz).toBe(first.quiz);
     const revision = first.revision;
     await store.admitAnswer(answer());
     const after = required(await store.readPrivateSnapshot(identity));
     expect(after.revision).toBeGreaterThan(revision);
     expect(Object.keys(after.answers)).toHaveLength(1);
-    // The copying read stays independent of the store.
+    // The copying read stays independent of the store, and equals the window here (one question).
     const detached = required(await store.getPrivateSnapshot(identity));
     expect(detached).not.toBe(after);
     expect(detached).toEqual(after);
+  });
+  it("keeps only the current and latest scored question in the read window (ADR-13, TASK-185L)", async () => {
+    // Questions 0 and 1 scored, question 2 answering: the window keeps 2 (current) and 1 (latest).
+    const s = answering();
+    s.questionIndex = 2;
+    s.answers = Object.fromEntries([0, 1, 2].map((q) => [`${q}:${uuid(6)}`, stored(q)])) as never;
+    s.closedQuestions = Object.fromEntries(
+      [0, 1].map((q) => [String(q), { questionIndex: q }]),
+    ) as never;
+    s.results = Object.fromEntries(
+      [0, 1].map((q) => [String(q), { ...result(s), questionIndex: q }]),
+    ) as never;
+    const window = windowRoomState(s);
+    expect(Object.keys(window.answers).sort()).toEqual([`1:${uuid(6)}`, `2:${uuid(6)}`]);
+    expect(Object.keys(window.closedQuestions)).toEqual(["1"]);
+    expect(Object.keys(window.results)).toEqual(["1"]);
+    expect(window.players).toBe(s.players);
+    // Before any result: only the current question; in the lobby: nothing.
+    expect([...windowIndices(0, [])]).toEqual(["0"]);
+    expect([...windowIndices(null, [])]).toEqual([]);
+    expect([...windowIndices(null, [0, 3])]).toEqual(["3"]);
+  });
+  it("splits a room into the Redis v2 pieces and assembles it back exactly (ADR-13, TASK-185L)", async () => {
+    const lobby = activeRoomStateSchema.parse(room());
+    const answeringState = answering([uuid(6), uuid(7)]);
+    answeringState.answers = { [`0:${uuid(6)}`]: stored(0) };
+    const reveal = activeRoomStateSchema.parse({
+      ...answeringState,
+      phase: "ANSWER_REVEAL",
+      accepting: false,
+      results: { "0": result(answeringState) },
+    });
+    const podium = activeRoomStateSchema.parse({
+      ...reveal,
+      phase: "PODIUM",
+      frozenReport: frozenReportSchema.parse(report()),
+    });
+    for (const state of [lobby, answeringState, reveal, podium]) {
+      const parts = splitRoomState(state);
+      expect(roomCoreSchema.parse(parts.core)).toEqual(parts.core);
+      expect(assembleRoomState(parts)).toEqual(state);
+    }
+    const parts = splitRoomState(answeringState);
+    expect(parts.core.answeredRequired).toBe(1);
+    expect(parts.answers).toEqual({ "0": { [uuid(6)]: answeringState.answers[`0:${uuid(6)}`] } });
+    expect(splitRoomState(reveal).core.scoredQuestions).toEqual([0]);
+    expect(Object.keys(parts.core)).not.toContain("players");
   });
   it("returns detached state and freezes immutable result payloads", async () => {
     const s = answering();
