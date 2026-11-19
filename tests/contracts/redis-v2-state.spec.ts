@@ -337,7 +337,7 @@ function twoQuestions(): ActiveRoomState {
       phaseVersion: 3,
       closedAt: 22000,
       reason: "TIMER",
-      hash: "d".repeat(64),
+      hash: "d".repeat(40),
       requiredPlayerIds: [uuid(6)],
       eligiblePlayerIds: [uuid(6)],
       answers: [stored(0)],
@@ -649,7 +649,7 @@ it("admits one answer, freezes once on the last required answer and replays (TAS
   const closed = required(frozen.closedQuestions[0]);
   expect(closed).toMatchObject({ reason: "ALL_ANSWERED", questionIndex: 0, phaseVersion: 1 });
   expect(closed.answers).toEqual([answers[0]]);
-  expect(closed.hash).toMatch(/^[0-9a-f]{64}$/u);
+  expect(closed.hash).toMatch(/^[0-9a-f]{40}$/u);
   expect((await storedCore()).answeredRequired).toBe(1);
   // Freeze-once: a later close is ALREADY_CLOSED and leaves the record untouched.
   expect(
@@ -780,7 +780,7 @@ function playedRoom(questions: number, players: number): ActiveRoomState {
       phaseVersion: q + 1,
       closedAt: 3000,
       reason: "ALL_ANSWERED",
-      hash: "d".repeat(64),
+      hash: "d".repeat(40),
       requiredPlayerIds: ids,
       eligiblePlayerIds: ids,
       answers: stored,
@@ -908,7 +908,7 @@ it("plays two questions to PODIUM with commands, CAS transitions and result comm
     closedQuestionHash: required(s.closedQuestions[0]).hash,
     result: result(s),
   };
-  expect(await store.commitQuestionResult({ ...commit, closedQuestionHash: "e".repeat(64) })).toBe(
+  expect(await store.commitQuestionResult({ ...commit, closedQuestionHash: "e".repeat(40) })).toBe(
     "RETRY",
   );
   const outcomes = await Promise.all([
@@ -1043,6 +1043,30 @@ it("locks the lobby, kicks players and ends a game outside ANSWERING (TASK-185P)
   await expect(store.applyCommand(host("host:skip_timer", 2, uuid(56)))).rejects.toMatchObject({
     code: "INVALID_PHASE",
   });
+});
+
+it("freezes a 200-player question in the last admission within 20 ms (TASK-185T)", async () => {
+  // Before TASK-185T the freeze hashed the record with SHA-256 in pure Lua: ~200 ms per question
+  // (TASK-185S SLOWLOG). The native SHA-1 freeze token keeps the whole admission short.
+  await redis.config("SET", "slowlog-log-slower-than", "0");
+  await redis.config("SET", "slowlog-max-len", "1000");
+  try {
+    await seedAnswering(playedRoom(1, 200));
+    for (let i = 0; i < 199; i += 1) await store.admitAnswer(answer(1000 + i, 0, uuid(100_000)));
+    await redis.slowlog("RESET");
+    await store.admitAnswer(answer(1000 + 199, 0, uuid(100_000)));
+    const entries = (await redis.slowlog("GET", 100)) as [number, number, number, string[]][];
+    const freeze = entries.filter(([, , , command]) => /^evalsha$/iu.test(command[0] ?? ""));
+    expect(freeze).toHaveLength(1);
+    expect(required(freeze[0])[2]).toBeLessThan(20_000);
+    const state = required(await store.getPrivateSnapshot(identity));
+    expect(state.accepting).toBe(false);
+    expect(state.closedQuestions[0]?.answers).toHaveLength(200);
+    expect(state.closedQuestions[0]?.hash).toMatch(/^[0-9a-f]{40}$/u);
+  } finally {
+    await redis.config("SET", "slowlog-log-slower-than", "10000");
+    await redis.config("SET", "slowlog-max-len", "128");
+  }
 });
 
 // Cases kept from the layout-v1 script contracts removed in TASK-185R.

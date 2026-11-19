@@ -576,7 +576,7 @@ CommandReceipt = {actorId:UUID,payloadHash:string,ack:CommandAck,createdAt:TS}
 FriendlyTicket = {nickname:string,tokenHash:string,socketId:string,expiresAt:TS,consumed:boolean}
 ```
 
-Record keys for answers = `questionIndex:playerId`, closed/results = decimal questionIndex; hashes SHA256 hex64. EndReason and CloseReason are exact enum unions from §2.5. CommandAck is success/error envelope §5.1 discriminated by originating event schema §5.2, no arbitrary JSON. Initial phase LOBBY, versions1, maxPlayers computed §10.3. Connected presence expires after Socket.io ping timeout20s with interval25s; lastSeenAt from ping lifecycle, no player-controlled timestamp. Join receipt `{requestId,payloadHash,playerId,sessionToken,expiresAt}` lives in separate restricted `:join-receipts` key max120s, omitted from snapshots/frozen reports. Lease schema `{ownerId:UUID,epoch:int,expiresAt:TS}`. State tokenHash never leaves API/state store.
+Record keys for answers = `questionIndex:playerId`, closed/results = decimal questionIndex; hashes SHA256 hex64, except the closed-question freeze token, which is SHA-1 hex40 (TASK-185T, see §6.1.1). EndReason and CloseReason are exact enum unions from §2.5. CommandAck is success/error envelope §5.1 discriminated by originating event schema §5.2, no arbitrary JSON. Initial phase LOBBY, versions1, maxPlayers computed §10.3. Connected presence expires after Socket.io ping timeout20s with interval25s; lastSeenAt from ping lifecycle, no player-controlled timestamp. Join receipt `{requestId,payloadHash,playerId,sessionToken,expiresAt}` lives in separate restricted `:join-receipts` key max120s, omitted from snapshots/frozen reports. Lease schema `{ownerId:UUID,epoch:int,expiresAt:TS}`. State tokenHash never leaves API/state store.
 
 Internal state keys hash-tag by PIN: `kabukineko:room:{000123}:meta`, `:players`, `:nicknames`, `:answers:<index>`, `:commands`, `:tickets`, `:closed:<index>`, `:result:<index>`, `:presence`, `:lease`. Each room key stores/validates sessionId before touching data to prevent PIN reuse/late cleanup corruption. Keys in same hash slot allow Lua multi-key atomicity; [Redis scripting](https://redis.io/docs/latest/develop/programmability/eval-intro/) guarantees atomic script execution, so scripts stay bounded and never scan all rooms. Global PIN uniqueness is SQL UNIQUE(pin_code), **not cross-slot Redis transaction**. SQL indexes discover active/expired sessions and due workers; no `KEYS *`.
 
@@ -621,9 +621,13 @@ Its size depends on the player count (required/eligible ids), not on the number 
    - `HSET` of the new answer;
    - core revision plus `answeredRequired`;
    - on the last required answer, the freeze in the same script.
-3. The freeze reads `:answers:<q>` once (`HGETALL`), writes `:closed:<q>` with its SHA-256, and never copies other questions.
+3. The freeze reads `:answers:<q>` once (`HGETALL`), writes `:closed:<q>` with its freeze token, and never copies other questions.
+   - **Freeze token (decision 2026-11-19, TASK-185T)**: SHA-1 hex (40) of the encoded record, computed natively with `redis.sha1hex`; the memory store computes the same algorithm.
+   - The token is only the CAS/integrity token of the result commit, not a security boundary.
+   - A pure-Lua SHA-256 over a 200-answer record blocked Redis for about 200 ms per question (TASK-185S); the native SHA-1 takes about 3 ms for the whole admission.
+   - Answer payload hashes stay SHA-256.
 4. Result commit (CAS on `core.revision` and the closed hash) writes `:result:<q>`, the players' totals (`HSET` of the changed players) and the phase.
-5. Reads need no script: `HMGET`/`HGETALL`/`GET` plus `TIME` (TASK-185J).
+5. Reads go through the single atomic `read` operation of `v2-room.lua`, which returns the raw pieces of one consistent snapshot (TASK-185M; the v1 script-free `HMGET` read of TASK-185J is gone with layout v1).
 6. Empty Lua tables are still restored per piece by schema structure (`restoreArrays`, TASK-185F).
 
 **Read contract.**

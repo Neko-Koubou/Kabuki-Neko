@@ -32,6 +32,12 @@ const count = z.number().int().nonnegative().safe();
 const rank = count.positive().nullable();
 const index = count.max(QUIZ_LIMITS.questions - 1);
 const hash = z.string().regex(/^[a-f0-9]{64}$/u);
+/**
+ * Freeze token of a closed question: SHA-1 hex (40) of the encoded freeze record (TASK-185T).
+ * Internal CAS/integrity token for `commitQuestionResult`, never a security boundary; Redis
+ * computes it natively (`redis.sha1hex`) instead of a pure-Lua SHA-256 that blocked ~200 ms.
+ */
+const freezeHash = z.string().regex(/^[a-f0-9]{40}$/u);
 const ids = z
   .array(uuidSchema)
   .max(SETTINGS_LIMITS.maxPlayers)
@@ -149,7 +155,7 @@ export const closedQuestionSchema = z.strictObject({
   phaseVersion: revisionSchema,
   closedAt: timestampSchema,
   reason: closeReasonSchema,
-  hash,
+  hash: freezeHash,
   requiredPlayerIds: ids,
   eligiblePlayerIds: ids,
   answers: z.array(storedAnswerSchema).max(SETTINGS_LIMITS.maxPlayers),

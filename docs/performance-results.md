@@ -446,6 +446,59 @@ broadcasts of that moment land in the transport tail (p95 113 ms, p99 148 ms).
 The corrective task is TASK-185T: compute the freeze hash without SHA-256 in pure Lua, then
 re-measure.
 
+## After the native freeze token (2026-11-19, TASK-185T)
+
+The freeze token of a closed question is now Redis's native SHA-1 (`redis.sha1hex`), no longer a
+pure-Lua SHA-256. In the contract, the last admission of a 200-player question, freeze included,
+takes about 3 ms of Redis time (2.9–3.3 ms over three runs; about 200 ms before).
+
+### Redis mode, two nodes, 200 clients: **FAIL**
+
+Record `test-results/benchmark/redis.json`. 102 transitions in 263 s.
+
+- Delivery loss 0/20,400; 0 disconnects; 0 rejected answers.
+- Transport p95 **131.36 ms** (113.38 ms in TASK-185S); the target is < 50 ms.
+
+| Measure (ms)                 | n      | p50    | p95    | p99    | max    |
+| ---------------------------- | ------ | ------ | ------ | ------ | ------ |
+| Transport (commit → receipt) | 98,338 | 5.98   | 131.36 | 165.84 | 317.09 |
+| Admission (answer ACK RTT)   | 5,000  | 46.08  | 83.33  | 173.50 | 448.60 |
+| State commit (host ACK RTT)  | 52     | 175.50 | 349.61 | 737.51 | 737.51 |
+
+| Process        | Loop lag p99 per 1 s, median / max (ms) | CPU mean / max (% of one core) |
+| -------------- | --------------------------------------- | ------------------------------ |
+| API node A     | 2.05 / 267.61                           | 18.2 / 90.4                    |
+| API node B     | 2.60 / 391.60                           | 17.0 / 105.3                   |
+| Load generator | 1.00 / 10.02                            | 2.1 / 12.6                     |
+
+Redis container CPU, 88 samples: median 2.2%, p90 45.5%, max 60.1%.
+
+SLOWLOG (over 5 ms), 145 entries for the whole run:
+
+| Script and operation                   | Slow calls | Mean (ms) | Max (ms) |
+| -------------------------------------- | ---------- | --------- | -------- |
+| `v2-room.lua` `read` (window)          | 57         | 6.2       | 12.0     |
+| `v2-room.lua` `read` (full)            | 56         | 14.8      | 26.2     |
+| `v2-question.lua` (commit, transition) | 23         | 8.4       | 11.9     |
+| `v2-answer.lua` `admit` (with freeze)  | 8          | 7.5       | 10.8     |
+| `v2-player.lua` `join`                 | 1          | 6.7       | 6.7      |
+
+### What this shows
+
+- The freeze stall is gone: no Redis command took more than 26.2 ms (292 ms before).
+- The transport tail did not follow it down. Between TASK-185S and this run it moved from
+  113 to 131 ms, within the run-to-run noise of this shared host. So the freeze stall was not
+  the main cause of the tail.
+- The remaining tail is **not Redis-side blocking**. Redis stays below 61% CPU and its longest
+  command is 26 ms, while transport p99 is 166 ms. The open suspects are on the API side:
+  - the cross-node fan-out through the Socket.io Redis adapter (pub/sub);
+  - per-recipient payload building on each node;
+  - event-loop stalls (max loop lag 268–392 ms on the nodes);
+  - CPU contention: two API nodes, Redis, PostgreSQL and the load generator share four cores.
+
+  Telling a server defect apart from the shared host needs a profile, not another re-run. That
+  is TASK-185U.
+
 ## Not covered
 
 - More than 200 clients: needs a separate harness and run. The CLI refuses `--clients` above 200.

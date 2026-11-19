@@ -57,6 +57,9 @@ type Entry = {
   pending: Map<string, Pending>;
 };
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+/** Freeze token of a closed question: SHA-1 hex, as Redis computes it (TASK-185T). */
+const freezeHash = (value: unknown) =>
+  createHash("sha1").update(JSON.stringify(value)).digest("hex");
 const fail = (code: ConstructorParameters<typeof StateDomainError>[0]): never => {
   throw new StateDomainError(code);
 };
@@ -389,7 +392,7 @@ export class MemoryStateStore implements IGameStateStore {
         .filter((a) => a.questionIndex === s.questionIndex)
         .map(copy),
     };
-    const closed = { ...data, hash: hash(data) };
+    const closed = { ...data, hash: freezeHash(data) };
     s.accepting = false;
     s.closedQuestions[s.questionIndex] = closed;
     this.changed(s, false);

@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 245 task selesai, 1 task Pending (Phase 7 tindak lanjut QA, 2026-11-12)** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 246 task selesai, 1 task Pending (Phase 7 tindak lanjut QA, 2026-11-12)** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -3382,7 +3382,7 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - US-20 diperbarui.
   - Prettier check lulus.
 
-### - [ ] TASK-185T: Hitung hash freeze soal tanpa SHA-256 Lua murni
+### - [x] TASK-185T: Hitung hash freeze soal tanpa SHA-256 Lua murni
 
 - **Traceability**: `US-20`, NFR-01, ADR-03, ADR-13, [performance-results.md "After the Redis room layout v2"](../performance-results.md), [07-qa-report.md §2 US-20](07-qa-report.md).
 - **Depends On**: `TASK-185S`
@@ -3406,6 +3406,29 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - Spec baru: `admit` jawaban wajib terakhir dengan 200 pemain < 20 ms (SLOWLOG).
   - `pnpm benchmark:game --clients 200 --transitions 100 --mode redis` diulang, dan hasilnya dicatat apa adanya di `performance-results.md` dan US-20.
   - lint/typecheck/test API lulus.
+
+### - [ ] TASK-185U: Profil ekor transport topologi Redis dua node
+- **Traceability**: `US-16`, `US-20`, NFR-01, [performance-results.md "After the native freeze token"](../performance-results.md), [07-qa-report.md §2 US-20](07-qa-report.md).
+- **Depends On**: `TASK-185T`
+- **Target Files**:
+  - `MODIFY` `scripts/benchmark-game.ts` (diagnostik opsional saja, tanpa mengubah metrik yang ada)
+  - `MODIFY` `docs/performance-results.md`, `docs/vibe/07-qa-report.md`
+- **Implementation Specs**:
+  - Fakta (TASK-185T):
+    - transport p95 131 ms, p99 166 ms;
+    - Redis tidak memblokir: perintah terlama 26 ms, CPU maks 61%;
+    - node API: loop lag maks 268–392 ms.
+  - Ukur pemecahan latensi transport per tahap:
+    - commit state → publish adapter → terima di node lain → emit ke socket;
+    - fan-out Socket.io Redis adapter dibandingkan dengan emit lokal;
+    - waktu pembuatan payload per penerima;
+    - profil CPU node (`--cpu-prof`) selama burst jawaban.
+  - Ulangi dengan proses yang dipisah per core (`taskset`) untuk membedakan batas host 4 core bersama dari cacat server.
+  - Bila ditemukan cacat server, buat task korektif dengan target file yang jelas.
+- **Definition of Done (Verification)**:
+  - Pemecahan latensi dan profil dicatat apa adanya di `performance-results.md` dan US-20, dengan record JSON dirujuk.
+  - Bottleneck dinyatakan sebagai cacat server atau batas host, beserta buktinya.
+  - Prettier check lulus untuk dokumen yang diubah.
 
 ### - [x] TASK-186: Buat injeksi gagal-hapus `system.spec` tidak bergantung pada uid
 - **Traceability**: `US-15` (AC-15-01, AC-15-02), [07-qa-report.md §4](07-qa-report.md), `00-project-context.md` §6.3 butir 6.

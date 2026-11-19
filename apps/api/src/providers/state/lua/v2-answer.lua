@@ -85,8 +85,10 @@ local function sha256(message)
   local out={}; for i=1,8 do out[i]=bit.tohex(h[i]) end; return table.concat(out)
 end
 -- Freezes the current question: every stored answer (sorted by player id), the required and
--- eligible sets and a SHA-256 over the encoded record, written once to :closed:<q>.
--- The record and its hash are built exactly as layout v1 built them.
+-- eligible sets and a freeze token over the encoded record, written once to :closed:<q>.
+-- The token is Redis's native SHA-1 (TASK-185T): a CAS/integrity token for the result commit,
+-- not a security boundary. The pure-Lua SHA-256 above stays for answer payload hashes only; on a
+-- 200-answer record it blocked Redis for ~200 ms per question.
 local function freeze(reason)
   local q = tostring(core.questionIndex)
   local answers = {}
@@ -95,7 +97,7 @@ local function freeze(reason)
   table.sort(answers, function(a, b) return a.playerId < b.playerId end)
   local closed = {questionIndex=core.questionIndex, phaseVersion=core.phaseVersion, closedAt=now, reason=reason,
     requiredPlayerIds=core.requiredPlayerIds, eligiblePlayerIds=core.eligiblePlayerIds, answers=answers}
-  closed.hash = sha256(cjson.encode(closed))
+  closed.hash = redis.sha1hex(cjson.encode(closed))
   redis.call('SET', closedKey(q), cjson.encode(closed)); followTtl(closedKey(q))
   core.accepting = false
   return closed

@@ -2972,3 +2972,31 @@
 - **Verification**:
   - `pnpm exec prettier --check docs/performance-results.md docs/vibe/07-qa-report.md` → pass. `07-qa-report.md` was not Prettier-clean before and is now formatted.
   - Both records are referenced from `performance-results.md` and US-20.
+
+## TASK-185T: Hitung hash freeze soal tanpa SHA-256 Lua murni — DONE
+- **Date**: 2026-11-19 (Asia/Jakarta)
+- **Decision (user, 2026-11-19)**: native Redis SHA-1 (`redis.sha1hex`) as the freeze CAS token; recorded in SA §6.1.1.
+- **Files**:
+  - `apps/api/src/providers/state/lua/v2-answer.lua`: `freeze` sets `closed.hash = redis.sha1hex(cjson.encode(closed))`. The pure-Lua SHA-256 stays for answer payload hashes only.
+  - `apps/api/src/providers/state/memory-state.store.ts`: `freezeHash` (SHA-1 of the encoded record), for parity.
+  - `apps/api/src/providers/state/private-state.schema.ts`: `closedQuestionSchema.hash` is `freezeHash` (hex40, documented as an internal CAS token). Answer, token and ticket hashes stay hex64.
+  - `docs/vibe/03-system-analysis.md`:
+    - the hash rule and the §6.1.1 freeze item record the decision;
+    - read item 5 now describes the v2 `read` script (the v1 HMGET read is gone).
+  - `tests/contracts/redis-v2-state.spec.ts`:
+    - new case: the last admission of a 200-player question freezes within 20 ms (SLOWLOG);
+    - fixtures use hex40 closed hashes.
+  - `apps/api/src/modules/game-engine/room-projector.spec.ts`: closed-hash fixture now hex40. Outside the target files, needed by the schema change.
+  - `docs/performance-results.md`, `docs/vibe/07-qa-report.md`: new section and US-20 update.
+  - `docs/vibe/04-tasks.md`: TASK-185U added.
+- **Measured**: the 200-player freeze admission takes 2.9 / 3.3 / 2.9 ms (three runs; about 200 ms before).
+- **Benchmark** (`pnpm benchmark:game --clients 200 --transitions 100 --mode redis`) → **FAIL**.
+  - Transport p95 131.36 ms, p99 165.84 ms; 0 rejected; 0 disconnects.
+  - SLOWLOG has no command over 26.2 ms (292 ms before); Redis CPU max 60%.
+  - The freeze was not the main cause of the transport tail, and the tail is not Redis-side blocking. TASK-185U profiles the API side.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 280/280.
+  - `pnpm test:contracts --testPathPatterns='state-parity|redis'` → 59/59.
+  - Benchmark re-run and recorded as measured (DoD).
+  - `prettier --check` on the performance and QA documents → pass.
