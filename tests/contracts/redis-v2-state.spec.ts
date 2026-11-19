@@ -8,6 +8,8 @@
  * commits, host commands (lock, kick, start, next, skip, end) and scheduled phase transitions.
  */
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import Redis from "ioredis";
 import { emptyAccessibility } from "@kabuki-neko/shared/schemas/media.schema";
 import { playerRoomSyncSchema } from "@kabuki-neko/shared/schemas/game.schema";
@@ -1041,6 +1043,40 @@ it("locks the lobby, kicks players and ends a game outside ANSWERING (TASK-185P)
   await expect(store.applyCommand(host("host:skip_timer", 2, uuid(56)))).rejects.toMatchObject({
     code: "INVALID_PHASE",
   });
+});
+
+// Cases kept from the layout-v1 script contracts removed in TASK-185R.
+it("matches SHA-256 test vectors in the freeze script (TASK-185R)", async () => {
+  const script = await readFile(
+    path.join(__dirname, "../../apps/api/src/providers/state/lua/v2-answer.lua"),
+    "utf8",
+  );
+  const fn = script.slice(
+    script.indexOf("local function sha256"),
+    script.indexOf("local function freeze"),
+  );
+  for (const value of ["", "abc", "a".repeat(1000), "猫/🐱"])
+    expect(await redis.eval(`${fn}return sha256(ARGV[1])`, 0, value)).toBe(
+      createHash("sha256").update(value).digest("hex"),
+    );
+});
+
+it("never vacuously closes an empty required set (TASK-185R)", async () => {
+  await seedAnswering(answering([]));
+  await store.admitAnswer(answer());
+  expect(required(await store.getPrivateSnapshot(identity)).accepting).toBe(true);
+  await expect(
+    store.closeQuestion({ ...identity, expectedPhaseVersion: 1, reason: "ALL_ANSWERED" }),
+  ).rejects.toMatchObject({ code: "INVALID_PHASE" });
+});
+
+it("reserves capacity under concurrent joins (TASK-185R)", async () => {
+  await seed(activeRoomStateSchema.parse({ ...room(), maxPlayers: 1 }));
+  const results = await Promise.allSettled([join(6), join(7)]);
+  expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+  expect(
+    results.filter((r) => r.status === "rejected" && r.reason.code === "ROOM_FULL"),
+  ).toHaveLength(1);
 });
 
 it("never reads another layout's keys (ADR-13 migration by draining)", async () => {

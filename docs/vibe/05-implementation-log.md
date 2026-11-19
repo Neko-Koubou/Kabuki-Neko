@@ -2922,3 +2922,28 @@
   - `pnpm test:contracts --testPathPatterns='state-parity|redis'` → 94/94 (including redis-cluster on v2).
   - `pnpm test:integration` (realtime-races, payload-privacy, recovery, room-retention, game-gateway, finalization-failures) → 52/52; deployment → 3/3 after the image rebuild.
   - E2E `player`/`host` → 9/9. The first attempt stopped in the web server's Next.js build guard; a plain retry passed.
+
+## TASK-185R: Hapus store Redis v1 dan skripnya — DONE
+- **Date**: 2026-11-19 (Asia/Jakarta)
+- **Files**:
+  - Deleted as one unit:
+    - `apps/api/src/providers/state/redis-state.store.ts`;
+    - `lua/admit-answer.lua`, `lua/bind-player.lua`, `lua/close-question.lua`, `lua/mutate-room.lua`, `lua/release-room.lua`.
+  - `apps/api/src/providers/state/redis-v2-state.store.ts`:
+    - `restoreArrays` (and its schema-walk helpers) moved here and is exported;
+    - the file header describes the store as the only Redis store;
+    - comments no longer name the deleted files.
+  - `lua/v2-*.lua`: comments refer to "layout v1" instead of the deleted script names.
+  - `tests/contracts/state-parity.spec.ts`: drivers `memory` and `redis` (= v2).
+    - The v1-only key probes are gone.
+    - The TASK-185H lease probe is ported to v2: a corrupt `core` does not stop leases, and the release refuses.
+    - The TASK-185J "HMGET, no script" probe is dropped: v2 reads through the atomic `read` script by design (ADR-13).
+    - The lifecycle and cluster cases use the v2 store.
+  - Deleted `tests/contracts/redis-answers.spec.ts` and `tests/contracts/redis-room.spec.ts`. These called the v1 scripts directly. Their unique cases moved to `tests/contracts/redis-v2-state.spec.ts`: SHA-256 test vectors of the freeze script, no vacuous ALL_ANSWERED close for an empty required set, and capacity under concurrent joins. Their other cases were already covered by state-parity and the v2 spec. Removing them is outside the listed target files; it was required because they import the deleted v1 scripts.
+- **Verification**:
+  - Grep for `redis-state.store`, `RedisStateStore`, the v1 script names and the deleted specs in `apps packages tests scripts docker` → no match.
+  - Docs keep only historical mentions.
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter "@kabuki-neko/api..." build` → pass; dist has only `v2-*.lua`.
+  - `pnpm --filter @kabuki-neko/api test` → 280/280. dockerd had to be restarted once after a worker restart; the first run's 11 failures were "no container runtime".
+  - `pnpm test:contracts --testPathPatterns='state-parity|redis'` → 58/58.

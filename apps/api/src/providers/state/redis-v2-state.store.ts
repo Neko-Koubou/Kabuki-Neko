@@ -1,7 +1,7 @@
 /**
  * Redis game-state store, layout v2 (ADR-13, SA §6.1.1; TASK-185M onward).
  *
- * The v1 store (`redis-state.store.ts`) kept each room as one JSON string that every script decoded
+ * Layout v1 (removed in TASK-185R) kept each room as one JSON string that every script decoded
  * and re-encoded, so per-answer Redis work grew with every played question. v2 keeps the room in
  * separate keys of one hash slot `{pin}`: `core` and `quiz` in `:meta`, `:players`,
  * `:answers:<q>`, `:closed:<q>`, `:result:<q>`, `:commands`, `:tickets` and `:report`. Scripts
@@ -13,11 +13,11 @@
  * - `readPrivateSnapshot`: the read-only window (current + latest scored question), only
  *   structurally restored, cached while its raw pieces are unchanged (hot paths).
  *
- * Built next to v1 and not yet installed in `StateModule`. Ported so far: room lifecycle, reads,
- * leases and the report (TASK-185M); players: join, recover, presence, avatar, friendly tickets
- * (TASK-185N, `lua/v2-player.lua`); answer admission and question freeze (TASK-185O,
- * `lua/v2-answer.lua`); result commits, host commands and scheduled phases (TASK-185P,
- * `lua/v2-question.lua`, with host skip/end in `lua/v2-answer.lua` next to the freeze).
+ * The only Redis store; `StateModule` installs it for `STATE_DRIVER=redis` (TASK-185Q). Scripts:
+ * room lifecycle, reads, leases and the report (`lua/v2-room.lua`, TASK-185M); players: join,
+ * recover, presence, avatar, friendly tickets (`lua/v2-player.lua`, TASK-185N); answer admission,
+ * question freeze and host skip/end (`lua/v2-answer.lua`, TASK-185O/P); result commits, host
+ * commands and scheduled phases (`lua/v2-question.lua`, TASK-185P).
  */
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -73,7 +73,85 @@ import {
   storedAnswerSchema,
   type RoomParts,
 } from "./private-state.schema";
-import { restoreArrays } from "./redis-state.store";
+
+/** The parts of a Zod 4 schema definition the array restoration walks. */
+interface SchemaDef {
+  type: string;
+  shape?: Record<string, z.ZodType>;
+  element?: z.ZodType;
+  valueType?: z.ZodType;
+  innerType?: z.ZodType;
+  in?: z.ZodType;
+  out?: z.ZodType;
+  options?: readonly z.ZodType[];
+}
+const defOf = (schema: z.ZodType) => (schema as unknown as { _zod: { def: SchemaDef } })._zod.def;
+const WRAPPERS = new Set(["optional", "nullable", "default", "readonly", "catch", "prefault"]);
+/** Schema kinds that say nothing about the value's shape. */
+const SHAPELESS = new Set(["unknown", "any"]);
+/**
+ * The schema under optional/nullable/default wrappers. A pipe is followed on its input side (a
+ * transform's source object), or on its output side when the input accepts anything (a size
+ * check piped into the real object, like the accessibility fields).
+ */
+function baseOf(schema: z.ZodType): SchemaDef {
+  let def = defOf(schema);
+  for (let depth = 0; depth < 20; depth++) {
+    if (WRAPPERS.has(def.type) && def.innerType) def = defOf(def.innerType);
+    else if (def.type === "pipe" && def.in && def.out)
+      def = SHAPELESS.has(baseOf(def.in).type) ? defOf(def.out) : defOf(def.in);
+    else break;
+  }
+  return def;
+}
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+const isEmptyRecord = (value: unknown) => isRecord(value) && Object.keys(value).length === 0;
+
+/**
+ * Restores, in place, the arrays Redis cjson encoded as `{}`, guided only by the schema's
+ * structure: no validation, refinement, regex or grapheme check runs (QA follow-up TASK-185F).
+ * Every v2 piece read from Redis goes through it; validated reads then parse the assembled state.
+ * Moved here with the removal of layout v1 (TASK-185R).
+ */
+export function restoreArrays(schema: z.ZodType, value: unknown): unknown {
+  const def = baseOf(schema);
+  switch (def.type) {
+    case "array":
+      if (isEmptyRecord(value)) return [];
+      if (Array.isArray(value) && def.element) {
+        const element = def.element;
+        for (let i = 0; i < value.length; i++) value[i] = restoreArrays(element, value[i]);
+      }
+      return value;
+    case "object":
+      if (isRecord(value) && def.shape)
+        for (const [key, child] of Object.entries(def.shape))
+          if (key in value) value[key] = restoreArrays(child, value[key]);
+      return value;
+    case "record":
+      if (isRecord(value) && def.valueType) {
+        const valueType = def.valueType;
+        for (const key of Object.keys(value)) value[key] = restoreArrays(valueType, value[key]);
+      }
+      return value;
+    case "union": {
+      const options = def.options ?? [];
+      if (isEmptyRecord(value) && options.some((option) => baseOf(option).type === "array"))
+        return [];
+      if (!isRecord(value)) return value;
+      // The object option whose fields cover the value's keys (e.g. an ACK's ok/error variants).
+      const keys = Object.keys(value);
+      const match = options.find((option) => {
+        const shape = baseOf(option).shape;
+        return shape !== undefined && keys.every((key) => key in shape);
+      });
+      return match ? restoreArrays(match, value) : value;
+    }
+    default:
+      return value;
+  }
+}
 
 /** Throws the domain error `code`. */
 const fail = (code: ConstructorParameters<typeof StateDomainError>[0]): never => {

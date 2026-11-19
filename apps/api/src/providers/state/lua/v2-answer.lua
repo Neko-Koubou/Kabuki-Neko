@@ -5,10 +5,10 @@
 -- The current question's :answers:<q> (hash playerId -> StoredAnswer) and :closed:<q> (string
 -- ClosedQuestion) are built from the validated prefix, in the same {PIN} slot.
 -- Operations:
---   admit: one answer (v1 admit-answer.lua guards and error codes). On the last required answer
+--   admit: one answer (layout-v1 guards and error codes). On the last required answer
 --          the question is frozen in the same script (ALL_ANSWERED).
 --   close: freezes the current question for TIMER, HOST_SKIP, HOST_END, ALL_ANSWERED or EXPIRED
---          (v1 close-question.lua `close` semantics).
+--          (layout-v1 `close` semantics).
 --   hostCommand: host:skip_timer / host:end_game (TASK-185P). During ANSWERING they freeze the
 --          question and park the command in meta `pendingCommand` (OPERATION_PENDING); the result
 --          commit in v2-question.lua writes its ACK. Outside ANSWERING end_game goes to PODIUM.
@@ -86,7 +86,7 @@ local function sha256(message)
 end
 -- Freezes the current question: every stored answer (sorted by player id), the required and
 -- eligible sets and a SHA-256 over the encoded record, written once to :closed:<q>.
--- The record and its hash are built exactly like v1 close-question.lua.
+-- The record and its hash are built exactly as layout v1 built them.
 local function freeze(reason)
   local q = tostring(core.questionIndex)
   local answers = {}

@@ -4,7 +4,7 @@
 --   1 :meta  2 :join-receipts  3 :lease  4 :players  5 :commands  6 :tickets  7 :report
 -- The current question's :answers:<q>, :closed:<q> and :result:<q> are built from the validated
 -- prefix, in the same {PIN} slot.
--- Operations (v1 mutate-room.lua `command`/`transition` and close-question.lua `commit`, same error
+-- Operations (layout-v1 `command`/`transition` and `commit` semantics, same error
 -- codes and ACK semantics):
 --   command:    host:lock_room, host:kick_player, host:start_game, host:next_step, deduplicated by
 --               requestId in :commands and fenced by expectedPhaseVersion;

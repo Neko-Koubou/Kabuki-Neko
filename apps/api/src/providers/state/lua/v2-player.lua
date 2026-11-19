@@ -5,7 +5,7 @@
 -- Operations: join (with a 120 s join receipt and friendly tickets), recover, presence, avatar and
 -- ticket. Each one decodes only `core` and the player or ticket fields it touches, then writes
 -- back only those fields: the cost depends on the room's players, never on played questions.
--- Semantics are those of the v1 scripts bind-player.lua and mutate-room.lua (same error codes).
+-- Semantics and error codes are those of the layout-v1 player scripts (removed in TASK-185R).
 local session, op = ARGV[1], cjson.decode(ARGV[2])
 local function err(code) return cjson.encode({error=code}) end
 local prefix = string.match(KEYS[1], '^(.*{%d%d%d%d%d%d}):meta$')
