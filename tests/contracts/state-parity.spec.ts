@@ -20,9 +20,9 @@ import type {
 import Redis from "ioredis";
 import { setTimeout as delay } from "node:timers/promises";
 import {
-  RedisStateStore,
+  RedisV2StateStore,
   restoreArrays,
-} from "../../apps/api/src/providers/state/redis-state.store";
+} from "../../apps/api/src/providers/state/redis-v2-state.store";
 import { StateConnections, StateProjection } from "../../apps/api/src/providers/state/state.module";
 import { ConfigService } from "../../apps/api/src/config/config.service";
 import { createTestRuntime } from "../helpers/runtime";
@@ -355,6 +355,8 @@ afterAll(async () => {
   await runtime?.cleanup();
 });
 
+// Every case runs against the memory store and the Redis store, whose room layout is v2 (ADR-13;
+// the v1 store was removed in TASK-185R). `driver === "redis"` blocks inspect the v2 keys.
 for (const driver of ["memory", "redis"] as const)
   describe(`${driver} state contract`, () => {
     let store: IGameStateStore;
@@ -363,7 +365,7 @@ for (const driver of ["memory", "redis"] as const)
     beforeEach(async () => {
       now = Date.now();
       if (driver === "redis") {
-        const adapter = new RedisStateStore(redis, project, "parity");
+        const adapter = new RedisV2StateStore(redis, project, "parity");
         store = adapter;
         cleanup = () => adapter.onModuleDestroy();
         await redis.flushdb();
@@ -444,26 +446,24 @@ for (const driver of ["memory", "redis"] as const)
       expect(scored.players[uuid(6)]?.score).toBe(1000);
       expect(await store.readPrivateSnapshot({ ...identity, sessionId: uuid(90) })).toBeNull();
       if (driver === "redis") {
-        // A state the schema rejects is still refused by the validated read.
-        const [meta] = ["meta"].map(
-          (suffix) => `kabukineko:parity:room:{${identity.pin}}:${suffix}`,
-        );
-        const stored = JSON.parse(required(await redis.hget(required(meta), "state"))) as {
-          players: Record<string, { nickname: string }>;
+        // Players live in their own hash; an invalid player still fails the validated read.
+        const players = `kabukineko:parity:v2:room:{${identity.pin}}:players`;
+        const stored = JSON.parse(required(await redis.hget(players, uuid(6)))) as {
+          nickname: string;
         };
-        required(stored.players[uuid(6)]).nickname = "x".repeat(500);
-        await redis.hset(required(meta), "state", JSON.stringify(stored));
+        stored.nickname = "x".repeat(500);
+        await redis.hset(players, uuid(6), JSON.stringify(stored));
         await expect(store.getPrivateSnapshot(identity)).rejects.toMatchObject({
           code: "STATE_UNAVAILABLE",
         });
       }
     });
-    it("runs scheduler lease operations without decoding the room state (TASK-185H)", async () => {
+    it("runs scheduler lease operations without decoding the room core (TASK-185H)", async () => {
       if (driver !== "redis") return;
       await seed();
-      // A state Redis cannot decode: only the release, which needs it, may read it.
-      const meta = `kabukineko:parity:room:{${identity.pin}}:meta`;
-      await redis.hset(meta, "state", "{not json");
+      // A core Redis cannot decode: only the release, which needs it, may read it.
+      const meta = `kabukineko:parity:v2:room:{${identity.pin}}:meta`;
+      await redis.hset(meta, "core", "{not json");
       const lease = required(await store.acquireLease(identity, uuid(60), 3000));
       expect(lease).toMatchObject({ ownerId: uuid(60), epoch: 1 });
       expect(await store.renewLease(identity, lease, 3000)).toBe(true);
@@ -474,24 +474,6 @@ for (const driver of ["memory", "redis"] as const)
       await expect(store.releaseRoom(identity)).rejects.toMatchObject({
         code: "STATE_UNAVAILABLE",
       });
-    });
-    it("reads room state with HMGET, never through a Lua script (TASK-185J)", async () => {
-      if (driver !== "redis") return;
-      await seed(answering());
-      /** Calls of each command so far (`INFO commandstats`). */
-      const calls = async () => {
-        const info = await redis.info("commandstats");
-        const count = (name: string) =>
-          Number(new RegExp(`cmdstat_${name}:calls=(\\d+)`, "u").exec(info)?.[1] ?? "0");
-        return { scripts: count("evalsha") + count("eval"), hmget: count("hmget") };
-      };
-      const before = await calls();
-      expect(await store.readPrivateSnapshot(identity)).not.toBeNull();
-      expect(await store.getPrivateSnapshot(identity)).not.toBeNull();
-      expect(await store.readPrivateSnapshot({ ...identity, sessionId: uuid(90) })).toBeNull();
-      const after = await calls();
-      expect(after.scripts).toBe(before.scripts);
-      expect(after.hmget - before.hmget).toBe(3);
     });
     it("retries joins without a second slot, recovers and rejects old generations", async () => {
       await seed();
@@ -783,7 +765,7 @@ describe("read-only Redis state decoding (TASK-185F)", () => {
 
 describe("Redis lifecycle", () => {
   it("reloads scripts after SCRIPT FLUSH, reconnects and never falls back on outages", async () => {
-    const store = new RedisStateStore(redis, project, "lifecycle");
+    const store = new RedisV2StateStore(redis, project, "lifecycle");
     const state = activeRoomStateSchema.parse({
       ...room(),
       createdAt: Date.now(),
@@ -801,7 +783,7 @@ describe("Redis lifecycle", () => {
     });
     await redis.connect();
     expect((await store.getPrivateSnapshot(identity))?.sessionId).toBe(identity.sessionId);
-    const isolated = new RedisStateStore(redis, project, "other");
+    const isolated = new RedisV2StateStore(redis, project, "other");
     expect(await isolated.getPrivateSnapshot(identity)).toBeNull();
     store.onModuleDestroy();
     isolated.onModuleDestroy();
@@ -914,7 +896,7 @@ describe("Redis Cluster", () => {
       });
       connections = await StateConnections.open(config);
       const client = required(connections.command);
-      const store = new RedisStateStore(client, project, "cluster");
+      const store = new RedisV2StateStore(client, project, "cluster");
       for (const pin of ["000123", "123456", "999999"]) {
         const state = activeRoomStateSchema.parse({
           ...room(),

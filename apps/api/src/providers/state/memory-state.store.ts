@@ -38,6 +38,7 @@ import {
   frozenReportSchema,
   questionResultSchema,
   joinReceiptSchema,
+  windowRoomState,
 } from "./private-state.schema";
 
 type Pending = {
@@ -56,6 +57,9 @@ type Entry = {
   pending: Map<string, Pending>;
 };
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+/** Freeze token of a closed question: SHA-1 hex, as Redis computes it (TASK-185T). */
+const freezeHash = (value: unknown) =>
+  createHash("sha1").update(JSON.stringify(value)).digest("hex");
 const fail = (code: ConstructorParameters<typeof StateDomainError>[0]): never => {
   throw new StateDomainError(code);
 };
@@ -65,6 +69,11 @@ const copy = <T>(value: T): T => structuredClone(value);
  * deferred operation is a host ACK waiting for the scoring worker's CAS commit. */
 export class MemoryStateStore implements IGameStateStore {
   private readonly rooms = new Map<string, Entry>();
+  /** Read windows per live state object and revision (see `readPrivateSnapshot`); weakly held. */
+  private readonly windows = new WeakMap<
+    ActiveRoomState,
+    { revision: number; window: ActiveRoomState }
+  >();
   private readonly sweepTimer: ReturnType<typeof setInterval>;
   constructor(
     private readonly project: RoomProjector,
@@ -157,9 +166,21 @@ export class MemoryStateStore implements IGameStateStore {
     const entry = this.lookup(identity);
     return entry ? copy(entry.state) : null;
   }
-  /** Live state, no copy: a deep copy of a 200-player room cost seconds per game (TASK-185B). */
+  /**
+   * The read-only window of the live state (ADR-13): no deep copy (one cost seconds per game at 200
+   * players, TASK-185B), and only the current and latest scored question's history, by reference.
+   * The window is reused while the state object and its revision are unchanged: the filtered
+   * collections (answers, closed questions, results) and the current question index only change
+   * through mutations that raise the revision, so an unchanged room returns the same object.
+   */
   async readPrivateSnapshot(identity: RoomIdentity): Promise<Readonly<ActiveRoomState> | null> {
-    return this.lookup(identity)?.state ?? null;
+    const entry = this.lookup(identity);
+    if (!entry) return null;
+    const cached = this.windows.get(entry.state);
+    if (cached && cached.revision === entry.state.revision) return cached.window;
+    const window = windowRoomState(entry.state);
+    this.windows.set(entry.state, { revision: entry.state.revision, window });
+    return window;
   }
   async getRoleSnapshot(identity: RoomIdentity, principal: Principal) {
     const entry = this.lookup(identity);
@@ -371,7 +392,7 @@ export class MemoryStateStore implements IGameStateStore {
         .filter((a) => a.questionIndex === s.questionIndex)
         .map(copy),
     };
-    const closed = { ...data, hash: hash(data) };
+    const closed = { ...data, hash: freezeHash(data) };
     s.accepting = false;
     s.closedQuestions[s.questionIndex] = closed;
     this.changed(s, false);

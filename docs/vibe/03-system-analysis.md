@@ -576,7 +576,7 @@ CommandReceipt = {actorId:UUID,payloadHash:string,ack:CommandAck,createdAt:TS}
 FriendlyTicket = {nickname:string,tokenHash:string,socketId:string,expiresAt:TS,consumed:boolean}
 ```
 
-Record keys for answers = `questionIndex:playerId`, closed/results = decimal questionIndex; hashes SHA256 hex64. EndReason and CloseReason are exact enum unions from §2.5. CommandAck is success/error envelope §5.1 discriminated by originating event schema §5.2, no arbitrary JSON. Initial phase LOBBY, versions1, maxPlayers computed §10.3. Connected presence expires after Socket.io ping timeout20s with interval25s; lastSeenAt from ping lifecycle, no player-controlled timestamp. Join receipt `{requestId,payloadHash,playerId,sessionToken,expiresAt}` lives in separate restricted `:join-receipts` key max120s, omitted from snapshots/frozen reports. Lease schema `{ownerId:UUID,epoch:int,expiresAt:TS}`. State tokenHash never leaves API/state store.
+Record keys for answers = `questionIndex:playerId`, closed/results = decimal questionIndex; hashes SHA256 hex64, except the closed-question freeze token, which is SHA-1 hex40 (TASK-185T, see §6.1.1). EndReason and CloseReason are exact enum unions from §2.5. CommandAck is success/error envelope §5.1 discriminated by originating event schema §5.2, no arbitrary JSON. Initial phase LOBBY, versions1, maxPlayers computed §10.3. Connected presence expires after Socket.io ping timeout20s with interval25s; lastSeenAt from ping lifecycle, no player-controlled timestamp. Join receipt `{requestId,payloadHash,playerId,sessionToken,expiresAt}` lives in separate restricted `:join-receipts` key max120s, omitted from snapshots/frozen reports. Lease schema `{ownerId:UUID,epoch:int,expiresAt:TS}`. State tokenHash never leaves API/state store.
 
 Internal state keys hash-tag by PIN: `kabukineko:room:{000123}:meta`, `:players`, `:nicknames`, `:answers:<index>`, `:commands`, `:tickets`, `:closed:<index>`, `:result:<index>`, `:presence`, `:lease`. Each room key stores/validates sessionId before touching data to prevent PIN reuse/late cleanup corruption. Keys in same hash slot allow Lua multi-key atomicity; [Redis scripting](https://redis.io/docs/latest/develop/programmability/eval-intro/) guarantees atomic script execution, so scripts stay bounded and never scan all rooms. Global PIN uniqueness is SQL UNIQUE(pin_code), **not cross-slot Redis transaction**. SQL indexes discover active/expired sessions and due workers; no `KEYS *`.
 
@@ -585,6 +585,66 @@ Internal state keys hash-tag by PIN: `kabukineko:room:{000123}:meta`, `:players`
 Close is two stages: atomic freeze sets `accepting=false` and captures immutable answer set/version; public phase remains QUESTION_ANSWERING with no key while calculation happens. Any worker can compute deterministic result from frozen snapshot, then CAS commit **entire results and phase transition atomically**. Crash after freeze: scheduler resumes calculation; no accepted answer lost, no repeated streak increments. Interim state does not claim reveal complete. Admission before freeze included, after freeze rejected; natural close guard strictly now>deadline, so inclusive boundary is coherent. Last-answer path freezes in same script after write; skip/end freeze before response. Host skip ACK waits committed reveal; timeout client sync. Delayed request with timestamp earlier than freeze is still rejected; clients cannot backdate packets.
 
 Room commands dedup `(sessionId,hostId,requestId)` hash+ACK for room lifetime. Repeated same key returns original ACK, different payload409 IDEMPOTENCY_CONFLICT. `expectedPhaseVersion` blocks second distinct next/start command for old phase; answers/presence do not cause false stale-phase errors. Submit dedup `(playerId,questionIndex)` and submissionId: same id+canonical answer returns original accepted ACK even after reveal, different answer/id409 ALREADY_ANSWERED with no score. QuizRevision protects create-room against unsaved/stale version; WS create idempotency mapping durable in request_dedup with operation `room.create`, accessible through operation lookup and host recovery after create ACK reconciliation.
+
+### 6.1.1. Redis room layout v2 (ADR-13, 2026-11-17)
+
+**Context.** §6.1 specified per-room keys (`:players`, `:answers:<index>`, `:closed:<index>`, `:result:<index>`, …). The implementation (TASK-048/050) instead stored the whole `ActiveRoomState` as one JSON string in the `state` field of `:meta`.
+
+Every gameplay script decodes and re-encodes that string with `cjson`. The string grows with every played question, because it keeps every answer, a second copy of each closed answer set, and the results per player and question. Measured at 200 players and 25 questions (TASK-185I, `docs/performance-results.md`):
+- `admit-answer` cost about 100 ms of single-threaded Redis time per answer late in the game;
+- a 200-answer burst saturated Redis, commands from both nodes timed out after 2 s, and most answers were refused.
+
+**Decision.** Restore the §6.1 key separation as layout **v2**. Every key stays in the room's hash slot `{pin}`, so the scripts keep multi-key atomicity (ADR-03 unchanged).
+
+| Key (prefix `kabukineko:<ns>:v2:room:{pin}`) | Type | Holds | Written by |
+| --- | --- | --- | --- |
+| `:meta` | hash | `sessionId`, `expiresAt`, `durable`, `core` (JSON of `RoomCore`), `quiz` (JSON, immutable after create) | every script (`core` only); `quiz` once at create |
+| `:players` | hash | playerId → `ActivePlayer` JSON | bind/recover, presence, avatar, kick; result commit (totals) |
+| `:answers:<q>` | hash | playerId → `StoredAnswer` JSON for question `q` | `admitAnswer` |
+| `:closed:<q>` | string | `ClosedQuestion` JSON | freeze (once per question) |
+| `:result:<q>` | string | `QuestionResult` JSON | result commit (once per question) |
+| `:commands` | hash | requestId → `CommandReceipt` | host commands |
+| `:tickets` | hash | ticket hash → `FriendlyTicket` | friendly nicknames |
+| `:report` | string | `FrozenReport` JSON | freeze report (once) |
+| `:join-receipts`, `:lease` | unchanged | | |
+
+`RoomCore` is `ActiveRoomState` without `quiz`, `players`, `answers`, `closedQuestions`, `results`, `commands`, `tickets` and `frozenReport`. It adds two counters:
+- `answeredRequired`, the number of required players who answered the current question, so the last-answer freeze needs no scan;
+- `scoredQuestions`, the sorted indices with a stored result.
+
+Its size depends on the player count (required/eligible ids), not on the number of questions played.
+
+**Script rules.**
+1. A script decodes only `core` and the single fields it needs, then writes back only what changed.
+2. `admitAnswer` is O(1) in played questions:
+   - `HGET` of the player and the existing answer;
+   - `HSET` of the new answer;
+   - core revision plus `answeredRequired`;
+   - on the last required answer, the freeze in the same script.
+3. The freeze reads `:answers:<q>` once (`HGETALL`), writes `:closed:<q>` with its freeze token, and never copies other questions.
+   - **Freeze token (decision 2026-11-19, TASK-185T)**: SHA-1 hex (40) of the encoded record, computed natively with `redis.sha1hex`; the memory store computes the same algorithm.
+   - The token is only the CAS/integrity token of the result commit, not a security boundary.
+   - A pure-Lua SHA-256 over a 200-answer record blocked Redis for about 200 ms per question (TASK-185S); the native SHA-1 takes about 3 ms for the whole admission.
+   - Answer payload hashes stay SHA-256.
+4. Result commit (CAS on `core.revision` and the closed hash) writes `:result:<q>`, the players' totals (`HSET` of the changed players) and the phase.
+5. Reads go through the single atomic `read` operation of `v2-room.lua`, which returns the raw pieces of one consistent snapshot (TASK-185M; the v1 script-free `HMGET` read of TASK-185J is gone with layout v1).
+6. Empty Lua tables are still restored per piece by schema structure (`restoreArrays`, TASK-185F).
+
+**Read contract.**
+- `getPrivateSnapshot` assembles the full `ActiveRoomState` from every key. It is for finalization and report freezing, recovery and tests.
+- `readPrivateSnapshot` returns a **window**: the full core, quiz and players, plus `answers`, `closedQuestions` and `results` of the current question and of the latest scored question only.
+- Hot readers (gateway diff, settle, scheduler tick) use the window. The projections already need only that window (`roomBase`, `latestLeaderboard`, per-player reveal/podium).
+- The memory store keeps one object in process and implements the window by reference.
+
+**Migration.** Room state is ephemeral (ADR-02). The `v2` segment in the key prefix makes a v2 deployment ignore v1 keys. Upgrading follows the existing rule for state driver or namespace changes: drain or end active rooms first. An in-flight v1 room becomes LOST and is never mis-read. No data conversion is written.
+
+**Consequences.**
+- Per-answer Redis work no longer grows with the game.
+- Reads transfer kilobytes instead of megabytes.
+- The full assembly still costs O(game) but runs once per finalization.
+- More keys per room. Release deletes them by known name (question indices from `core`), with no `SCAN`/`KEYS`.
+- The Redis Cluster contract must cover multi-key scripts across all v2 keys.
+- The v1 scripts stay until v2 passes the full parity contract, then they are removed.
 
 ### 6.2. Room allocation, leases and lifetime
 
@@ -936,6 +996,7 @@ Capacity reserved before join: role sync bound4MiB (full roster plus current que
 | ADR-10 | Public media immutable URLs + active reference pins, origin registry | PRIVATE is quiz access control, not media secrecy; completed report media may later be unavailable |
 | ADR-11 | Explicit profile env for scale | Native Compose profile only enables services; honest commands and driver checks needed |
 | ADR-12 | No application code generated during SA | Specs and upstream handoff only; task planning creates atomic implementation sequence |
+| ADR-13 | Redis room layout v2: per-room keys in one hash slot (`core`, players, per-question answers/closed/result, commands, tickets, report) instead of one JSON blob; hot readers use a current-question window (§6.1.1) | Per-answer Redis cost independent of questions played; full assembly only for finalization/recovery; v2 key prefix, upgrade drains rooms (no conversion); more keys released by name |
 
 ### 11.1. Design gaps closed
 

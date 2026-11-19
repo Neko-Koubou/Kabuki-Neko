@@ -1,5 +1,6 @@
 /**
- * TASK-167 Redis Cluster contracts on a real six-node Redis 7 Cluster (SA §6.1; US-10/12/16).
+ * TASK-167 Redis Cluster contracts on a real six-node Redis 7 Cluster (SA §6.1; US-10/12/16),
+ * run against the v2 room layout store since TASK-185Q (ADR-13).
  *
  * The cluster comes from `docker/docker-compose.test-cluster.yml` (three masters, three replicas,
  * AOF). Clients are the production ones (`StateConnections` with `REDIS_CLUSTER_NODES`).
@@ -34,7 +35,7 @@ import {
   activePlayerSchema,
   activeRoomStateSchema,
 } from "../../apps/api/src/providers/state/private-state.schema";
-import { RedisStateStore } from "../../apps/api/src/providers/state/redis-state.store";
+import { RedisV2StateStore } from "../../apps/api/src/providers/state/redis-v2-state.store";
 import { StateConnections } from "../../apps/api/src/providers/state/state.module";
 import type { ClusterNode, RedisClusterFixture } from "../helpers/redis-cluster";
 import { CLUSTER_NODES } from "../helpers/redis-cluster";
@@ -235,11 +236,23 @@ function lock(pin: string, isLocked: boolean, n: number): ApplyCommandInput {
   } as ApplyCommandInput;
 }
 
-/** Room keys of `pin` (as the store names them). */
+/**
+ * Room keys of `pin` as the v2 store names them (ADR-13, TASK-185Q): the seven declared keys plus
+ * the per-question keys of question 0, which the scripts derive from the same `{pin}` prefix.
+ */
 const keysOf = (pin: string) =>
-  ["meta", "join-receipts", "lease"].map(
-    (suffix) => `kabukineko:${NAMESPACE}:room:{${pin}}:${suffix}`,
-  );
+  [
+    "meta",
+    "join-receipts",
+    "lease",
+    "players",
+    "commands",
+    "tickets",
+    "report",
+    "answers:0",
+    "closed:0",
+    "result:0",
+  ].map((suffix) => `kabukineko:${NAMESPACE}:v2:room:{${pin}}:${suffix}`);
 
 /** Retries `work` until it succeeds or `timeoutMs` passes (cluster topology settling). */
 async function eventually<T>(work: () => Promise<T>, timeoutMs = 60_000): Promise<T> {
@@ -258,8 +271,8 @@ let runtime: TestRuntime;
 let cluster: RedisClusterFixture;
 let first: StateConnections;
 let second: StateConnections;
-let storeA: RedisStateStore;
-let storeB: RedisStateStore;
+let storeA: RedisV2StateStore;
+let storeB: RedisV2StateStore;
 /** PIN → the master that serves it at the start. */
 const placed = new Map<string, ClusterNode>();
 
@@ -280,8 +293,8 @@ beforeAll(async () => {
   first = await connections();
   second = await connections();
   if (!first.command || !second.command) throw new Error("state clients missing");
-  storeA = new RedisStateStore(first.command, project, NAMESPACE);
-  storeB = new RedisStateStore(second.command, project, NAMESPACE);
+  storeA = new RedisV2StateStore(first.command, project, NAMESPACE);
+  storeB = new RedisV2StateStore(second.command, project, NAMESPACE);
   // One PIN per master.
   for (let n = 0; placed.size < 3 && n < 1000; n++) {
     const pin = String(100000 + n * 7919).slice(-6);

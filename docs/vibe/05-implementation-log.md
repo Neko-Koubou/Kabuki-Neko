@@ -2733,8 +2733,270 @@
   - Every KN_*/MEDIA_* variable named in the guide is present in `.env.example`.
   - Prettier check of the guide and both Compose files → pass.
 
-## TASK-185K: Rancang ulang tata letak state room di Redis (jawaban dan hasil di luar blob) — IN PROGRESS
-- **Started**: 2026-11-17 (Asia/Jakarta)
-- **Plan**: `docs/vibe/03-system-analysis.md` (ADR), `docs/vibe/04-tasks.md` (implementation tasks); no application code
-- **Done so far**: none yet
-- **Verification**: pending
+## TASK-185K: Rancang ulang tata letak state room di Redis (jawaban dan hasil di luar blob) — DONE
+- **Date**: 2026-11-17 (Asia/Jakarta)
+- **Files**:
+  - `docs/vibe/03-system-analysis.md`: new §6.1.1 "Redis room layout v2" and ADR-13 in §11.
+    - Finding: §6.1 already specified per-room keys, but the implementation stored the whole state as one JSON blob in `:meta.state`. ADR-13 restores the separation.
+    - Layout:
+      - `:meta` holds `core` (state without quiz/players/answers/closed/results/commands/tickets/report, plus `answeredRequired` and `scoredQuestions`) and `quiz` (immutable);
+      - `:players` hash;
+      - `:answers:<q>` hash;
+      - `:closed:<q>`, `:result:<q>`, `:report` strings;
+      - `:commands`, `:tickets` hashes;
+      - all in slot `{pin}` with prefix `…:v2:room:`.
+    - Script rules: decode only core plus the single fields needed; admit is O(1) in played questions; the freeze reads one question's answers; reads use no scripts.
+    - Read contract: full assembly via `getPrivateSnapshot` (finalization/recovery); `readPrivateSnapshot` = window (current question + latest scored question).
+    - Migration: the v2 key prefix makes the upgrade drain rooms (v1 rooms become LOST), with no conversion.
+  - `docs/vibe/04-tasks.md`: implementation tasks TASK-185L–S.
+    - L: core schema + window contract (memory).
+    - M–P: a Redis v2 store built alongside v1 (lifecycle/reads/lease, players, answer+freeze, commit/commands/phases), each against the full parity contract.
+    - Q: switch over + hot readers on the window + Cluster contract.
+    - R: delete v1 (deleting one script family counts as one unit).
+    - S: re-measure.
+    - v2 is built next to v1 so every task stays green.
+- **Verification**: documentation only, no application code changed. ADR table and section anchor present; the tasks' Depends On point at the last writers of each target file.
+- **User decision needed before TASK-185L**: TASK-185L–S are a large change to the multi-instance core (about 8 tasks, several sessions). Start when approved.
+
+## TASK-185L: Pisahkan skema core room dan tetapkan kontrak pembacaan jendela — DONE
+- **Date**: 2026-11-17 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/providers/state/private-state.schema.ts`:
+    - the room fields are one shared `activeRoomFields` object, so `activeRoomStateSchema` is unchanged in behaviour;
+    - `roomCoreSchema` / `RoomCore`: the room without quiz, players, answers, closedQuestions, results, commands, tickets and frozenReport, plus `answeredRequired` and `scoredQuestions`;
+    - `RoomParts`;
+    - pure helpers: `splitRoomState` / `assembleRoomState` (inverse; answers grouped per question then player), `answeredRequiredOf`, `scoredQuestionsOf`, `windowIndices` (current question + latest scored) and `windowRoomState` (every field, with answers/closed/results restricted to the window, sharing nested objects).
+  - `apps/api/src/providers/state/game-state.interface.ts`: the `readPrivateSnapshot` contract is now the read-only **window**; `getPrivateSnapshot` stays complete.
+  - `apps/api/src/providers/state/memory-state.store.ts`: `readPrivateSnapshot` returns `windowRoomState` of the live state.
+    - It is cached in a WeakMap per state object and revision, so an unchanged room returns the same object, as the state-parity contract expects.
+    - This is safe because every write to answers, closed questions or results, and every change of the current question, raises the revision (checked: `admitAnswer` → `changed`, freeze → `changed`, commit → `phase`/`podium`).
+  - `apps/api/src/providers/state/memory-state.store.spec.ts`:
+    - the TASK-185B case now checks shared nested objects instead of one identical object;
+    - new: a 3-question window keeps question 2 (current) and 1 (latest scored) only, plus `windowIndices` edge cases;
+    - new: split/assemble round-trips lobby, answering, reveal and podium (with frozen report); `roomCoreSchema` accepts the core; `answeredRequired`, `scoredQuestions` and answer grouping are checked.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 39/39 suites, 280/280 tests (window consumers: projector, settle, gateway diff).
+  - `pnpm test:contracts --testPathPatterns=state-parity` → 36/36.
+  - `pnpm test:integration --testPathPatterns='recovery|realtime-races|game-gateway|payload-privacy'` → 4/4 suites, 22/22 tests.
+
+## TASK-185M: Store Redis v2: siklus hidup room, pembacaan, lease, dan laporan — DONE
+- **Date**: 2026-11-17 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/providers/state/lua/v2-room.lua` (new).
+    - Named `lua/v2-room.lua` instead of `lua/v2/room.lua`: `nest-cli.json` copies only `providers/state/lua/*.lua`, and a flat name needs no build config change. The same convention applies to the later v2 scripts.
+    - Declared KEYS: meta, join-receipts, lease, players, commands, tickets, report. Per-question keys `:answers:<q>`, `:closed:<q>`, `:result:<q>` are derived from the validated `{PIN}` prefix, so they share the slot.
+    - Operations: `create` (writes core/quiz/expiry/durable and every non-empty piece); `read` (multi-bulk raw pieces, mode `window` = current + latest scored question, mode `full` = questions 0..current plus every scored one); `acquireLease`/`renewLease`/`releaseLease`; `releaseRoom` (same durability gate as v1, deletes the fixed keys and each question's keys by name from the quiz length, no SCAN); `freezeReport` (revision CAS, `:report`, PERSIST every room key); `acknowledgeDurableReport`; `markFinalization`; `expireToPodium`.
+    - Keys written later follow meta's physical expiry (`PEXPIRETIME`).
+  - `apps/api/src/providers/state/redis-v2-state.store.ts` (new): `RedisV2StateStore implements IGameStateStore`.
+    - Keys use the `kabukineko:<ns>:v2:room:{pin}` prefix.
+    - `getPrivateSnapshot` assembles every piece and validates it with `activeRoomStateSchema`.
+    - `readPrivateSnapshot` returns the window: pieces restored with `restoreArrays`, not validated, cached by a fingerprint of the raw pieces (an unchanged room returns the same object).
+    - `getRoleSnapshot` projects the window, with the v1 expiry and principal checks.
+    - Leases, release, freeze/ack/finalization and expireToPodium are implemented.
+    - The other gameplay methods fail closed with STATE_UNAVAILABLE until TASK-185N/O/P.
+    - Not installed in `StateModule`.
+  - `tests/contracts/redis-v2-state.spec.ts` (new, real Redis; fixtures copied from state-parity):
+    - create/EXISTS into separate keys (no `state` field), with full read = seeded state and window read = `windowRoomState(seed)`; the window object is reused; other session/PIN give null; empty collections survive cjson;
+    - release deletes every key (checked with KEYS on the test prefix);
+    - lease epochs and ROOM_NOT_FOUND;
+    - report freeze CAS, persistence (PTTL -1), FINALIZATION_PENDING before durability, release refused, then ready and release;
+    - unported operations fail closed, and v1 keys are ignored.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - Build copies `v2-room.lua` into `dist`.
+  - `pnpm --filter @kabuki-neko/api test` → 280/280.
+  - `pnpm test:contracts --testPathPatterns='redis-v2|state-parity'` → 2/2 suites, 41/41 tests.
+
+## TASK-185N: Store Redis v2: pemain (join, recover, presence, avatar, kick, tiket) — DONE
+- **Date**: 2026-11-17 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/providers/state/lua/v2-player.lua` (new; flat name, see TASK-185M). Ports the v1 semantics of `bind-player.lua` and the presence/avatar/ticket branches of `mutate-room.lua` to the v2 keys, with the same error codes.
+    - `join`: 120 s idempotent receipt with IDEMPOTENCY_CONFLICT; LOBBY/locked/full/capacity checks; nickname and id uniqueness over `:players`; friendly ticket consumed once.
+    - `recover`: token hash check.
+    - `presence`, `avatar` (LOBBY only, stale generation → SESSION_REPLACED).
+    - `ticket`: socket-bound, replaces the socket's earlier ticket, drops expired ones, NICKNAME_TAKEN.
+    - Each operation decodes only `core` plus the player/ticket fields it touches and writes only those back, plus the core revision.
+    - Bug found by the new contract and fixed: a missing friendly ticket hash arrives as `cjson.null`; it is now NICKNAME_INVALID instead of a script error.
+  - `apps/api/src/providers/state/redis-v2-state.store.ts`: `bindPlayer` (candidate projection on the read window before the script, so a projection failure never consumes a slot or ticket), `setPresence`, `updateAvatar`, `reserveFriendlyTicket`; the script list includes `v2-player`.
+  - `tests/contracts/redis-v2-state.spec.ts`: three new cases.
+    - Join retries keep one slot and the same token; recover raises the generation; stale generations get SESSION_REPLACED; bad tokens get INVALID_SESSION_TOKEN; FORBIDDEN host; IDEMPOTENCY_CONFLICT.
+    - Presence/avatar change one player field with revision/publicRevision; SESSION_REPLACED, INVALID_SESSION_TOKEN and INVALID_FORMAT.
+    - Duplicate nickname → NICKNAME_TAKEN; friendly room joins only with the socket's ticket, which is consumed once; a later reservation of a taken nickname → NICKNAME_TAKEN.
+- **Deviation**: kick is a host command (`host:kick_player` through `applyCommand`), so it moves to TASK-185P with the other host commands.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 280/280.
+  - Build copies `v2-player.lua`.
+  - `pnpm test:contracts --testPathPatterns='redis-v2|state-parity'` → 44/44.
+
+## TASK-185O: Store Redis v2: admisi jawaban dan freeze soal — DONE
+- **Date**: 2026-11-17 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/providers/state/lua/v2-answer.lua` (new; flat name instead of `lua/v2/answer.lua` because nest-cli copies only `lua/*.lua`, see TASK-185M).
+    - `admit`: the v1 `admit-answer.lua` guards and error codes:
+      - Redis TIME intake and an inclusive deadline;
+      - replay of the same submissionId plus payload hash (also after the freeze);
+      - ALREADY_ANSWERED, INVALID_PHASE, TIME_EXPIRED, QUESTION_MISMATCH, SESSION_REPLACED, PLAYER_KICKED, INVALID_SESSION_TOKEN, INVALID_ANSWER.
+    - `admit` writes one field of `:answers:<q>`, adds the player to `eligiblePlayerIds`, raises `core.answeredRequired`, and on the last required answer freezes in the same script.
+    - `close`: v1 `close` semantics for TIMER, HOST_SKIP, HOST_END, ALL_ANSWERED and EXPIRED (STALE_PHASE → ALREADY_CLOSED → phase/reason checks). ALL_ANSWERED is checked with HEXISTS per required player, not with the counter.
+    - Freeze: `HGETALL :answers:<q>`, answers sorted by player id, the same record and SHA-256 (pure Lua) as v1, written once to `:closed:<q>` with the room's TTL.
+    - Only `core`, one player and the current question's answers are decoded.
+  - `apps/api/src/providers/state/redis-v2-state.store.ts`: `admitAnswer` and `closeQuestion`.
+    - `admitAnswer` validates the answer with `answerSchemaForQuestion` against the session's quiz, read once with `HMGET meta sessionId quiz` and cached per pin and sessionId (at most 256 sessions).
+      - A session's quiz is immutable, and a reused PIN has another sessionId.
+      - A mismatch against the cache is re-checked once against Redis.
+      - The script receives `{id, type, optionCount}` and repeats v1's structural checks without decoding the quiz.
+  - `tests/contracts/redis-v2-state.spec.ts`: five new cases.
+    - Concurrent duplicate admission, the ALL_ANSWERED freeze-once, ALREADY_CLOSED, replay and ALREADY_ANSWERED.
+    - The required counter, the ALL_ANSWERED check, refused submissions, and freezing on the second required answer.
+    - Eligible players.
+    - Timer close only after the deadline, STALE_PHASE, HOST_SKIP, TIME_EXPIRED after the deadline, natural close once.
+    - Flat cost.
+- **Flat-cost tolerance (recorded)**: the SLOWLOG median of 49 admissions after 19 played questions × 50 players must stay ≤ 2 × the first question's median + 100 µs. Measured on three runs: first 450/490/534 µs, late 470/458/565 µs.
+- **Deviations**:
+  - Script file name, as above.
+  - Host skip/end with a pending ACK stays in TASK-185P (host commands).
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 280/280.
+  - Build copies `v2-answer.lua`.
+  - `pnpm test:contracts --testPathPatterns='redis-v2|state-parity'` → 49/49.
+
+## TASK-185P: Store Redis v2: commit hasil, perintah host, dan transisi fase — DONE
+- **Date**: 2026-11-17 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/providers/state/lua/v2-question.lua` (new; flat name instead of `lua/v2/question.lua`, see TASK-185M).
+    - `commit` (v1 `close-question.lua`):
+      - RETRY unless the core revision and the closed hash still match and `:result:<q>` is missing;
+      - INVALID_REFERENCE unless the totals cover exactly the players in `:players`, each with every field;
+      - writes the player totals, `:result:<q>`, `core.scoredQuestions`, ANSWER_REVEAL or PODIUM (HOST_END/EXPIRED with a pending finalization), and the ACK of a parked host skip/end.
+    - `command` (v1 `mutate-room.lua`):
+      - FORBIDDEN, then the `:commands` receipt (replay / IDEMPOTENCY_CONFLICT), STALE_PHASE and OPERATION_PENDING;
+      - lock_room, start_game (NO_PLAYERS), next_step (question count from the adapter);
+      - kick_player removes an unanswered player from the open question's required/eligible sets, so `answeredRequired` stays exact.
+    - `transition`: phaseVersion CAS on the Redis clock. QUESTION_ANSWERING builds the required set from connected players and resets `answeredRequired`; the time limit comes from the adapter.
+  - `apps/api/src/providers/state/lua/v2-answer.lua`: `hostCommand` (skip_timer/end_game).
+    - During ANSWERING it freezes the question and parks the command in meta `pendingCommand` (OPERATION_PENDING).
+    - Outside ANSWERING, end_game moves to PODIUM (HOST_ENDED).
+    - It lives next to the freeze so the SHA-256 code exists once.
+  - `apps/api/src/providers/state/redis-v2-state.store.ts`:
+    - `applyCommand`: v1 identity checks, and skip/end wait up to 5 s for their ACK.
+    - `commitQuestionResult`.
+    - `transitionPhase`: the time limit and question count come from the cached session quiz (TASK-185O); the scripts never decode the quiz.
+    - The file comment lists every ported operation; nothing fails closed any more.
+  - `tests/contracts/state-parity.spec.ts`: a third driver `redis-v2`. Every case runs against memory, Redis v1 and Redis v2. The two v1-layout probes (TASK-185H/J) stay v1-only. v2 adds its own check that a corrupt `:players` entry fails the validated read.
+  - `tests/contracts/redis-v2-state.spec.ts`:
+    - A two-question game to FINISHED: start, replay/conflict, CAS transitions, required set and time limit, concurrent commits, reveal → leaderboard → preview, STALE_PHASE, a host skip whose ACK waits for the commit, PODIUM/COMPLETED.
+    - Lock, FORBIDDEN, NO_PLAYERS, kick during ANSWERING followed by ALL_ANSWERED, and end_game outside ANSWERING.
+    - The old fail-closed case is replaced by a layout-isolation case.
+- **Deviations**: script file names, as above.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 280/280.
+  - Build copies `v2-question.lua`.
+  - `pnpm test:contracts --testPathPatterns='redis-v2|state-parity'` → 65/65, including all 14 state-parity cases on the `redis-v2` driver.
+
+## TASK-185Q: Pasang store Redis v2 dan pindahkan pembaca rutin ke jendela — DONE
+- **Date**: 2026-11-17 (Asia/Jakarta)
+- **Files**:
+  - `apps/api/src/providers/state/state.module.ts`: `STATE_DRIVER=redis` installs `RedisV2StateStore`.
+    - Upgrade note in the code: v1 rooms still running are not migrated and end as LOST (drain before upgrading, ADR-13).
+  - `apps/api/src/modules/game-engine/room-scheduler.ts`: `visit` reads the window (`readPrivateSnapshot`) for both its lifetime/timer check and its post-tick check (phase, timing, lifetimes, frozen report).
+  - `apps/api/src/modules/game-engine/game.service.ts`: these read the window:
+    - `tick`;
+    - `closeIfAllAnswered` (current question's answers);
+    - the phase-version read of `hostCommand`.
+    - `finalize`/`buildFrozenReport` and `syncFinalization` keep the full `getPrivateSnapshot`.
+  - `tests/contracts/redis-cluster.spec.ts`: runs against `RedisV2StateStore`. The slot check covers the seven declared keys plus `answers:0`, `closed:0` and `result:0`.
+- **Outside the target files (needed because the Redis key layout changed)**: test helpers and integration tests that edited Redis state directly now use the v2 layout:
+  - `tests/helpers/game.ts` `ageRoomState`: edits `core` in `:meta`, and the report in `:report` with KEEPTTL;
+  - `tests/integration/room-retention.spec.ts`: v2 keys, and the stale-cleanup probe uses the v2 store;
+  - `tests/integration/finalization-failures.spec.ts`: finalization in `core`.
+- **Environment (not code)**: the first `deployment.spec` run failed because the local minio image had been pruned and `kabuki-neko-api:local` was stale.
+  - Rebuilt the API image with `docker build --secret id=build_ca,src=/root/.ccr/ca-bundle.crt`.
+  - Ran with `KABUKI_TEST_MINIO_IMAGE=kabuki-neko/minio-test:9e49d5e7a648-go1.27.3-caacf32680`.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 280/280.
+  - `pnpm test:contracts --testPathPatterns='state-parity|redis'` → 94/94 (including redis-cluster on v2).
+  - `pnpm test:integration` (realtime-races, payload-privacy, recovery, room-retention, game-gateway, finalization-failures) → 52/52; deployment → 3/3 after the image rebuild.
+  - E2E `player`/`host` → 9/9. The first attempt stopped in the web server's Next.js build guard; a plain retry passed.
+
+## TASK-185R: Hapus store Redis v1 dan skripnya — DONE
+- **Date**: 2026-11-19 (Asia/Jakarta)
+- **Files**:
+  - Deleted as one unit:
+    - `apps/api/src/providers/state/redis-state.store.ts`;
+    - `lua/admit-answer.lua`, `lua/bind-player.lua`, `lua/close-question.lua`, `lua/mutate-room.lua`, `lua/release-room.lua`.
+  - `apps/api/src/providers/state/redis-v2-state.store.ts`:
+    - `restoreArrays` (and its schema-walk helpers) moved here and is exported;
+    - the file header describes the store as the only Redis store;
+    - comments no longer name the deleted files.
+  - `lua/v2-*.lua`: comments refer to "layout v1" instead of the deleted script names.
+  - `tests/contracts/state-parity.spec.ts`: drivers `memory` and `redis` (= v2).
+    - The v1-only key probes are gone.
+    - The TASK-185H lease probe is ported to v2: a corrupt `core` does not stop leases, and the release refuses.
+    - The TASK-185J "HMGET, no script" probe is dropped: v2 reads through the atomic `read` script by design (ADR-13).
+    - The lifecycle and cluster cases use the v2 store.
+  - Deleted `tests/contracts/redis-answers.spec.ts` and `tests/contracts/redis-room.spec.ts`. These called the v1 scripts directly. Their unique cases moved to `tests/contracts/redis-v2-state.spec.ts`: SHA-256 test vectors of the freeze script, no vacuous ALL_ANSWERED close for an empty required set, and capacity under concurrent joins. Their other cases were already covered by state-parity and the v2 spec. Removing them is outside the listed target files; it was required because they import the deleted v1 scripts.
+- **Verification**:
+  - Grep for `redis-state.store`, `RedisStateStore`, the v1 script names and the deleted specs in `apps packages tests scripts docker` → no match.
+  - Docs keep only historical mentions.
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter "@kabuki-neko/api..." build` → pass; dist has only `v2-*.lua`.
+  - `pnpm --filter @kabuki-neko/api test` → 280/280. dockerd had to be restarted once after a worker restart; the first run's 11 failures were "no container runtime".
+  - `pnpm test:contracts --testPathPatterns='state-parity|redis'` → 58/58.
+
+## TASK-185S: Ukur ulang topologi Redis dua node dengan tata letak v2 — DONE
+
+- **Date**: 2026-11-19 (Asia/Jakarta)
+- **Runs** (same 4-core VM as before, commit after TASK-185R):
+  - `pnpm benchmark:game --clients 200 --transitions 100 --mode memory` → **PASS**.
+    - Transport p95 7.55 ms; admission p95 4.17 ms; 0 rejected.
+    - Record `test-results/benchmark/memory.json`.
+  - `pnpm benchmark:game --clients 200 --transitions 100 --mode redis` → **FAIL**.
+    - Transport p95 113.38 ms (TASK-185I: 278.66 ms).
+    - 0 rejected answers (3,545 before); admission p50 29.67 ms (3,988 ms before).
+    - 0 disconnects, delivery loss 0/20,400, 268 s (1,052 s before).
+    - Record `test-results/benchmark/redis.json`.
+  - Redis CPU and SLOWLOG were sampled outside the repository by a scratch script: `docker stats` every ~3 s, SLOWLOG threshold 5 ms, 1,024 entries kept.
+    - CPU: median 1.9%, p90 49.2%, max 68.6%.
+    - SLOWLOG: 128 entries in total.
+      - `v2-answer` admit with freeze: 27 calls, mean 202 ms.
+      - `read` full: 54 calls, 12 ms.
+      - `read` window: 23 calls, 6.7 ms.
+      - `v2-question`: 24 calls, 6.4 ms.
+- **Next bottleneck (server defect, not the shared host)**: the pure-Lua SHA-256 of the freeze record (200 answers) takes about 200 ms per question and blocks Redis for both nodes. Corrective task **TASK-185T** was created in `04-tasks.md`.
+- **Files**: `docs/performance-results.md` (new section "After the Redis room layout v2"), `docs/vibe/07-qa-report.md` (US-20 row and note), `docs/vibe/04-tasks.md` (TASK-185T).
+- **Verification**:
+  - `pnpm exec prettier --check docs/performance-results.md docs/vibe/07-qa-report.md` → pass. `07-qa-report.md` was not Prettier-clean before and is now formatted.
+  - Both records are referenced from `performance-results.md` and US-20.
+
+## TASK-185T: Hitung hash freeze soal tanpa SHA-256 Lua murni — DONE
+- **Date**: 2026-11-19 (Asia/Jakarta)
+- **Decision (user, 2026-11-19)**: native Redis SHA-1 (`redis.sha1hex`) as the freeze CAS token; recorded in SA §6.1.1.
+- **Files**:
+  - `apps/api/src/providers/state/lua/v2-answer.lua`: `freeze` sets `closed.hash = redis.sha1hex(cjson.encode(closed))`. The pure-Lua SHA-256 stays for answer payload hashes only.
+  - `apps/api/src/providers/state/memory-state.store.ts`: `freezeHash` (SHA-1 of the encoded record), for parity.
+  - `apps/api/src/providers/state/private-state.schema.ts`: `closedQuestionSchema.hash` is `freezeHash` (hex40, documented as an internal CAS token). Answer, token and ticket hashes stay hex64.
+  - `docs/vibe/03-system-analysis.md`:
+    - the hash rule and the §6.1.1 freeze item record the decision;
+    - read item 5 now describes the v2 `read` script (the v1 HMGET read is gone).
+  - `tests/contracts/redis-v2-state.spec.ts`:
+    - new case: the last admission of a 200-player question freezes within 20 ms (SLOWLOG);
+    - fixtures use hex40 closed hashes.
+  - `apps/api/src/modules/game-engine/room-projector.spec.ts`: closed-hash fixture now hex40. Outside the target files, needed by the schema change.
+  - `docs/performance-results.md`, `docs/vibe/07-qa-report.md`: new section and US-20 update.
+  - `docs/vibe/04-tasks.md`: TASK-185U added.
+- **Measured**: the 200-player freeze admission takes 2.9 / 3.3 / 2.9 ms (three runs; about 200 ms before).
+- **Benchmark** (`pnpm benchmark:game --clients 200 --transitions 100 --mode redis`) → **FAIL**.
+  - Transport p95 131.36 ms, p99 165.84 ms; 0 rejected; 0 disconnects.
+  - SLOWLOG has no command over 26.2 ms (292 ms before); Redis CPU max 60%.
+  - The freeze was not the main cause of the transport tail, and the tail is not Redis-side blocking. TASK-185U profiles the API side.
+- **Verification**:
+  - `pnpm --filter @kabuki-neko/api lint` → pass; `typecheck` → pass.
+  - `pnpm --filter @kabuki-neko/api test` → 280/280.
+  - `pnpm test:contracts --testPathPatterns='state-parity|redis'` → 59/59.
+  - Benchmark re-run and recorded as measured (DoD).
+  - `prettier --check` on the performance and QA documents → pass.

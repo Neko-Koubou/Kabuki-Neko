@@ -152,7 +152,7 @@ const closed: ClosedQuestion = {
   phaseVersion: 6,
   closedAt: NOW + 21_500,
   reason: "TIMER",
-  hash: "b".repeat(64),
+  hash: "b".repeat(40),
   requiredPlayerIds: [alice.id, bob.id],
   eligiblePlayerIds: [alice.id, bob.id],
   answers: answers.filter((a) => a.playerId !== kicked.id),
