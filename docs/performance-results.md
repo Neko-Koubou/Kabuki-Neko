@@ -371,6 +371,81 @@ without storing answers and results outside the per-room blob. That is an archit
 of the Redis state layout (TASK-185K), beyond a script fix. A smaller fix, a plain `HMGET` read
 instead of a Lua read, is TASK-185J.
 
+## After the Redis room layout v2 (2026-11-19, TASK-185S)
+
+The commit includes TASK-185L–185R (ADR-13): the room lives in per-room keys of one hash slot
+(`core`, players, answers per question, closed and result per question). The scripts decode only
+what an operation changes, and the scheduler's routine reads use the window (the current
+question and the latest scored question).
+
+### Memory mode, one node, 200 clients: **PASS** (regression check)
+
+Record `test-results/benchmark/memory.json`. 102 transitions in 251 s.
+
+- Delivery loss 0/20,400; 0 rejected answers; 0 disconnects.
+- Transport p95 **7.55 ms** (15.17 ms before).
+
+| Measure (ms)                 | n      | p50   | p95   | p99    | max    |
+| ---------------------------- | ------ | ----- | ----- | ------ | ------ |
+| Transport (commit → receipt) | 49,102 | 2.71  | 7.55  | 9.33   | 13.76  |
+| Admission (answer ACK RTT)   | 5,000  | 1.61  | 4.17  | 7.93   | 71.17  |
+| State commit (host ACK RTT)  | 52     | 25.15 | 53.13 | 200.94 | 200.94 |
+
+### Redis mode, two nodes, 200 clients: **FAIL**
+
+Record `test-results/benchmark/redis.json`. 102 transitions in 268 s (1,052 s before).
+
+- Delivery loss 0/20,400; 0 disconnects.
+- **0 rejected answers** (3,545 before): every one of the 5,000 answers was admitted.
+- Transport p95 **113.38 ms** (278.66 ms before); the target is < 50 ms.
+
+| Measure (ms)                 | n      | p50    | p95    | p99    | max    |
+| ---------------------------- | ------ | ------ | ------ | ------ | ------ |
+| Transport (commit → receipt) | 97,795 | 4.72   | 113.38 | 147.98 | 234.57 |
+| Admission (answer ACK RTT)   | 5,000  | 29.67  | 60.17  | 276.23 | 573.48 |
+| State commit (host ACK RTT)  | 52     | 146.86 | 276.94 | 538.53 | 538.53 |
+
+Before (TASK-185I), the admission p50 was 3,988 ms and the state commit p50 was 374 ms.
+
+| Process        | Loop lag p99 per 1 s, median / max (ms) | CPU mean / max (% of one core) |
+| -------------- | --------------------------------------- | ------------------------------ |
+| API node A     | 1.61 / 97.35                            | 16.4 / 81.2                    |
+| API node B     | 2.44 / 265.78                           | 14.9 / 97.4                    |
+| Load generator | 0.76 / 6.56                             | 1.7 / 10.2                     |
+
+Redis container CPU, 89 samples (every ~3 s): median 1.9%, p90 49.2%, max 68.6% (was 5.3% / 37.6% /
+99.1%). Redis no longer saturates.
+
+SLOWLOG (commands over 5 ms; the whole run fit in the 1,024 kept entries, 128 in total):
+
+| Script and operation                   | Slow calls | Mean (ms) | Max (ms) |
+| -------------------------------------- | ---------- | --------- | -------- |
+| `v2-answer.lua` `admit` (with freeze)  | 27         | 202.3     | 292.0    |
+| `v2-room.lua` `read` (full)            | 54         | 12.0      | 21.9     |
+| `v2-room.lua` `read` (window)          | 23         | 6.7       | 10.9     |
+| `v2-question.lua` (commit, transition) | 24         | 6.4       | 10.2     |
+
+An ordinary `admit` never reached 5 ms. The contract measured about 0.5 ms per admission, the
+same after 20 played questions as on the first (TASK-185O).
+
+### Next bottleneck: the SHA-256 of the freeze in Lua
+
+The 27 slow `admit` calls are the last required answer of each question. That answer freezes the
+question in the same script, and the freeze hashes the encoded record (200 answers) with
+SHA-256 written in pure Lua. Redis has no native SHA-256 for scripts. This takes about 200 ms
+per question, and Redis is single-threaded: every command from both nodes waits behind it. The
+broadcasts of that moment land in the transport tail (p95 113 ms, p99 148 ms).
+
+- **This is a server defect, not the shared 4-core host.** Redis CPU stays below 70% and the
+  nodes' event loops are mostly free (median p99 lag 1.6–2.4 ms). The tail follows the
+  freeze-sized blocking calls.
+- Full reads (`read` full, 12 ms on average) come from the readers that still need the complete
+  state (finalization, recovery, the gateway's join/resync paths). They are a smaller second
+  contributor.
+
+The corrective task is TASK-185T: compute the freeze hash without SHA-256 in pure Lua, then
+re-measure.
+
 ## Not covered
 
 - More than 200 clients: needs a separate harness and run. The CLI refuses `--clients` above 200.

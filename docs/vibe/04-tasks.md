@@ -1,6 +1,6 @@
 # 04 — Technical Task Plan: Kabuki Neko
 
-Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 244 task selesai, 1 task Pending (Phase 7 tindak lanjut QA, 2026-11-12)** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
+Tanggal: **2026-10-29 (Asia/Jakarta)**. Versi **1.1 — revisi audio 2026-10-31**. Status: **Stage 5 berjalan; 245 task selesai, 1 task Pending (Phase 7 tindak lanjut QA, 2026-11-12)** (termasuk TASK-001A–001C, koreksi runtime Node 26 2026-11-08).
 
 Sumber: [00-project-context.md](00-project-context.md), [01-prd.md](01-prd.md) v1.3.0, [02-design-spec.md](02-design-spec.md) v1.0 dan [03-system-analysis.md](03-system-analysis.md) v1.0. Seluruh 21 user stories/P0, D-01–D-04, BR-01–BR-20 dan NFR-01–NFR-08 tetap berlaku.
 
@@ -3367,7 +3367,7 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - Tidak ada referensi tersisa ke v1 (`grep`).
   - Build/lint/typecheck/test API dan contract `state-parity|redis` lulus.
 
-### - [ ] TASK-185S: Ukur ulang topologi Redis dua node dengan tata letak v2
+### - [x] TASK-185S: Ukur ulang topologi Redis dua node dengan tata letak v2
 - **Traceability**: `US-16`, `US-20`, NFR-01, [07-qa-report.md §2 US-20](07-qa-report.md).
 - **Depends On**: `TASK-185R`
 - **Target Files**:
@@ -3381,6 +3381,31 @@ Task berikut berasal dari temuan terbuka [07-qa-report.md](07-qa-report.md) §2 
   - Record JSON dirujuk dari dokumen.
   - US-20 diperbarui.
   - Prettier check lulus.
+
+### - [ ] TASK-185T: Hitung hash freeze soal tanpa SHA-256 Lua murni
+
+- **Traceability**: `US-20`, NFR-01, ADR-03, ADR-13, [performance-results.md "After the Redis room layout v2"](../performance-results.md), [07-qa-report.md §2 US-20](07-qa-report.md).
+- **Depends On**: `TASK-185S`
+- **Target Files**:
+  - `MODIFY` `apps/api/src/providers/state/lua/v2-answer.lua`
+  - `MODIFY` `apps/api/src/providers/state/memory-state.store.ts` (bila algoritma hash berubah, agar paritas tetap sama)
+  - `MODIFY` `docs/vibe/03-system-analysis.md` (bila kontrak hash freeze berubah)
+  - `MODIFY` `tests/contracts/redis-v2-state.spec.ts`
+  - `MODIFY` `docs/performance-results.md`, `docs/vibe/07-qa-report.md`
+- **Implementation Specs**:
+  - Masalah (TASK-185S):
+    - jawaban wajib terakhir tiap soal membekukan soal di skrip yang sama;
+    - skrip menghitung SHA-256 dalam Lua murni atas catatan ±200 jawaban, ±200 ms per soal (SLOWLOG: 27 panggilan, rata-rata 202 ms);
+    - Redis single-thread memblokir semua perintah selama itu, sehingga transport p95 113 ms.
+  - Hash freeze hanya token CAS untuk `commitQuestionResult` dan bukti integritas internal, bukan kontrak keamanan publik. Pilih satu dan catat keputusannya di SA:
+    - `redis.sha1hex` native atas catatan yang sama, untuk memory dan Redis;
+    - atau SHA-256 dihitung di adapter dari jawaban yang dibaca sebelum commit.
+  - Pertahankan freeze-once, ALREADY_CLOSED, dan CAS `closedQuestionHash`.
+- **Definition of Done (Verification)**:
+  - Contract `state-parity|redis` lulus.
+  - Spec baru: `admit` jawaban wajib terakhir dengan 200 pemain < 20 ms (SLOWLOG).
+  - `pnpm benchmark:game --clients 200 --transitions 100 --mode redis` diulang, dan hasilnya dicatat apa adanya di `performance-results.md` dan US-20.
+  - lint/typecheck/test API lulus.
 
 ### - [x] TASK-186: Buat injeksi gagal-hapus `system.spec` tidak bergantung pada uid
 - **Traceability**: `US-15` (AC-15-01, AC-15-02), [07-qa-report.md §4](07-qa-report.md), `00-project-context.md` §6.3 butir 6.

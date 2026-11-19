@@ -2947,3 +2947,28 @@
   - `pnpm --filter "@kabuki-neko/api..." build` → pass; dist has only `v2-*.lua`.
   - `pnpm --filter @kabuki-neko/api test` → 280/280. dockerd had to be restarted once after a worker restart; the first run's 11 failures were "no container runtime".
   - `pnpm test:contracts --testPathPatterns='state-parity|redis'` → 58/58.
+
+## TASK-185S: Ukur ulang topologi Redis dua node dengan tata letak v2 — DONE
+
+- **Date**: 2026-11-19 (Asia/Jakarta)
+- **Runs** (same 4-core VM as before, commit after TASK-185R):
+  - `pnpm benchmark:game --clients 200 --transitions 100 --mode memory` → **PASS**.
+    - Transport p95 7.55 ms; admission p95 4.17 ms; 0 rejected.
+    - Record `test-results/benchmark/memory.json`.
+  - `pnpm benchmark:game --clients 200 --transitions 100 --mode redis` → **FAIL**.
+    - Transport p95 113.38 ms (TASK-185I: 278.66 ms).
+    - 0 rejected answers (3,545 before); admission p50 29.67 ms (3,988 ms before).
+    - 0 disconnects, delivery loss 0/20,400, 268 s (1,052 s before).
+    - Record `test-results/benchmark/redis.json`.
+  - Redis CPU and SLOWLOG were sampled outside the repository by a scratch script: `docker stats` every ~3 s, SLOWLOG threshold 5 ms, 1,024 entries kept.
+    - CPU: median 1.9%, p90 49.2%, max 68.6%.
+    - SLOWLOG: 128 entries in total.
+      - `v2-answer` admit with freeze: 27 calls, mean 202 ms.
+      - `read` full: 54 calls, 12 ms.
+      - `read` window: 23 calls, 6.7 ms.
+      - `v2-question`: 24 calls, 6.4 ms.
+- **Next bottleneck (server defect, not the shared host)**: the pure-Lua SHA-256 of the freeze record (200 answers) takes about 200 ms per question and blocks Redis for both nodes. Corrective task **TASK-185T** was created in `04-tasks.md`.
+- **Files**: `docs/performance-results.md` (new section "After the Redis room layout v2"), `docs/vibe/07-qa-report.md` (US-20 row and note), `docs/vibe/04-tasks.md` (TASK-185T).
+- **Verification**:
+  - `pnpm exec prettier --check docs/performance-results.md docs/vibe/07-qa-report.md` → pass. `07-qa-report.md` was not Prettier-clean before and is now formatted.
+  - Both records are referenced from `performance-results.md` and US-20.
